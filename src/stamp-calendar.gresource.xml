@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/tabos/stamp">
+    <file preprocess="xml-stripblanks">views/calendar/stamp-calendar-view.ui</file>
+  </gresource>
+</gresources>

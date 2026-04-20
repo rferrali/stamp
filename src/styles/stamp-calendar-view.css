@@ -1,7 +1,34 @@
-.event {
-  background-color: color-mix(in srgb, var(--accent-color) 50%, var(--view-bg-color));
-  color: var(--view-fg-color);
-  border-radius: 6px;
+/* Stamp-specific tweaks. The base styles come from libgcal and are loaded
+ * from /org/gnome/calendar by StampCalendarView. */
+
+.calendar-sidebar .calendar-row {
+  padding: 3px;
+  border-spacing: 8px;
+}
+
+.calendar-sidebar > row.tree-child {
+  min-height: 32px;
+  padding: 0 6px;
+}
+
+datechooser navigator {
+  margin-right: 6px;
+  margin-left: 6px;
+  margin-bottom: 6px;
+}
+
+datechooser navigator button {
+  outline: unset;
+}
+
+/* Keep the month overview within the sidebar's 250px minimum width. */
+datechooser.sidebar-month-calendar button.day {
+  min-width: 24px;
+  min-height: 24px;
   margin: 1px;
-  font-size: 0.9em;
+  padding: 2px;
+}
+
+.notes-section label.placeholder {
+  margin: 14px;
 }

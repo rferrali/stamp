@@ -22,3 +22,5 @@
 #include <libecal/libecal.h>
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (ECalClient, g_object_unref)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ECalComponent, g_object_unref)
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ECalComponentDateTime, e_cal_component_datetime_free)

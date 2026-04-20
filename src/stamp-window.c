@@ -28,7 +28,9 @@
 
 #include "stamp-account.h"
 #include "stamp-application.h"
+#ifdef HAVE_CALENDAR
 #include "stamp-calendar-view.h"
+#endif
 #include "stamp-contact-view.h"
 #include "stamp-helper.h"
 #include "stamp-mail-view.h"
@@ -102,6 +104,7 @@ on_show_contacts (GSimpleAction *action,
   adw_view_stack_set_visible_child_name (self->main_view_stack, "contacts");
 }
 
+#ifdef HAVE_CALENDAR
 static void
 on_show_calendar (GSimpleAction *action G_GNUC_UNUSED,
                   GVariant *parameter   G_GNUC_UNUSED,
@@ -111,6 +114,7 @@ on_show_calendar (GSimpleAction *action G_GNUC_UNUSED,
 
   adw_view_stack_set_visible_child_name (self->main_view_stack, "calendar");
 }
+#endif
 
 static gboolean
 on_close_request (GtkWindow *source,
@@ -125,7 +129,9 @@ on_close_request (GtkWindow *source,
 static const GActionEntry stamp_window_action_entries[] = {
   { .name = "show-mail", .activate = on_show_mail },
   { .name = "show-contacts", .activate = on_show_contacts },
+#ifdef HAVE_CALENDAR
   { .name = "show-calendar", .activate = on_show_calendar },
+#endif
 };
 
 static void
@@ -195,6 +201,10 @@ stamp_window_init (StampWindow *self)
   g_autofree char *view = NULL;
   XdpPortal *portal = xdp_portal_new ();
   g_autoptr (XdpParent) parent_window = xdp_parent_new_gtk (GTK_WINDOW (self));
+#ifdef HAVE_CALENDAR
+  GtkWidget *calendar_view;
+  AdwViewStackPage *calendar_page;
+#endif
 
   gtk_widget_init_template (GTK_WIDGET (self));
 
@@ -204,6 +214,13 @@ stamp_window_init (StampWindow *self)
                                    stamp_window_action_entries,
                                    G_N_ELEMENTS (stamp_window_action_entries),
                                    self);
+
+#ifdef HAVE_CALENDAR
+  calendar_view = stamp_calendar_view_new ();
+  g_object_set (calendar_view, "stack", self->main_view_stack, NULL);
+  calendar_page = adw_view_stack_add_titled (self->main_view_stack, calendar_view, "calendar", _("Calendar"));
+  adw_view_stack_page_set_icon_name (calendar_page, "x-office-calendar-symbolic");
+#endif
 
   g_signal_connect_object (session, "account-added", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
   g_signal_connect_object (session, "account-removed", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
@@ -217,6 +234,11 @@ stamp_window_init (StampWindow *self)
   g_settings_bind (STAMP_SETTINGS, STAMP_PREFS_WINDOW_HEIGHT, self, "default-height", G_SETTINGS_BIND_DEFAULT);
   g_settings_bind (STAMP_SETTINGS, STAMP_PREFS_WINDOW_MAXIMIZED, self, "maximized", G_SETTINGS_BIND_DEFAULT);
   g_settings_get (STAMP_SETTINGS, STAMP_PREFS_VIEW, "s", &view);
+
+#ifndef HAVE_CALENDAR
+  if (g_strcmp0 (view, "calendar") == 0)
+    g_clear_pointer (&view, g_free);
+#endif
 
   if (view)
     adw_view_stack_set_visible_child_name (self->main_view_stack, view);

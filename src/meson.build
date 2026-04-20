@@ -37,7 +37,6 @@ stamp_sources = [
   'views/stamp-tag.c',
   'views/stamp-rich-text-editor.c',
   'views/stamp-date-time-picker.c',
-  'views/calendar/stamp-calendar-view.c',
   'views/contact/stamp-contact-details.c',
   'views/contact/stamp-contact-view.c',
   'views/contact/contact-list/stamp-contact-item.c',
@@ -68,40 +67,45 @@ stamp_sources = [
   enums,
 ]
 
+blueprint_input = files(
+  'shortcuts-dialog.blp',
+  'stamp-preferences.blp',
+  'stamp-preferences-account.blp',
+  'stamp-preferences-out-of-office.blp',
+  'stamp-preferences-account-editor.blp',
+  'stamp-preferences-signatures.blp',
+  'stamp-preferences-signatures-editor.blp',
+  'stamp-window.blp',
+  'views/stamp-header-bar.blp',
+  'views/stamp-tag.blp',
+  'views/stamp-rich-text-editor.blp',
+  'views/stamp-date-time-picker.blp',
+  'views/contact/stamp-contact-details.blp',
+  'views/contact/stamp-contact-view.blp',
+  'views/contact/contact-list/stamp-contact-list.blp',
+  'views/contact/contact-list/stamp-contact-row.blp',
+  'views/contact/book-list/stamp-book-list.blp',
+  'views/contact/book-list/stamp-book-row.blp',
+  'views/mail/stamp-mail-view.blp',
+  'views/mail/conversation-list/stamp-conversation-list.blp',
+  'views/mail/conversation-list/stamp-conversation-row.blp',
+  'views/mail/composer/stamp-composer.blp',
+  'views/mail/composer/stamp-contact-completion.blp',
+  'views/mail/folder-list/stamp-folder-list.blp',
+  'views/mail/folder-list/stamp-folder-row.blp',
+  'views/mail/message-list/stamp-attachment-button.blp',
+  'views/mail/message-list/stamp-message-header.blp',
+  'views/mail/message-list/stamp-message-list.blp',
+  'views/mail/message-list/stamp-message-list-item.blp',
+  'views/mail/message-list/stamp-meeting-details.blp',
+)
+
+if get_option('calendar')
+  blueprint_input += files('views/calendar/stamp-calendar-view.blp')
+endif
+
 blueprints = custom_target('blueprints',
-  input: files(
-    'shortcuts-dialog.blp',
-    'stamp-preferences.blp',
-    'stamp-preferences-account.blp',
-    'stamp-preferences-out-of-office.blp',
-    'stamp-preferences-account-editor.blp',
-    'stamp-preferences-signatures.blp',
-    'stamp-preferences-signatures-editor.blp',
-    'stamp-window.blp',
-    'views/stamp-header-bar.blp',
-    'views/stamp-tag.blp',
-    'views/stamp-rich-text-editor.blp',
-    'views/stamp-date-time-picker.blp',
-    'views/calendar/stamp-calendar-view.blp',
-    'views/contact/stamp-contact-details.blp',
-    'views/contact/stamp-contact-view.blp',
-    'views/contact/contact-list/stamp-contact-list.blp',
-    'views/contact/contact-list/stamp-contact-row.blp',
-    'views/contact/book-list/stamp-book-list.blp',
-    'views/contact/book-list/stamp-book-row.blp',
-    'views/mail/stamp-mail-view.blp',
-    'views/mail/conversation-list/stamp-conversation-list.blp',
-    'views/mail/conversation-list/stamp-conversation-row.blp',
-    'views/mail/composer/stamp-composer.blp',
-    'views/mail/composer/stamp-contact-completion.blp',
-    'views/mail/folder-list/stamp-folder-list.blp',
-    'views/mail/folder-list/stamp-folder-row.blp',
-    'views/mail/message-list/stamp-attachment-button.blp',
-    'views/mail/message-list/stamp-message-header.blp',
-    'views/mail/message-list/stamp-message-list.blp',
-    'views/mail/message-list/stamp-message-list-item.blp',
-    'views/mail/message-list/stamp-meeting-details.blp',
-  ),
+  input: blueprint_input,
   output: '.',
   command: [find_program('blueprint-compiler'), 'batch-compile', '@OUTPUT@', '@CURRENT_SOURCE_DIR@', '@INPUT@'],
 )
@@ -131,6 +135,14 @@ stamp_deps = [
   cc.find_library('m')
 ]
 
+if get_option('calendar')
+  stamp_deps += dependency('gcal-1', fallback: ['gnome-calendar', 'libgcal_dep'])
+  stamp_sources += [
+    'views/calendar/stamp-calendar-view.c',
+    'views/calendar/stamp-calendar-list.c',
+  ]
+endif
+
 stamp_resources = gnome.compile_resources('stamp-resources',
   'stamp.gresource.xml',
   c_name: 'stamp',
@@ -142,17 +154,25 @@ stamp_sources += stamp_resources
 stamp_includes = include_directories(
  '.',
  'backend',
- 'views',
- 'views/calendar',
- 'views/contact',
+  'views',
+  'views/calendar',
+  'views/contact',
  'views/contact/book-list',
  'views/contact/contact-list',
  'views/mail',
  'views/mail/composer',
- 'views/mail/folder-list',
- 'views/mail/conversation-list',
- 'views/mail/message-list',
+  'views/mail/folder-list',
+  'views/mail/conversation-list',
+  'views/mail/message-list',
 )
+
+if get_option('calendar')
+  stamp_sources += gnome.compile_resources('stamp-calendar-resources',
+    'stamp-calendar.gresource.xml',
+    c_name: 'stamp_calendar',
+    dependencies: [blueprints],
+  )
+endif
 
 executable('stamp', stamp_sources,
   dependencies: [stamp_deps, config_h],

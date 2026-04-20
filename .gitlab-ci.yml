@@ -11,7 +11,7 @@ variables:
   APP_ID: 'org.tabos.stamp'
   BUNDLE: 'org.tabos.stamp.flatpak'
   FLATPAK_MODULE: 'stamp'
-  MANIFEST_PATH: 'org.tabos.stamp.json'
+  MANIFEST_PATH: 'build-aux/org.tabos.stamp.json'
   RUNTIME_REPO: 'https://nightly.gnome.org/gnome-nightly.flatpakrepo'
 
 stages:
@@ -39,10 +39,10 @@ build-flatpak:
   extends: '.flatpak@x86_64'
   stage: build
   before_script:
-    - python3 .gitlab-ci/prepare-flatpak-checks.py org.tabos.stamp.json ci-flatpak.json
-    - python3 .gitlab-ci/install-flatpak-extensions.py ci-flatpak.json "$ARCH"
+    - python3 .gitlab-ci/prepare-flatpak-checks.py build-aux/org.tabos.stamp.json build-aux/ci-flatpak.json
+    - python3 .gitlab-ci/install-flatpak-extensions.py build-aux/ci-flatpak.json "$ARCH"
   variables:
-    MANIFEST_PATH: 'ci-flatpak.json'
+    MANIFEST_PATH: 'build-aux/ci-flatpak.json'
     GLYCIN_DISABLE_SANDBOX: 'i-know-the-risks'
     FLATPAK_VALIDATE_ICON: '$CI_PROJECT_DIR/.gitlab-ci/flatpak-validate-icon'
   after_script:

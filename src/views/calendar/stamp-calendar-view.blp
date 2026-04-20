@@ -5,97 +5,214 @@ template $StampCalendarView: Adw.BreakpointBin {
   width-request: 360;
   height-request: 200;
 
-  child: Adw.NavigationSplitView outer_view {
-    min-sidebar-width: 200;
-    max-sidebar-width: 351;
-    sidebar-width-fraction: 0.47;
+  Adw.Breakpoint bp_tablet {
+    condition ("max-width: 1000sp")
 
-    sidebar: Adw.NavigationPage inner_view_page {
-      title: _("Stamp");
+    setters {
+      calendar_layout.layout-name: "tablet";
+    }
+  }
 
-      child: Adw.ToolbarView {
-        bottom-bar-style: raised;
+  Adw.Breakpoint bp_mobile {
+    condition ("max-width: 640sp")
 
-        [top]
-        Adw.HeaderBar {
-          [start]
-          Adw.Spinner spinner {
-            visible: false;
-          }
+    setters {
+      calendar_layout.layout-name: "mobile";
+    }
+  }
 
-          [end]
-          MenuButton {
-            primary: true;
-            icon-name: "open-menu-symbolic";
-            menu-model: primary_menu;
-          }
+  child: Adw.MultiLayoutView calendar_layout {
+    [sidebar]
+    Adw.ToolbarView {
+      bottom-bar-style: raised;
+
+      [top]
+      $StampHeaderBar {}
+
+      content: Box {
+        orientation: vertical;
+
+        ScrolledWindow scrolled_window {
+          hscrollbar-policy: never;
+          vexpand: true;
+
+          child: $StampCalendarList calendar_list {};
         }
 
-        content: Box {
-          orientation: vertical;
+        Separator {}
 
-          ScrolledWindow {
-            hscrollbar-policy: never;
+        $GcalDateChooser date_chooser {
+          vexpand: false;
+          split-month-year: false;
+          show-week-numbers: false;
+          active-date: bind template.active-date bidirectional;
 
-            child: Label calendar_list {
-              vexpand: true;
-            };
+          styles [
+            "sidebar-month-calendar",
+          ]
+        }
+      };
+    }
+
+    [week]
+    Adw.ToolbarView {
+      bottom-bar-style: raised;
+
+      [top]
+      Adw.HeaderBar {
+        title-widget: $GcalCalendarNavigationButton navigation_button {
+          active-date: bind template.active-date bidirectional;
+        };
+
+        [end]
+        Button {
+          icon-name: "list-add-symbolic";
+          tooltip-text: _("New Meeting");
+          clicked => $create_meeting(template) not-swapped;
+        }
+
+        [start]
+        ToggleButton sidebar_button {
+          icon-name: "sidebar-show-symbolic";
+          tooltip-text: _("Sidebar Toggle");
+          visible: false;
+
+          styles [
+            "flat",
+          ]
+        }
+      }
+
+      $GcalWeekView week {
+        event-activated => $event_activated(template) not-swapped;
+        active-date: bind template.active-date bidirectional;
+      }
+    }
+
+    [agenda]
+    Adw.ToolbarView {
+      bottom-bar-style: raised;
+
+      [top]
+      Adw.HeaderBar {
+        title-widget: Adw.WindowTitle {
+          title: _("Calendar");
+        };
+
+        [end]
+        Button {
+          icon-name: "list-add-symbolic";
+          tooltip-text: _("New Meeting");
+          clicked => $create_meeting(template) not-swapped;
+        }
+
+        [start]
+        ToggleButton mobile_sidebar_button {
+          icon-name: "sidebar-show-symbolic";
+          tooltip-text: _("Sidebar Toggle");
+          active: bind mobile_osv.show-sidebar bidirectional;
+
+          styles [
+            "flat",
+          ]
+        }
+      }
+
+      $GcalAgendaView agenda {
+        event-activated => $event_activated(template) not-swapped;
+        active-date: bind template.active-date bidirectional;
+      }
+    }
+
+    Adw.Layout {
+      name: "desktop";
+
+      content: Adw.OverlaySplitView outer_osv {
+        sidebar-width-fraction: 0.28;
+        min-sidebar-width: 250;
+        max-sidebar-width: 300;
+        show-sidebar: true;
+
+        sidebar: Adw.ToolbarView {
+          bottom-bar-style: raised;
+
+          content: Adw.LayoutSlot {
+            id: "sidebar";
+          };
+
+          [bottom]
+          Adw.LayoutSlot {
+            id: "switcher";
           }
         };
 
-        [bottom]
-        Adw.ViewSwitcherBar view_switcher {
-          reveal: true;
-        }
+        content: Adw.LayoutSlot {
+          id: "week";
+        };
       };
-    };
+    }
 
-    content: Adw.NavigationPage week_page {
-      tag: "week";
-      title: _("Week");
+    Adw.Layout {
+      name: "tablet";
 
-      child: Adw.Bin week_view {};
-    };
+      content: Adw.OverlaySplitView tablet_osv {
+        sidebar-width-fraction: 0.28;
+        min-sidebar-width: 300;
+        max-sidebar-width: 360;
+        collapsed: true;
+
+        sidebar: Adw.ToolbarView {
+          bottom-bar-style: raised;
+
+          content: Adw.LayoutSlot {
+            id: "sidebar";
+          };
+
+          [bottom]
+          Adw.LayoutSlot {
+            id: "switcher";
+          }
+        };
+
+        content: Adw.LayoutSlot {
+          id: "week";
+        };
+      };
+    }
+
+    Adw.Layout {
+      name: "mobile";
+
+      content: Adw.OverlaySplitView mobile_osv {
+        collapsed: true;
+        sidebar-position: start;
+        sidebar-width-fraction: 0.75;
+        min-sidebar-width: 300;
+        max-sidebar-width: 320;
+
+        sidebar: Adw.LayoutSlot {
+          id: "sidebar";
+        };
+
+        content: Adw.ToolbarView {
+          bottom-bar-style: raised;
+
+          content: Adw.LayoutSlot {
+            id: "agenda";
+          };
+
+          [bottom]
+          Adw.LayoutSlot {
+            id: "switcher";
+          }
+        };
+      };
+    }
+
+    [switcher]
+    Adw.ViewSwitcherBar calendars_switcher {
+      stack: bind template.stack;
+      reveal: true;
+    }
   };
-
-  Adw.Breakpoint breakpoint_small {
-    condition ("max-width: 500sp")
-
-    setters {
-      outer_view.collapsed: true;
-    }
-  }
-}
-
-menu primary_menu {
-  section {
-    item {
-      label: _("A_ccounts");
-      action: 'app.accounts';
-    }
-  }
-
-  section {
-    item {
-      label: _("_Preferences");
-      action: 'app.preferences';
-    }
-
-    item {
-      label: _("_Keyboard Shortcuts");
-      action: "app.shortcuts";
-    }
-
-    item {
-      label: _("_About Stamp");
-      action: 'app.about';
-    }
-  }
-
-  section {
-    item {
-      label: _("_Quit");
-      action: 'app.quit';
-    }
-  }
 }

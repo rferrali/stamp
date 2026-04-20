@@ -11,7 +11,9 @@ src/backend/stamp-mime-parser.c
 src/backend/stamp-photo-cache.c
 src/backend/stamp-session.c
 src/backend/stamp-signature.c
+src/views/calendar/stamp-calendar-list.c
 src/views/calendar/stamp-calendar-view.blp
+src/views/calendar/stamp-calendar-view.c
 src/views/contact/book-list/stamp-book-account-item.c
 src/views/contact/book-list/stamp-book-item.c
 src/views/contact/book-list/stamp-book-list.blp

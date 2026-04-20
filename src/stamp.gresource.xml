@@ -13,7 +13,6 @@
     <file preprocess="xml-stripblanks">views/stamp-tag.ui</file>
     <file preprocess="xml-stripblanks">views/stamp-rich-text-editor.ui</file>
     <file preprocess="xml-stripblanks">views/stamp-date-time-picker.ui</file>
-    <file preprocess="xml-stripblanks">views/calendar/stamp-calendar-view.ui</file>
     <file preprocess="xml-stripblanks">views/contact/stamp-contact-details.ui</file>
     <file preprocess="xml-stripblanks">views/contact/stamp-contact-view.ui</file>
     <file preprocess="xml-stripblanks">views/contact/book-list/stamp-book-list.ui</file>

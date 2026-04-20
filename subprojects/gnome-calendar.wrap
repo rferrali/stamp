@@ -1,0 +1,5 @@
+[wrap-git]
+directory = gnome-calendar
+url = https://gitlab.gnome.org/jbrummer/gnome-calendar.git
+revision = 9999
+depth = 1
