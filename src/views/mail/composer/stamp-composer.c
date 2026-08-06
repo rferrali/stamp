@@ -23,6 +23,7 @@
 
 #include <camel/camel.h>
 #include <glib/gi18n.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <libebook-contacts/libebook-contacts.h>
 #include <libebook/libebook.h>
 #include <libedata-book/libedata-book.h>
@@ -935,6 +936,8 @@ on_signature_activated (GSimpleAction *action,
   g_simple_action_set_state (action, parameter);
 }
 
+#define LARGE_IMAGE_THRESHOLD (300 * 1024)
+
 static void
 attach_box_update_max_height (GtkScrolledWindow *sw,
                               AdwWrapBox        *wrap)
@@ -950,6 +953,264 @@ attach_box_update_max_height (GtkScrolledWindow *sw,
   gtk_scrolled_window_set_max_content_height (sw, 2.5 * nat + adw_wrap_box_get_line_spacing (wrap));
 }
 
+typedef struct {
+  StampComposer *self;
+  gint total;
+  gint current;
+  GFile **files;
+} AttachmentBatch;
+
+typedef struct {
+  AttachmentBatch *batch;
+  GFile *file;
+  gchar *filename;
+  gchar *content_type;
+  gsize original_size;
+
+  GBytes *small_data;
+  gint small_w;
+  gint small_h;
+  gsize small_size;
+
+  GBytes *medium_data;
+  gint medium_w;
+  gint medium_h;
+  gsize medium_size;
+
+  GBytes *large_data;
+  gint large_w;
+  gint large_h;
+  gsize large_size;
+} ResizeData;
+
+static void
+resize_data_free (ResizeData *data)
+{
+  g_clear_pointer (&data->small_data, g_bytes_unref);
+  g_clear_pointer (&data->medium_data, g_bytes_unref);
+  g_clear_pointer (&data->large_data, g_bytes_unref);
+  g_clear_object (&data->file);
+  g_free (data->filename);
+  g_free (data->content_type);
+  g_free (data);
+}
+
+static void
+attachment_batch_free (AttachmentBatch *batch)
+{
+  if (batch->files) {
+    for (gint i = 0; i < batch->total; i++)
+      g_clear_object (&batch->files[i]);
+
+    g_free (batch->files);
+  }
+
+  g_free (batch);
+}
+
+static void
+process_attachment_file (AttachmentBatch *batch);
+
+static void
+finish_attachments (AttachmentBatch *batch)
+{
+  attach_box_update_max_height (GTK_SCROLLED_WINDOW (batch->self->scrolled_window), ADW_WRAP_BOX (batch->self->attachment_box));
+  gtk_revealer_set_reveal_child (GTK_REVEALER (batch->self->attachment_revealer), TRUE);
+  attachment_batch_free (batch);
+}
+
+static void
+attachment_add_simple (AttachmentBatch *batch,
+                       GFile           *file)
+{
+  StampComposer *self = batch->self;
+  GtkWidget *button = stamp_attachment_button_new_from_file (file);
+
+  self->attachments = g_list_append (self->attachments, button);
+  adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
+
+  batch->current++;
+
+  if (batch->current >= batch->total)
+    finish_attachments (batch);
+  else
+    process_attachment_file (batch);
+}
+
+static void
+on_image_resize_response (AdwAlertDialog *dialog,
+                          gchar          *response,
+                          ResizeData     *data)
+{
+  AttachmentBatch *batch = data->batch;
+  StampComposer *self = batch->self;
+
+  if (g_strcmp0 (response, "cancel") != 0) {
+    GtkWidget *button = NULL;
+
+    if (g_strcmp0 (response, "large") == 0 && data->large_data) {
+      button = stamp_attachment_button_new_from_data (data->filename, data->content_type, data->large_size, data->large_data, TRUE);
+    } else if (g_strcmp0 (response, "medium") == 0 && data->medium_data) {
+      button = stamp_attachment_button_new_from_data (data->filename, data->content_type, data->medium_size, data->medium_data, TRUE);
+    } else if (g_strcmp0 (response, "small") == 0 && data->small_data) {
+      button = stamp_attachment_button_new_from_data (data->filename, data->content_type, data->small_size, data->small_data, TRUE);
+    } else {
+      button = stamp_attachment_button_new_from_file (data->file);
+    }
+
+    self->attachments = g_list_append (self->attachments, button);
+    adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
+  }
+
+  batch->current++;
+
+  if (batch->current >= batch->total)
+    finish_attachments (batch);
+  else
+    process_attachment_file (batch);
+}
+
+static void
+compute_resize_sizes (GdkPixbuf  *pixbuf,
+                      ResizeData *data)
+{
+  gint og_w = gdk_pixbuf_get_width (pixbuf);
+  gint og_h = gdk_pixbuf_get_height (pixbuf);
+  gint sizes[3] = { og_w * 0.25, og_w * 0.5, og_w * 0.75 };
+  gint *out_ws[3] = { &data->small_w, &data->medium_w, &data->large_w };
+  gint *out_hs[3] = { &data->small_h, &data->medium_h, &data->large_h };
+  GBytes **out_datas[3] = { &data->small_data, &data->medium_data, &data->large_data };
+  gsize *out_sizes[3] = { &data->small_size, &data->medium_size, &data->large_size };
+
+  for (gint i = 0; i < 3; i++) {
+    gint max_dim = sizes[i];
+    gint new_w, new_h;
+    g_autoptr (GdkPixbuf) scaled = NULL;
+    gchar *buf = NULL;
+    gsize len = 0;
+    g_autoptr (GError) error = NULL;
+
+    if (og_w <= max_dim && og_h <= max_dim) {
+      new_w = og_w;
+      new_h = og_h;
+      scaled = g_object_ref (pixbuf);
+    } else {
+      gdouble scale = (og_w > og_h) ? (gdouble)max_dim / og_w : (gdouble)max_dim / og_h;
+
+      new_w = (gint)(og_w * scale);
+      new_h = (gint)(og_h * scale);
+      scaled = gdk_pixbuf_scale_simple (pixbuf, new_w, new_h, GDK_INTERP_BILINEAR);
+    }
+
+    *out_ws[i] = new_w;
+    *out_hs[i] = new_h;
+
+    gdk_pixbuf_save_to_buffer (scaled, &buf, &len, "png", &error, NULL);
+    if (!error) {
+      *out_datas[i] = g_bytes_new_take (buf, len);
+      *out_sizes[i] = len;
+    } else {
+      g_warning ("%s: Could not save buffer: %s", G_STRFUNC, error->message);
+    }
+  }
+}
+
+static void
+present_image_resize_dialog (AttachmentBatch *batch,
+                             GFile           *file,
+                             GdkPixbuf       *pixbuf,
+                             GFileInfo       *info,
+                             const gchar     *content_type,
+                             gsize            file_size)
+{
+  StampComposer *self = batch->self;
+  const gchar *mime_type = content_type ? g_content_type_get_mime_type (content_type) : NULL;
+  ResizeData *data = g_new0 (ResizeData, 1);
+  g_autofree gchar *heading = NULL;
+  AdwDialog *dialog;
+  g_autofree gchar *body = NULL;
+  g_autofree gchar *actual_label = NULL;
+
+  data->batch = batch;
+  data->file = g_object_ref (file);
+  data->filename = g_strdup (g_file_info_get_display_name (info));
+  data->content_type = g_strdup (mime_type ? mime_type : "image/jpeg");
+  data->original_size = file_size;
+
+  heading = g_strdup_printf (_("Large image: %s"), data->filename);
+  body = g_strdup_printf (_("The image is %s. Choose a size:"), g_format_size (file_size));
+  dialog = ADW_DIALOG (adw_alert_dialog_new (heading, body));
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", _("_Cancel"));
+  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "cancel", ADW_RESPONSE_DESTRUCTIVE);
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
+
+  actual_label = g_strdup_printf ("Actual Size (%s)", g_format_size (file_size));
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "actual", actual_label);
+
+  if (pixbuf) {
+    g_autofree gchar *large_label = NULL;
+    g_autofree gchar *medium_label = NULL;
+    g_autofree gchar *small_label = NULL;
+
+    compute_resize_sizes (pixbuf, data);
+
+    large_label = g_strdup_printf ("Large (%s)", g_format_size (data->large_size));
+    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "large", large_label);
+
+    medium_label = g_strdup_printf ("Medium (%s)", g_format_size (data->medium_size));
+    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "medium", medium_label);
+
+    small_label = g_strdup_printf ("Small (%s)", g_format_size (data->small_size));
+    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "small", small_label);
+
+    adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "medium");
+  } else {
+    adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "actual");
+  }
+
+  g_signal_connect_data (dialog, "response", G_CALLBACK (on_image_resize_response), data, (GClosureNotify)resize_data_free, 0);
+
+  adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+static void
+process_attachment_file (AttachmentBatch *batch)
+{
+  GFile *file = batch->files[batch->current];
+  g_autoptr (GFileInfo) info = NULL;
+  g_autoptr (GdkPixbuf) pixbuf = NULL;
+  const gchar *content_type = NULL;
+  const gchar *mime_type = NULL;
+  gsize file_size = 0;
+  g_autofree gchar *path = NULL;
+
+  info = g_file_query_info (file, G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE "," G_FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME "," G_FILE_ATTRIBUTE_STANDARD_SIZE, G_FILE_QUERY_INFO_NONE, NULL, NULL);
+  if (!info) {
+    attachment_add_simple (batch, file);
+    return;
+  }
+
+  content_type = g_file_info_get_content_type (info);
+  file_size = g_file_info_get_size (info);
+  mime_type = content_type ? g_content_type_get_mime_type (content_type) : NULL;
+
+  if (!mime_type || !g_str_has_prefix (mime_type, "image/") || file_size <= LARGE_IMAGE_THRESHOLD) {
+    attachment_add_simple (batch, file);
+    return;
+  }
+
+  path = g_file_get_path (file);
+  if (path) {
+    g_autoptr (GError) error = NULL;
+
+    pixbuf = gdk_pixbuf_new_from_file (path, &error);
+    if (error)
+      g_warning ("%s: Could not load pixbuf: %s", G_STRFUNC, error->message);
+  }
+
+  present_image_resize_dialog (batch, file, pixbuf, info, content_type, file_size);
+}
+
 static void
 on_attachment_added (GObject      *obj,
                      GAsyncResult *res,
@@ -959,6 +1220,10 @@ on_attachment_added (GObject      *obj,
   GtkFileDialog *dialog = GTK_FILE_DIALOG (obj);
   g_autoptr (GError) error = NULL;
   g_autoptr (GListModel) model = NULL;
+  gint total;
+  gint count = 0;
+  GFile **files;
+  AttachmentBatch *batch;
 
   model = gtk_file_dialog_open_multiple_finish (dialog, res, &error);
   if (error) {
@@ -966,19 +1231,26 @@ on_attachment_added (GObject      *obj,
     return;
   }
 
-  for (gint idx = 0; idx < g_list_model_get_n_items (model); idx++) {
-    GtkWidget *button;
-    g_autoptr (GFile) file = g_list_model_get_item (model, idx);
+  total = g_list_model_get_n_items (model);
+  if (total == 0)
+    return;
 
-    button = stamp_attachment_button_new_from_file (file);
-    self->attachments = g_list_append (self->attachments, button);
+  files = g_new0 (GFile *, total);
 
-    adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
+  for (gint idx = 0; idx < total; idx++) {
+    GFile *file = g_list_model_get_item (model, idx);
+
+    if (file)
+      files[count++] = file;
   }
 
-  attach_box_update_max_height (GTK_SCROLLED_WINDOW (self->scrolled_window), ADW_WRAP_BOX (self->attachment_box));
+  batch = g_new0 (AttachmentBatch, 1);
+  batch->self = self;
+  batch->total = count;
+  batch->current = 0;
+  batch->files = files;
 
-  gtk_revealer_set_reveal_child (GTK_REVEALER (self->attachment_revealer), TRUE);
+  process_attachment_file (batch);
 }
 
 static void
@@ -1421,23 +1693,31 @@ on_drop (GtkDropTarget *target,
   StampComposer *self = STAMP_COMPOSER (user_data);
   GdkFileList *list = g_value_get_boxed (value);
   GSList *files;
+  gint total;
+  gint count = 0;
+  GFile **file_arr;
+  AttachmentBatch *batch;
 
   if (!G_VALUE_HOLDS (value, GDK_TYPE_FILE_LIST))
     return FALSE;
 
   files = gdk_file_list_get_files (list);
-  for (GSList *iter = files; iter && iter->data; iter = g_slist_next (iter)) {
-    GFile *file = G_FILE (iter->data);
-    GtkWidget *button;
+  total = g_slist_length (files);
+  if (total == 0)
+    return TRUE;
 
-    button = stamp_attachment_button_new_from_file (file);
-    self->attachments = g_list_append (self->attachments, button);
+  file_arr = g_new0 (GFile *, total);
 
-    adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
-  }
+  for (GSList *iter = files; iter && iter->data; iter = g_slist_next (iter))
+    file_arr[count++] = g_object_ref (G_FILE (iter->data));
 
-  gtk_revealer_set_reveal_child (GTK_REVEALER (self->attachment_revealer), TRUE);
+  batch = g_new0 (AttachmentBatch, 1);
+  batch->self = self;
+  batch->total = count;
+  batch->current = 0;
+  batch->files = file_arr;
 
+  process_attachment_file (batch);
 
   return TRUE;
 }
@@ -1507,6 +1787,7 @@ stamp_composer_init (StampComposer *self)
   gtk_widget_init_template (GTK_WIDGET (self));
 
   self->type = STAMP_COMPOSER_NEW;
+  self->attachments = NULL;
   self->cancellable = g_cancellable_new ();
   self->webview = stamp_webview_new ();
 

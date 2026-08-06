@@ -33,6 +33,7 @@ struct _StampAttachmentButton {
   gsize size;
   GBytes *data;
   GCancellable *cancellable;
+  gboolean editable;
 
   GtkWidget *image;
   GtkWidget *filename_label;
@@ -49,9 +50,10 @@ typedef enum {
   PROP_CONTENT_TYPE,
   PROP_SIZE,
   PROP_DATA,
+  PROP_EDITABLE,
 } StampAttachmentButtonProps;
 
-static GParamSpec *properties[PROP_DATA + 1];
+static GParamSpec *properties[PROP_EDITABLE + 1];
 
 static void
 stamp_attachment_button_get_property (GObject    *object,
@@ -79,6 +81,9 @@ stamp_attachment_button_get_property (GObject    *object,
       break;
     case PROP_DATA:
       g_value_set_boxed (value, self->data);
+      break;
+    case PROP_EDITABLE:
+      g_value_set_boolean (value, self->editable);
       break;
   }
 }
@@ -116,6 +121,9 @@ stamp_attachment_button_set_property (GObject      *object,
       self->data = g_value_get_boxed (value);
       if (self->data)
         g_bytes_ref (self->data);
+      break;
+    case PROP_EDITABLE:
+      self->editable = g_value_get_boolean (value);
       break;
   }
 }
@@ -501,13 +509,10 @@ stamp_attachment_button_constructed (GObject *object)
     gtk_label_set_markup (GTK_LABEL (self->size_label), tmp);
   }
 
-  if (self->mime_part) {
+  if (!self->editable) {
     remove_menu_item (G_MENU (self->context_menu), "attachmentbutton.remove");
     remove_menu_item (G_MENU (self->context_menu), "attachmentbutton.rename");
-  } else if (self->data) {
-    remove_menu_item (G_MENU (self->context_menu), "attachmentbutton.remove");
-    remove_menu_item (G_MENU (self->context_menu), "attachmentbutton.rename");
-  } else if (self->file) {
+  } else {
     remove_menu_item (G_MENU (self->context_menu), "attachmentbutton.save-as");
   }
 }
@@ -596,6 +601,13 @@ stamp_attachment_button_class_init (StampAttachmentButtonClass *klass)
                         G_TYPE_BYTES,
                         G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
+  properties[PROP_EDITABLE] =
+    g_param_spec_boolean ("editable",
+                          NULL,
+                          NULL,
+                          FALSE,
+                          G_PARAM_CONSTRUCT | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
   g_object_class_install_properties (object_class, G_N_ELEMENTS (properties), properties);
 }
 
@@ -609,13 +621,15 @@ GtkWidget *
 stamp_attachment_button_new_from_data (const gchar *filename,
                                        const gchar *content_type,
                                        gsize        size,
-                                       GBytes      *data)
+                                       GBytes      *data,
+                                       gboolean     editable)
 {
   return g_object_new (STAMP_TYPE_ATTACHMENT_BUTTON,
                        "filename", filename,
                        "content-type", content_type,
                        "size", size,
                        "data", data,
+                       "editable", editable,
                        NULL);
 }
 

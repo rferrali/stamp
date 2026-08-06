@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Jan-Michael Brummer
+ * Copyright 2025-2026 Jan-Michael Brummer
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,9 +32,10 @@ stamp_attachment_button_new (CamelMimePart *mime_part);
 
 GtkWidget *
 stamp_attachment_button_new_from_data (const gchar *filename,
-                                        const gchar *content_type,
-                                        gsize       size,
-                                        GBytes     *data);
+                                       const gchar *content_type,
+                                       gsize        size,
+                                       GBytes      *data,
+                                       gboolean     editable);
 
 GtkWidget *
 stamp_attachment_button_new_from_file (GFile *file);

@@ -107,6 +107,7 @@ stamp_deps = [
   dependency('nss'),
   dependency('gpgme'),
   dependency('webkitgtk-6.0'),
+  dependency('gdk-pixbuf-2.0'),
   cc.find_library('resolv'),
   cc.find_library('m')
 ]

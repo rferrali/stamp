@@ -248,7 +248,7 @@ open_message (StampMessageListItem *self,
 
     for (GList *iter = attachments; iter && iter->data; iter = g_list_next (iter)) {
       StampMimeAttachment *att = iter->data;
-      GtkWidget *button = stamp_attachment_button_new_from_data (att->filename, att->mime_type, att->size, att->data);
+      GtkWidget *button = stamp_attachment_button_new_from_data (att->filename, att->mime_type, att->size, att->data, FALSE);
 
       adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_flow_box), button);
 
