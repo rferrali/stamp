@@ -39,6 +39,7 @@ struct _StampMailView {
   GtkPaned *desktop_paned;
   GtkPaned *tablet_paned;
   AdwToastOverlay *toast_overlay;
+  AdwToast *trash_toast;
 
   GtkWidget *stack;
 
@@ -187,6 +188,7 @@ on_trash_undo (AdwToast *toast,
   StampMailView *self = STAMP_MAIL_VIEW (user_data);
 
   stamp_conversation_list_undo_trash (self->conversation_list);
+  g_clear_object (&self->trash_toast);
 }
 
 static void
@@ -196,6 +198,7 @@ on_trash_dismissed (AdwToast *toast,
   StampMailView *self = STAMP_MAIL_VIEW (user_data);
 
   stamp_conversation_list_finalize_trash (self->conversation_list);
+  g_clear_object (&self->trash_toast);
 }
 
 static void
@@ -211,6 +214,7 @@ trash (StampMailView         *self,
     g_signal_connect (toast, "button-clicked", G_CALLBACK (on_trash_undo), self);
     g_signal_connect (toast, "dismissed", G_CALLBACK (on_trash_dismissed), self);
     adw_toast_overlay_add_toast (self->toast_overlay, toast);
+    self->trash_toast = g_object_ref (toast);
   }
 
   stamp_message_list_set_conversation (self->message_list, NULL, NULL);
@@ -234,6 +238,7 @@ stamp_mail_view_dispose (GObject *object)
   g_clear_handle_id (&self->load_folder_handler, g_source_remove);
   g_clear_object (&self->actions);
   g_clear_object (&self->account);
+  g_clear_object (&self->trash_toast);
 
   /* FIXME: Does not work with AdwBreakpointBin */
   /* gtk_widget_dispose_template (GTK_WIDGET (self), STAMP_TYPE_MAIL_VIEW); */
@@ -364,6 +369,20 @@ on_trash (GSimpleAction *action,
 }
 
 static void
+on_undo_trash (GSimpleAction *action,
+               GVariant      *parameter,
+               gpointer       user_data)
+{
+  StampMailView *self = STAMP_MAIL_VIEW (user_data);
+
+  if (!self->trash_toast)
+    return;
+
+  stamp_conversation_list_undo_trash (self->conversation_list);
+  adw_toast_dismiss (self->trash_toast);
+}
+
+static void
 on_composer_new (GSimpleAction *action,
                  GVariant      *parameter,
                  gpointer       user_data)
@@ -415,6 +434,7 @@ static const GActionEntry stamp_mail_view_action_entries[] = {
   { .name = "reply-all-current", .activate = on_reply_all },
   { .name = "reply-current", .activate = on_reply },
   { .name = "trash", .activate = on_trash },
+  { .name = "undo-trash", .activate = on_undo_trash },
   { .name = "junk", .activate = on_junk },
 };
 
@@ -483,6 +503,7 @@ static const Shortcut MailShortcuts[] = {
   { "mail.print-current", "<primary>p" },
   { "mail.trash", "<primary>d" },
   { "mail.trash", "Delete" },
+  { "mail.undo-trash", "<primary>z" },
   { "mail.junk", "<primary>j" },
   { "mail.view-source", "<primary>s" },
 };
