@@ -30,6 +30,8 @@ struct _StampMailService {
   CamelFolder *sent_folder;
   CamelFolder *drafts_folder;
   CamelFolder *junk_folder;
+  CamelFolder *archives_folder;
+  CamelFolder *templates_folder;
   ESource *source;
   ESource *transport_source;
   ESource *identity_source;
@@ -145,6 +147,8 @@ stamp_account_mail_service_free (gpointer data)
   g_clear_object (&service->sent_folder);
   g_clear_object (&service->drafts_folder);
   g_clear_object (&service->junk_folder);
+  g_clear_object (&service->archives_folder);
+  g_clear_object (&service->templates_folder);
   g_clear_pointer (&service, g_free);
 }
 
@@ -580,16 +584,16 @@ on_book_client_ready (GObject      *src,
   init_context_finish_one (ctx);
 }
 
-static gboolean
-is_drafts_folder (CamelFolderInfo *fi)
-{
-  return (fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_DRAFTS;
-}
-
 typedef struct {
   StampAccount *account;
   InitContext *ctx;
   gint pending;
+  guint have_sent : 1;
+  guint have_drafts : 1;
+  guint have_trash : 1;
+  guint have_junk : 1;
+  guint have_archives : 1;
+  guint have_templates : 1;
 } MailEnableData;
 
 static void
@@ -614,7 +618,7 @@ on_junk_folder_ready (GObject      *src,
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
-  CamelFolder *folder = camel_store_get_junk_folder_finish (CAMEL_STORE (src), res, &error);
+  CamelFolder *folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
 
   if (folder)
     data->account->mail->junk_folder = folder;
@@ -625,9 +629,9 @@ on_junk_folder_ready (GObject      *src,
 }
 
 static void
-on_trash_folder_from_info_ready (GObject      *src,
-                                 GAsyncResult *res,
-                                 gpointer      user_data)
+on_trash_folder_ready (GObject      *src,
+                       GAsyncResult *res,
+                       gpointer      user_data)
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
@@ -676,18 +680,48 @@ on_drafts_folder_ready (GObject      *src,
 }
 
 static void
-on_folder_info_for_sent_drafts (GObject      *src,
-                                GAsyncResult *res,
-                                gpointer      user_data)
+on_archives_folder_ready (GObject      *src,
+                          GAsyncResult *res,
+                          gpointer      user_data)
+{
+  MailEnableData *data = user_data;
+  g_autoptr (GError) error = NULL;
+  CamelFolder *folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
+
+  if (folder)
+    data->account->mail->archives_folder = folder;
+  else
+    g_warning ("%s: %s", G_STRFUNC, error ? error->message : "");
+
+  mail_enable_one_done (data);
+}
+
+static void
+on_templates_folder_ready (GObject      *src,
+                           GAsyncResult *res,
+                           gpointer      user_data)
+{
+  MailEnableData *data = user_data;
+  g_autoptr (GError) error = NULL;
+  CamelFolder *folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
+
+  if (folder)
+    data->account->mail->templates_folder = folder;
+  else
+    g_warning ("%s: %s", G_STRFUNC, error ? error->message : "");
+
+  mail_enable_one_done (data);
+}
+
+static void
+on_folder_info_for_special_folders (GObject      *src,
+                                    GAsyncResult *res,
+                                    gpointer      user_data)
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
   g_autoptr (CamelFolderInfo) root = camel_store_get_folder_info_finish (CAMEL_STORE (src), res, &error);
   CamelFolderInfo *fi;
-  const gchar *sent_path = NULL;
-  const gchar *drafts_path = NULL;
-  const gchar *trash_path = NULL;
-  gint new_pending = 0;
 
   if (error) {
     g_warning ("%s: get_folder_info: %s", G_STRFUNC, error->message);
@@ -697,14 +731,53 @@ on_folder_info_for_sent_drafts (GObject      *src,
 
   fi = root;
   while (fi) {
-    if (!sent_path && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_SENT))
-      sent_path = fi->full_name;
+    if (!data->have_sent && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_SENT)) {
+      data->have_sent = TRUE;
+      data->pending += 1;
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
+                              G_PRIORITY_DEFAULT, NULL,
+                              on_sent_folder_ready, data);
+    }
 
-    if (!drafts_path && is_drafts_folder (fi))
-      drafts_path = fi->full_name;
+    if (!data->have_drafts && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_DRAFTS)) {
+      data->have_drafts = TRUE;
+      data->pending += 1;
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
+                              G_PRIORITY_DEFAULT, NULL,
+                              on_drafts_folder_ready, data);
+    }
 
-    if (!trash_path && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_TRASH))
-      trash_path = fi->full_name;
+    if (!data->have_trash && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_TRASH)) {
+      data->have_trash = TRUE;
+      data->pending += 1;
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
+                              G_PRIORITY_DEFAULT, NULL,
+                              on_trash_folder_ready, data);
+    }
+
+    if (!data->have_junk && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_JUNK)) {
+      data->have_junk = TRUE;
+      data->pending += 1;
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
+                              G_PRIORITY_DEFAULT, NULL,
+                              on_junk_folder_ready, data);
+    }
+
+    if (!data->have_archives && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_ARCHIVE)) {
+      data->have_archives = TRUE;
+      data->pending += 1;
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
+                              G_PRIORITY_DEFAULT, NULL,
+                              on_archives_folder_ready, data);
+    }
+
+    if (!data->have_templates && g_strcmp0 (fi->display_name, "Templates") == 0) {
+      data->have_templates = TRUE;
+      data->pending += 1;
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
+                              G_PRIORITY_DEFAULT, NULL,
+                              on_templates_folder_ready, data);
+    }
 
     if (fi->child) {
       fi = fi->child;
@@ -715,22 +788,6 @@ on_folder_info_for_sent_drafts (GObject      *src,
     if (fi)
       fi = fi->next;
   }
-
-  new_pending = (sent_path ? 1 : 0) + (drafts_path ? 1 : 0) + (trash_path ? 1 : 0);
-  data->pending += new_pending;
-
-  if (sent_path)
-    camel_store_get_folder (CAMEL_STORE (src), sent_path, 0,
-                            G_PRIORITY_DEFAULT, NULL,
-                            on_sent_folder_ready, data);
-  if (drafts_path)
-    camel_store_get_folder (CAMEL_STORE (src), drafts_path, 0,
-                            G_PRIORITY_DEFAULT, NULL,
-                            on_drafts_folder_ready, data);
-  if (trash_path)
-    camel_store_get_folder (CAMEL_STORE (src), trash_path, 0,
-                            G_PRIORITY_DEFAULT, NULL,
-                            on_trash_folder_from_info_ready, data);
 
   mail_enable_one_done (data);
 }
@@ -743,6 +800,14 @@ stamp_account_enable_mail_async (StampAccount *self,
   g_autoptr (GError) error = NULL;
   ESourceMailAccount *extension;
   ESourceMailTransport *transport_extension;
+  g_autoptr (GHashTable) setup = NULL;
+  g_autoptr (GError) setup_error = NULL;
+  const gchar *archives_path = NULL;
+  const gchar *templates_path = NULL;
+  const gchar *spam_path = NULL;
+  const gchar *sent_path = NULL;
+  const gchar *drafts_path = NULL;
+  const gchar *trash_path = NULL;
 
   self->mail->enabled = TRUE;
   extension = e_source_get_extension (self->mail->source, E_SOURCE_EXTENSION_MAIL_ACCOUNT);
@@ -770,16 +835,81 @@ stamp_account_enable_mail_async (StampAccount *self,
   data = g_new0 (MailEnableData, 1);
   data->account = self;
   data->ctx = ctx;
-  data->pending = 2;
+  data->pending = 0;
 
-  camel_store_get_folder_info (CAMEL_STORE (self->mail->service), NULL,
-                               CAMEL_STORE_FOLDER_INFO_RECURSIVE | CAMEL_STORE_FOLDER_INFO_NO_VIRTUAL,
-                               G_PRIORITY_DEFAULT, NULL,
-                               on_folder_info_for_sent_drafts, data);
+  g_debug ("%s: Query '%s' store…", G_STRFUNC, stamp_account_get_name (self));
+  if (camel_store_initial_setup_sync (CAMEL_STORE (self->mail->service), &setup, NULL, &setup_error)) {
+    if (setup) {
+      archives_path = g_hash_table_lookup (setup, CAMEL_STORE_SETUP_ARCHIVE_FOLDER);
+      drafts_path = g_hash_table_lookup (setup, CAMEL_STORE_SETUP_DRAFTS_FOLDER);
+      sent_path = g_hash_table_lookup (setup, CAMEL_STORE_SETUP_SENT_FOLDER);
+      spam_path = g_hash_table_lookup (setup, "Backend:Imapx Backend:real-junk-path:s");
+      templates_path = g_hash_table_lookup (setup, CAMEL_STORE_SETUP_TEMPLATES_FOLDER);
+      trash_path = g_hash_table_lookup (setup, "Backend:Imapx Backend:real-trash-path:s");
 
-  camel_store_get_junk_folder (CAMEL_STORE (self->mail->service),
-                               G_PRIORITY_DEFAULT, NULL,
-                               on_junk_folder_ready, data);
+      g_debug ("%s: '%s' paths:", G_STRFUNC, stamp_account_get_name (self));
+      g_debug ("%s: \tArchive: %s", G_STRFUNC, archives_path);
+      g_debug ("%s: \tDrafts: %s", G_STRFUNC, drafts_path);
+      g_debug ("%s: \tSent: %s", G_STRFUNC, sent_path);
+      g_debug ("%s: \tSpam: %s", G_STRFUNC, spam_path);
+      g_debug ("%s: \tTemplates: %s", G_STRFUNC, templates_path);
+      g_debug ("%s: \tTrash: %s", G_STRFUNC, trash_path);
+    }
+  }
+
+  if (setup_error) {
+    g_warning ("%s: Could not query server defaults: %s", G_STRFUNC, setup_error->message);
+  }
+
+  data->have_sent = sent_path != NULL;
+  data->have_drafts = drafts_path != NULL;
+  data->have_trash = trash_path != NULL;
+  data->have_junk = spam_path != NULL;
+  data->have_archives = archives_path != NULL;
+  data->have_templates = templates_path != NULL;
+
+  /* In an ideal world camel would have send us all required folders, but there are some special cases like Google
+   * which should be fixed in e-d-s...
+   *
+   * Would love to have functions like:
+   *   - camel_store_get_[sent|drafts|... ]_folder
+   */
+  if (sent_path) {
+    data->pending += 1;
+    camel_store_get_folder (CAMEL_STORE (self->mail->service), sent_path, 0, G_PRIORITY_DEFAULT, NULL, on_sent_folder_ready, data);
+  }
+
+  if (drafts_path) {
+    data->pending += 1;
+    camel_store_get_folder (CAMEL_STORE (self->mail->service), drafts_path, 0, G_PRIORITY_DEFAULT, NULL, on_drafts_folder_ready, data);
+  }
+
+  if (trash_path) {
+    data->pending += 1;
+    camel_store_get_folder (CAMEL_STORE (self->mail->service), trash_path, 0, G_PRIORITY_DEFAULT, NULL, on_trash_folder_ready, data);
+  }
+
+  if (spam_path) {
+    data->pending += 1;
+    camel_store_get_folder (CAMEL_STORE (self->mail->service), spam_path, 0, G_PRIORITY_DEFAULT, NULL, on_junk_folder_ready, data);
+  }
+
+  if (archives_path) {
+    data->pending += 1;
+    camel_store_get_folder (CAMEL_STORE (self->mail->service), archives_path, 0, G_PRIORITY_DEFAULT, NULL, on_archives_folder_ready, data);
+  }
+
+  if (templates_path) {
+    data->pending += 1;
+    camel_store_get_folder (CAMEL_STORE (self->mail->service), templates_path, 0, G_PRIORITY_DEFAULT, NULL, on_templates_folder_ready, data);
+  }
+
+  if (!sent_path || !drafts_path || !trash_path || !spam_path || !archives_path || !templates_path) {
+    data->pending += 1;
+
+    /* We do not have all path we want, let's do it the hard way and traverse folder info */
+    camel_store_get_folder_info (CAMEL_STORE (self->mail->service), NULL, CAMEL_STORE_FOLDER_INFO_RECURSIVE | CAMEL_STORE_FOLDER_INFO_NO_VIRTUAL, G_PRIORITY_DEFAULT, NULL, on_folder_info_for_special_folders, data);
+  }
 
   if (g_strcmp0 (e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension)), "microsoft365") == 0) {
     /* Microsoft 365 categories fetch via Graph API */
@@ -1468,4 +1598,16 @@ CamelFolder *
 stamp_account_get_mail_junk_folder (StampAccount *self)
 {
   return self->mail->junk_folder;
+}
+
+CamelFolder *
+stamp_account_get_mail_archives_folder (StampAccount *self)
+{
+  return self->mail->archives_folder;
+}
+
+CamelFolder *
+stamp_account_get_mail_templates_folder (StampAccount *self)
+{
+  return self->mail->templates_folder;
 }

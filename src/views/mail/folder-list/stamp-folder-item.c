@@ -53,8 +53,40 @@ enum {
 static gint signals[LAST_SIGNAL] = { 0 };
 
 static const gchar *
-get_icon (CamelFolderInfo *info)
+get_icon (StampFolderItem *self,
+          CamelFolderInfo *info)
 {
+  CamelFolder *archives_folder = stamp_account_get_mail_archives_folder (stamp_item_get_account (STAMP_ITEM (self)));
+  CamelFolder *drafts_folder = stamp_account_get_mail_drafts_folder (stamp_item_get_account (STAMP_ITEM (self)));
+  CamelFolder *sent_folder = stamp_account_get_mail_sent_folder (stamp_item_get_account (STAMP_ITEM (self)));
+  CamelFolder *templates_folder = stamp_account_get_mail_templates_folder (stamp_item_get_account (STAMP_ITEM (self)));
+  CamelFolder *trash_folder = stamp_account_get_mail_trash_folder (stamp_item_get_account (STAMP_ITEM (self)));
+  CamelFolder *junk_folder = stamp_account_get_mail_junk_folder (stamp_item_get_account (STAMP_ITEM (self)));
+
+  if (archives_folder && g_strcmp0 (camel_folder_get_full_name (archives_folder), info->full_name) == 0) {
+    return "archive-symbolic";
+  }
+
+  if (drafts_folder && g_strcmp0 (camel_folder_get_full_name (drafts_folder), info->full_name) == 0) {
+    return "drafts-symbolic";
+  }
+
+  if (sent_folder && g_strcmp0 (camel_folder_get_full_name (sent_folder), info->full_name) == 0) {
+    return "sent-symbolic";
+  }
+
+  if (templates_folder && g_strcmp0 (camel_folder_get_full_name (templates_folder), info->full_name) == 0) {
+    return "folder-templates-symbolic";
+  }
+
+  if (trash_folder && g_strcmp0 (camel_folder_get_full_name (trash_folder), info->full_name) == 0) {
+    return "user-trash-symbolic";
+  }
+
+  if (junk_folder && g_strcmp0 (camel_folder_get_full_name (junk_folder), info->full_name) == 0) {
+    return "junk-symbolic";
+  }
+
   switch (info->flags & CAMEL_FOLDER_TYPE_MASK) {
     case CAMEL_FOLDER_TYPE_INBOX:
       return "inbox-symbolic";
@@ -340,7 +372,7 @@ stamp_folder_item_constructed (GObject *object)
   G_OBJECT_CLASS (stamp_folder_item_parent_class)->constructed (object);
 
   stamp_item_set_name (STAMP_ITEM (self), self->folder_info->display_name);
-  stamp_item_set_icon_name (STAMP_ITEM (self), get_icon (self->folder_info));
+  stamp_item_set_icon_name (STAMP_ITEM (self), get_icon (self, self->folder_info));
 
   account = stamp_item_get_account (STAMP_ITEM (self));
 
