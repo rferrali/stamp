@@ -494,7 +494,6 @@ transfer_flags_to_icon (GBinding     *binding,
 static void
 update_from (StampMessageHeader *self)
 {
-  GdkTexture *texture = NULL;
   g_autofree char *tmp_name = NULL;
   g_autofree char *markup = NULL;
 
@@ -508,24 +507,22 @@ update_from (StampMessageHeader *self)
 
   self->cancellable = g_cancellable_new ();
 
-  stamp_account_get_photo (self->account,
-                           self->from_mail,
-                           self->cancellable,
-                           on_get_photo,
-                           g_object_ref (self));
-  if (texture) {
-    adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), GDK_PAINTABLE (texture));
+  if (self->account)
+    stamp_account_get_photo (self->account,
+                             self->from_mail,
+                             self->cancellable,
+                             on_get_photo,
+                             g_object_ref (self));
+
+  if (self->from_name && strlen (self->from_name) > 0) {
+    g_autofree char *stripped_text = stamp_strip_department (self->from_name);
+
+    adw_avatar_set_text (ADW_AVATAR (self->avatar), stripped_text);
   } else {
-    if (self->from_name && strlen (self->from_name) > 0) {
-      g_autofree char *stripped_text = stamp_strip_department (self->from_name);
-
-      adw_avatar_set_text (ADW_AVATAR (self->avatar), stripped_text);
-    } else {
-      adw_avatar_set_text (ADW_AVATAR (self->avatar), self->from_mail);
-    }
-
-    adw_avatar_set_show_initials (ADW_AVATAR (self->avatar), TRUE);
+    adw_avatar_set_text (ADW_AVATAR (self->avatar), self->from_mail);
   }
+
+  adw_avatar_set_show_initials (ADW_AVATAR (self->avatar), TRUE);
 
   if (self->sender_mail) {
     g_autofree char *tmp_sender_name = g_markup_escape_text (self->sender_name, -1);
