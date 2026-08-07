@@ -32,8 +32,6 @@
 #include "stamp-message-list.h"
 #include "stamp-settings.h"
 
-#define INITIAL_LOAD_COUNT 200
-#define BATCH_LOAD_COUNT 100
 
 enum FilterMode {
   FILTER_MODE_ALL,
@@ -102,12 +100,10 @@ struct _StampConversationList {
   GPtrArray *trash_array;
   GPtrArray *trash_uids;
   CamelFolder *trash_source_folder;
-  guint pending_load_count;
 
   GSimpleActionGroup *actions;
   GMenu *move_menu;
   guint load_folder_handler;
-  guint load_more_items_handler;
 };
 
 G_DEFINE_FINAL_TYPE (StampConversationList, stamp_conversation_list, ADW_TYPE_BIN);
@@ -164,9 +160,6 @@ stamp_conversation_item_find_item (GListStore  *store,
 
 static void
 load_folder_idle (gpointer user_data);
-
-static gboolean
-load_more_items_idle (gpointer user_data);
 
 
 static void
@@ -569,8 +562,8 @@ on_get_folder (GObject      *source,
   g_autoptr (GError) error = NULL;
   g_autoptr (GPtrArray) uids = NULL;
   g_autoptr (GList) folders = NULL;
-  CamelFolderThread *thread;
   g_autoptr (GPtrArray) array = NULL;
+  CamelFolderThread *thread;
   StampMailService *mail_service;
 
   if (self->folder) {
@@ -602,30 +595,17 @@ on_get_folder (GObject      *source,
   if (thread) {
     CamelFolderThreadNode *child;
     const gchar *service_uid = camel_service_get_uid (stamp_mail_service_get_service (mail_service));
-    /* guint loaded = 0; */
 
     child = camel_folder_thread_get_tree (thread);
 
-    while (child /*&& loaded < INITIAL_LOAD_COUNT*/) {
-      StampConversationItem *item = NULL;
-
-      item = stamp_conversation_item_new (child, service_uid);
+    while (child) {
+      StampConversationItem *item = stamp_conversation_item_new (child, service_uid);
 
       if (!node_has_message_from_folder (child, folder))
         stamp_conversation_item_set_hidden (item, TRUE);
 
       g_ptr_array_add (array, item);
       child = camel_folder_thread_node_get_next (child);
-/*      loaded++;
-    }
-
-    if (child) {
-      guint remaining = 0;
-      while (child) {
-        remaining++;
-        child = camel_folder_thread_node_get_next (child);
-      }
-      self->pending_load_count = remaining;*/
     }
   }
 
@@ -642,64 +622,7 @@ on_get_folder (GObject      *source,
   if (g_list_model_get_n_items (G_LIST_MODEL (self->list_store)) > 0)
     gtk_list_view_scroll_to (GTK_LIST_VIEW (self->listview), 0, GTK_LIST_SCROLL_FOCUS, NULL);
 
-  if (self->pending_load_count > 0) {
-    g_clear_handle_id (&self->load_more_items_handler, g_source_remove);
-    self->load_more_items_handler = g_idle_add (load_more_items_idle, self);
-  }
-
   rebuild_move_menu (self);
-}
-
-static gboolean
-load_more_items_idle (gpointer user_data)
-{
-  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
-  CamelFolderThreadNode *child;
-  StampMailService *mail_service;
-  g_autoptr (GPtrArray) new_items = NULL;
-  guint current_count = g_list_model_get_n_items (G_LIST_MODEL (self->list_store));
-  guint skip;
-  guint loaded = 0;
-  const gchar *service_uid;
-
-  if (!self->thread || self->pending_load_count == 0) {
-    self->load_more_items_handler = 0;
-    return G_SOURCE_REMOVE;
-  }
-
-  child = camel_folder_thread_get_tree (self->thread);
-  skip = current_count;
-
-  while (child && loaded < skip) {
-    child = camel_folder_thread_node_get_next (child);
-    loaded++;
-  }
-
-  loaded = 0;
-  new_items = g_ptr_array_new_with_free_func (g_object_unref);
-  mail_service = stamp_account_get_mail_service (self->account);
-  service_uid = camel_service_get_uid (stamp_mail_service_get_service (mail_service));
-
-  while (child && loaded < BATCH_LOAD_COUNT) {
-    StampConversationItem *item = stamp_conversation_item_new (child, service_uid);
-
-    g_ptr_array_add (new_items, item);
-    child = camel_folder_thread_node_get_next (child);
-    loaded++;
-    self->pending_load_count--;
-  }
-
-  if (new_items->len > 0) {
-    guint pos = g_list_model_get_n_items (G_LIST_MODEL (self->list_store));
-    g_list_store_splice (self->list_store, pos, 0, new_items->pdata, new_items->len);
-  }
-
-  if (self->pending_load_count > 0) {
-    return G_SOURCE_CONTINUE;
-  }
-
-  self->load_more_items_handler = 0;
-  return G_SOURCE_REMOVE;
 }
 
 void
@@ -713,6 +636,8 @@ stamp_conversation_list_load_folder (StampConversationList *self,
     g_cancellable_cancel (self->cancellable);
     g_clear_object (&self->cancellable);
   }
+
+  g_clear_handle_id (&self->load_folder_handler, g_source_remove);
 
   g_hash_table_insert (self->thread_cache, g_strdup (full_name), NULL);
 
@@ -1480,7 +1405,6 @@ stamp_conversation_list_dispose (GObject *object)
   g_clear_object (&self->transfer_cancellable);
 
   g_clear_handle_id (&self->load_folder_handler, g_source_remove);
-  g_clear_handle_id (&self->load_more_items_handler, g_source_remove);
 
   g_clear_object (&self->thread);
   g_clear_object (&self->list_store);
