@@ -636,7 +636,8 @@ stamp_attachment_button_new_from_data (const gchar *filename,
 GtkWidget *
 stamp_attachment_button_new_from_file (GFile *file)
 {
-  return g_object_new (STAMP_TYPE_ATTACHMENT_BUTTON, "file", file, NULL);
+  return g_object_new (STAMP_TYPE_ATTACHMENT_BUTTON, "file", file,
+                       "editable", TRUE, NULL);
 }
 
 void
