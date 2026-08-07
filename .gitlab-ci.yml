@@ -81,7 +81,6 @@ pages:
   script:
     - mkdir -p public
     - cp .gitlab-ci/landing-page.html public/index.html
-    - mv public_scanbuild/ public/scanbuild
     - mv public_grcov/cobertura.xml public/
     - mv public_grcov/html public/coverage
   artifacts:
