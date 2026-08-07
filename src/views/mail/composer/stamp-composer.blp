@@ -29,18 +29,29 @@ template $StampComposer: Adw.ApplicationWindow {
       }
 
       [end]
-      Button send_button {
-        accessibility {
-          label: _("Send Message");
+      Box linked {
+        styles [
+          "linked",
+        ]
+
+        Button send_button {
+          accessibility {
+            label: _("Send Message");
+          }
+
+          icon-name: "sent-symbolic";
+          sensitive: false;
+          action-name: "composer.send";
+
+          styles [
+            "suggested-action",
+          ]
         }
 
-        icon-name: "sent-symbolic";
-        sensitive: false;
-        action-name: "composer.send";
-
-        styles [
-          "suggested-action",
-        ]
+        MenuButton more_button {
+          icon-name: "view-more-symbolic";
+          menu-model: more_menu;
+        }
       }
     }
 
@@ -575,4 +586,18 @@ SizeGroup {
     bcc,
     subject,
   ]
+}
+
+menu more_menu {
+  section {
+    item {
+      label: _("Send");
+      action: 'composer.send';
+    }
+
+    item {
+      label: _("Send Later…");
+      action: 'composer.schedule';
+    }
+  }
 }

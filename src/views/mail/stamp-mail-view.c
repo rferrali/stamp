@@ -25,6 +25,7 @@
 #include "stamp-folder-list.h"
 #include "stamp-header-bar.h"
 #include "stamp-message-list.h"
+#include "stamp-scheduler.h"
 
 struct _StampMailView {
   AdwBreakpointBin parent_instance;
@@ -234,6 +235,8 @@ static void
 stamp_mail_view_dispose (GObject *object)
 {
   StampMailView *self = STAMP_MAIL_VIEW (object);
+
+  stamp_scheduler_shutdown ();
 
   g_clear_handle_id (&self->load_folder_handler, g_source_remove);
   g_clear_object (&self->actions);
@@ -593,6 +596,8 @@ stamp_mail_view_init (StampMailView *self)
                             G_CALLBACK (stamp_conversation_list_select_relative), self->conversation_list);
   g_signal_connect_swapped (self->message_list, "navigate-back",
                             G_CALLBACK (stamp_mail_view_navigate_back), self);
+
+  stamp_scheduler_init ();
 }
 
 GtkWidget *

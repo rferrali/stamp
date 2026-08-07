@@ -27,6 +27,7 @@
 #include "stamp-composer.h"
 #include "stamp-helper.h"
 #include "stamp-preferences.h"
+#include "stamp-scheduler.h"
 #include "stamp-session.h"
 #include "stamp-window.h"
 
@@ -339,6 +340,61 @@ stamp_application_about_action (GSimpleAction *action,
   adw_dialog_present (dialog, GTK_WIDGET (window));
 }
 
+static gboolean quit_pending_confirmed = FALSE;
+
+static void
+stamp_application_quit_action (GSimpleAction *action,
+                               GVariant      *parameter,
+                               gpointer       user_data);
+
+static void
+on_quit_response (AdwAlertDialog *dialog,
+                  const gchar    *response,
+                  gpointer        user_data)
+{
+  StampApplication *self = STAMP_APPLICATION (user_data);
+
+  if (g_strcmp0 (response, "quit") == 0) {
+    quit_pending_confirmed = TRUE;
+    stamp_application_quit_action (NULL, NULL, self);
+  }
+}
+
+gboolean
+stamp_application_confirm_quit (void)
+{
+  StampApplication *self = STAMP_APPLICATION (g_application_get_default ());
+  GtkWindow *parent;
+  AdwDialog *dialog;
+  g_autofree char *body = NULL;
+  guint pending;
+
+  if (quit_pending_confirmed)
+    return TRUE;
+
+  pending = stamp_scheduler_get_pending_count ();
+  if (pending == 0)
+    return TRUE;
+
+  body = g_strdup_printf (ngettext ("%u message is scheduled to be sent later and will only be sent while the application is running. Quitting now will prevent it from being sent.",
+                                    "%u messages are scheduled to be sent later and will only be sent while the application is running. Quitting now will prevent them from being sent.",
+                                    pending),
+                          pending);
+
+  dialog = adw_alert_dialog_new (_("Scheduled messages pending"), body);
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", _("_Cancel"));
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "quit", _("_Quit"));
+  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "quit", ADW_RESPONSE_DESTRUCTIVE);
+  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "cancel");
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
+
+  parent = gtk_application_get_active_window (GTK_APPLICATION (self));
+  g_signal_connect (dialog, "response", G_CALLBACK (on_quit_response), self);
+  adw_dialog_present (dialog, GTK_WIDGET (parent));
+
+  return FALSE;
+}
+
 static void
 stamp_application_quit_action (GSimpleAction *action,
                                GVariant      *parameter,
@@ -348,6 +404,9 @@ stamp_application_quit_action (GSimpleAction *action,
   GList *windows = NULL;
 
   g_assert (STAMP_IS_APPLICATION (self));
+
+  if (!stamp_application_confirm_quit ())
+    return;
 
   windows = gtk_application_get_windows (GTK_APPLICATION (self));
 

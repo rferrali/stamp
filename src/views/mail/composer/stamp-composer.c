@@ -22,8 +22,8 @@
 #include "stamp-composer.h"
 
 #include <camel/camel.h>
-#include <glib/gi18n.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <glib/gi18n.h>
 #include <libebook-contacts/libebook-contacts.h>
 #include <libebook/libebook.h>
 #include <libedata-book/libedata-book.h>
@@ -34,6 +34,7 @@
 #include "stamp-composer-from.h"
 #include "stamp-contact-completion.h"
 #include "stamp-mail-view.h"
+#include "stamp-scheduler.h"
 #include "stamp-session.h"
 #include "stamp-settings.h"
 #include "stamp-settings.h"
@@ -819,6 +820,427 @@ stamp_composer_set_composer_from_by_account (StampComposer *self,
 }
 
 static void
+on_schedule_get_body_html (GObject      *source_object,
+                           GAsyncResult *res,
+                           gpointer      user_data)
+{
+  StampComposer *self = user_data;
+  StampWebView *web_view = STAMP_WEB_VIEW (source_object);
+  g_autoptr (GError) error = NULL;
+  g_autofree char *body_plain = NULL;
+  g_autofree char *body = stamp_webview_get_body_html_finish (web_view, res, &body_plain, &error);
+  CamelMimeMessage *mime_message;
+  g_autoptr (CamelInternetAddress) sender = NULL;
+  CamelInternetAddress *recipient;
+  CamelInternetAddress *all_recipients;
+  const gchar *name;
+  const gchar *mail;
+  StampAccount *account;
+  gboolean do_pgp_sign;
+  gboolean do_pgp_encrypt;
+  gboolean do_smime_sign;
+  gboolean do_smime_encrypt;
+  gint64 *send_at_ptr;
+  gint64 send_at;
+  GList *tags;
+
+  if (!body) {
+    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      g_warning ("Failed to get HTML content for scheduling: %s", error->message);
+    set_send_action_enabled (self, TRUE);
+    return;
+  }
+
+  send_at_ptr = g_object_get_data (G_OBJECT (self), "scheduled-send-at");
+  if (!send_at_ptr) {
+    g_warning ("%s: No scheduled time set", G_STRFUNC);
+    set_send_action_enabled (self, TRUE);
+    return;
+  }
+  send_at = *send_at_ptr;
+
+  mime_message = build_message (self, body, body_plain);
+
+  name = stamp_composer_from_get_name (self->composer_from);
+  mail = stamp_composer_from_get_mail (self->composer_from);
+  account = stamp_composer_from_get_account (self->composer_from);
+
+  sender = build_sender (mime_message, name, mail);
+  if (!sender)
+    return;
+
+  recipient = build_recipients (self, mime_message);
+
+  do_pgp_sign = gtk_check_button_get_active (GTK_CHECK_BUTTON (self->pgp_sign));
+  do_pgp_encrypt = gtk_check_button_get_active (GTK_CHECK_BUTTON (self->pgp_encrypt));
+  do_smime_sign = gtk_check_button_get_active (GTK_CHECK_BUTTON (self->smime_sign));
+  do_smime_encrypt = gtk_check_button_get_active (GTK_CHECK_BUTTON (self->smime_encrypt));
+
+  if (do_pgp_sign || do_pgp_encrypt || do_smime_sign || do_smime_encrypt) {
+    CamelSession *session;
+    ESource *identity = NULL;
+
+    session = CAMEL_SESSION (stamp_session_get_default ());
+    if (account) {
+      StampMailService *mail_service = stamp_account_get_mail_service (account);
+
+      if (mail_service)
+        identity = stamp_mail_service_get_identity_source (mail_service);
+    }
+
+    apply_crypto (session,
+                  &mime_message,
+                  recipient,
+                  identity,
+                  stamp_account_get_uid (account),
+                  do_pgp_sign,
+                  do_pgp_encrypt,
+                  do_smime_sign,
+                  do_smime_encrypt,
+                  self->cancellable,
+                  &error);
+    if (error) {
+      g_autoptr (AdwAlertDialog) alert = ADW_ALERT_DIALOG (adw_alert_dialog_new (_("Cannot schedule mail"), error->message));
+
+      adw_alert_dialog_add_response (alert, "close", _("_Close"));
+      adw_alert_dialog_set_default_response (alert, "close");
+      adw_alert_dialog_set_close_response (alert, "close");
+      adw_dialog_present (ADW_DIALOG (alert), GTK_WIDGET (self));
+      set_send_action_enabled (self, TRUE);
+      return;
+    }
+  }
+
+  all_recipients = camel_internet_address_new ();
+  camel_address_cat (CAMEL_ADDRESS (all_recipients), CAMEL_ADDRESS (recipient));
+
+  tags = stamp_contact_completion_get_tags (STAMP_CONTACT_COMPLETION (self->bcc));
+  for (GList *iter = tags; iter && iter->data; iter = g_list_next (iter)) {
+    StampTag *tag = STAMP_TAG (iter->data);
+    g_autoptr (CamelInternetAddress) bcc_addr = camel_internet_address_new ();
+
+    camel_internet_address_add (bcc_addr, stamp_tag_get_label (tag), stamp_tag_get_mail (tag));
+    camel_address_cat (CAMEL_ADDRESS (all_recipients), CAMEL_ADDRESS (bcc_addr));
+  }
+
+  camel_medium_set_header (CAMEL_MEDIUM (mime_message), "User-Agent", USER_AGENT);
+
+  if (stamp_scheduler_schedule (account, mime_message,
+                                name, mail,
+                                all_recipients,
+                                do_pgp_sign, do_pgp_encrypt,
+                                do_smime_sign, do_smime_encrypt,
+                                self->draft_uid,
+                                send_at)) {
+    StampMailView *mail_view = stamp_window_get_mail_view (STAMP_WINDOW (stamp_get_main_window ()));
+
+    self->is_dirty = FALSE;
+    stamp_mail_view_show_toast (mail_view, _("Mail scheduled"));
+    gtk_window_destroy (GTK_WINDOW (self));
+  } else {
+    set_send_action_enabled (self, TRUE);
+  }
+}
+
+static void
+on_date_day_selected (GtkCalendar *calendar,
+                      gpointer     user_data)
+{
+  GtkWidget *date_row = GTK_WIDGET (user_data);
+  g_autoptr (GDateTime) date = gtk_calendar_get_date (calendar);
+  g_autofree char *date_str = g_date_time_format (date, "%x");
+
+  gtk_editable_set_text (GTK_EDITABLE (date_row), date_str);
+}
+
+static void
+on_time_value_changed (GtkSpinButton *spin G_GNUC_UNUSED,
+                       gpointer            user_data)
+{
+  GtkWidget *time_row = GTK_WIDGET (user_data);
+  GtkWidget *hour_spin = g_object_get_data (G_OBJECT (time_row), "hour-spin");
+  GtkWidget *minute_spin = g_object_get_data (G_OBJECT (time_row), "minute-spin");
+  gint hour = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (hour_spin));
+  gint minute = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (minute_spin));
+  g_autoptr (GDateTime) dt = NULL;
+  g_autofree char *time_str = NULL;
+
+  if (g_object_get_data (G_OBJECT (time_row), "twelve-hour")) {
+    gboolean is_pm = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (time_row), "am-pm"));
+
+    hour %= 12;
+    if (is_pm)
+      hour += 12;
+  }
+
+  dt = g_date_time_new_local (2000, 1, 1, hour, minute, 0);
+  time_str = g_date_time_format (dt, g_object_get_data (G_OBJECT (time_row), "twelve-hour") ? "%l:%M %p" : "%H:%M");
+
+  gtk_editable_set_text (GTK_EDITABLE (time_row), time_str);
+}
+
+static void
+on_ampm_selected (GObject          *drop_down,
+                  GParamSpec *pspec G_GNUC_UNUSED,
+                  gpointer          user_data)
+{
+  GtkWidget *time_row = GTK_WIDGET (user_data);
+  guint selected = gtk_drop_down_get_selected (GTK_DROP_DOWN (drop_down));
+
+  g_object_set_data (G_OBJECT (time_row), "am-pm", GINT_TO_POINTER (selected == 1));
+  on_time_value_changed (NULL, time_row);
+}
+
+static void
+on_schedule_dialog_response (AdwAlertDialog *dialog,
+                             const gchar    *response,
+                             gpointer        user_data)
+{
+  StampComposer *self = STAMP_COMPOSER (user_data);
+  GtkWidget *extra;
+  GtkWidget *calendar;
+  GtkWidget *hour_spin;
+  GtkWidget *minute_spin;
+  g_autoptr (GDateTime) cal_dt = NULL;
+  g_autoptr (GDateTime) dt = NULL;
+  gint64 send_at;
+  guint year, month, day;
+  gint hour, minute;
+
+  if (g_strcmp0 (response, "schedule") != 0) {
+    set_send_action_enabled (self, TRUE);
+    return;
+  }
+
+  extra = adw_alert_dialog_get_extra_child (ADW_ALERT_DIALOG (dialog));
+  calendar = g_object_get_data (G_OBJECT (extra), "calendar");
+  hour_spin = g_object_get_data (G_OBJECT (extra), "hour-spin");
+  minute_spin = g_object_get_data (G_OBJECT (extra), "minute-spin");
+
+  cal_dt = gtk_calendar_get_date (GTK_CALENDAR (calendar));
+  year = g_date_time_get_year (cal_dt);
+  month = g_date_time_get_month (cal_dt);
+  day = g_date_time_get_day_of_month (cal_dt);
+  hour = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (hour_spin));
+  minute = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (minute_spin));
+
+  if (g_object_get_data (G_OBJECT (extra), "twelve-hour")) {
+    gboolean is_pm = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (extra), "am-pm"));
+
+    hour %= 12;
+    if (is_pm)
+      hour += 12;
+  }
+
+  dt = g_date_time_new_local (year, month, day, hour, minute, 0);
+  if (!dt) {
+    set_send_action_enabled (self, TRUE);
+    return;
+  }
+
+  send_at = g_date_time_to_unix (dt);
+  g_object_set_data_full (G_OBJECT (self), "scheduled-send-at",
+                          g_memdup2 (&send_at, sizeof (gint64)),
+                          g_free);
+
+  stamp_webview_get_body_html (self->webview, NULL, on_schedule_get_body_html, self);
+}
+
+static void
+ensure_large_spinbutton_style (void)
+{
+  static gboolean loaded = FALSE;
+  g_autoptr (GtkCssProvider) provider = NULL;
+  GdkDisplay *display;
+
+  if (loaded)
+    return;
+
+  display = gdk_display_get_default ();
+  if (!display)
+    return;
+
+  provider = gtk_css_provider_new ();
+  gtk_css_provider_load_from_string (provider,
+                                     "spinbutton.large {\n"
+                                     "  font-size: 18pt;\n"
+                                     "}\n"
+                                     "spinbutton.large > button {\n"
+                                     "  min-width: 36px;\n"
+                                     "  min-height: 28px;\n"
+                                     "}\n");
+
+  gtk_style_context_add_provider_for_display (display,
+                                              GTK_STYLE_PROVIDER (provider),
+                                              GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  loaded = TRUE;
+}
+
+static void
+on_schedule_activated (GSimpleAction *action,
+                       GVariant      *parameter,
+                       gpointer       user_data)
+{
+  StampComposer *self = STAMP_COMPOSER (user_data);
+  AdwDialog *dialog;
+  GtkWidget *page;
+  GtkWidget *group;
+  GtkWidget *date_row;
+  GtkWidget *date_button;
+  GtkWidget *date_popover;
+  GtkWidget *calendar;
+  GtkWidget *time_row;
+  GtkWidget *time_button;
+  GtkWidget *time_popover;
+  GtkWidget *time_box;
+  GtkWidget *hour_spin;
+  GtkWidget *minute_spin;
+  g_autoptr (GDateTime) now = g_date_time_new_now_local ();
+  g_autofree char *ampm = NULL;
+  gboolean use_twelve_hour;
+  gint hour24;
+  g_autofree char *date_str = NULL;
+  g_autofree char *time_str = NULL;
+  gboolean is_pm = FALSE;
+
+  set_send_action_enabled (self, FALSE);
+
+  ensure_large_spinbutton_style ();
+
+  ampm = g_date_time_format (now, "%p");
+  use_twelve_hour = ampm[0] != '\0';
+
+  hour24 = (g_date_time_get_hour (now) + 1) % 24;
+
+  dialog = adw_alert_dialog_new (_("Schedule Send"), _("Choose when the message should be sent:"));
+  adw_dialog_set_content_width (dialog, 360);
+
+  page = adw_preferences_page_new ();
+
+  group = adw_preferences_group_new ();
+  adw_preferences_page_add (ADW_PREFERENCES_PAGE (page), ADW_PREFERENCES_GROUP (group));
+
+  date_row = adw_entry_row_new ();
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (date_row), _("Date"));
+  adw_entry_row_set_show_apply_button (ADW_ENTRY_ROW (date_row), FALSE);
+
+  date_button = gtk_menu_button_new ();
+  gtk_widget_add_css_class (date_button, "flat");
+  gtk_widget_set_valign (date_button, GTK_ALIGN_CENTER);
+  gtk_menu_button_set_icon_name (GTK_MENU_BUTTON (date_button), "x-office-calendar-symbolic");
+  gtk_widget_set_tooltip_text (date_button, _("Choose date"));
+  adw_entry_row_add_suffix (ADW_ENTRY_ROW (date_row), date_button);
+
+  calendar = gtk_calendar_new ();
+  gtk_calendar_set_date (GTK_CALENDAR (calendar), now);
+  date_str = g_date_time_format (now, "%x");
+  gtk_editable_set_text (GTK_EDITABLE (date_row), date_str);
+  g_signal_connect (calendar, "day-selected", G_CALLBACK (on_date_day_selected), date_row);
+
+  date_popover = gtk_popover_new ();
+  gtk_popover_set_child (GTK_POPOVER (date_popover), calendar);
+  gtk_menu_button_set_popover (GTK_MENU_BUTTON (date_button), date_popover);
+
+  time_row = adw_entry_row_new ();
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (time_row), _("Time"));
+  adw_entry_row_set_show_apply_button (ADW_ENTRY_ROW (time_row), FALSE);
+
+  time_button = gtk_menu_button_new ();
+  gtk_widget_add_css_class (time_button, "flat");
+  gtk_widget_set_valign (time_button, GTK_ALIGN_CENTER);
+  gtk_menu_button_set_icon_name (GTK_MENU_BUTTON (time_button), "preferences-system-time-symbolic");
+  gtk_widget_set_tooltip_text (time_button, _("Choose time"));
+  adw_entry_row_add_suffix (ADW_ENTRY_ROW (time_row), time_button);
+
+  time_box = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 6);
+  gtk_widget_set_halign (time_box, GTK_ALIGN_CENTER);
+  gtk_widget_set_margin_top (time_box, 12);
+  gtk_widget_set_margin_bottom (time_box, 12);
+
+  if (use_twelve_hour) {
+    hour_spin = gtk_spin_button_new_with_range (1, 12, 1);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (hour_spin), hour24 % 12 ? hour24 % 12 : 12);
+  } else {
+    hour_spin = gtk_spin_button_new_with_range (0, 23, 1);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (hour_spin), hour24);
+  }
+  gtk_orientable_set_orientation (GTK_ORIENTABLE (hour_spin), GTK_ORIENTATION_VERTICAL);
+  gtk_widget_add_css_class (hour_spin, "large");
+  gtk_editable_set_width_chars (GTK_EDITABLE (hour_spin), 3);
+  gtk_widget_set_valign (hour_spin, GTK_ALIGN_CENTER);
+  gtk_box_append (GTK_BOX (time_box), hour_spin);
+
+  gtk_box_append (GTK_BOX (time_box), gtk_label_new (":"));
+
+  minute_spin = gtk_spin_button_new_with_range (0, 59, 1);
+  gtk_orientable_set_orientation (GTK_ORIENTABLE (minute_spin), GTK_ORIENTATION_VERTICAL);
+  gtk_widget_add_css_class (minute_spin, "large");
+  gtk_editable_set_width_chars (GTK_EDITABLE (minute_spin), 3);
+  gtk_widget_set_valign (minute_spin, GTK_ALIGN_CENTER);
+  gtk_box_append (GTK_BOX (time_box), minute_spin);
+
+  g_object_set_data (G_OBJECT (time_row), "twelve-hour", GINT_TO_POINTER (use_twelve_hour));
+
+  if (use_twelve_hour) {
+    GtkWidget *ampm_dropdown;
+    const gchar *ampm_strings[3];
+    g_autoptr (GDateTime) midnight = g_date_time_new_local (2000, 1, 1, 0, 0, 0);
+    g_autoptr (GDateTime) noon = g_date_time_new_local (2000, 1, 1, 12, 0, 0);
+    g_autofree char *am_str = g_date_time_format (midnight, "%p");
+    g_autofree char *pm_str = g_date_time_format (noon, "%p");
+
+    is_pm = hour24 >= 12;
+    ampm_strings[0] = am_str;
+    ampm_strings[1] = pm_str;
+    ampm_strings[2] = NULL;
+    ampm_dropdown = gtk_drop_down_new_from_strings (ampm_strings);
+    gtk_drop_down_set_selected (GTK_DROP_DOWN (ampm_dropdown), is_pm ? 1 : 0);
+    gtk_widget_set_valign (ampm_dropdown, GTK_ALIGN_CENTER);
+    gtk_box_append (GTK_BOX (time_box), ampm_dropdown);
+
+    g_object_set_data (G_OBJECT (time_row), "am-pm", GINT_TO_POINTER (is_pm));
+    g_signal_connect (ampm_dropdown, "notify::selected", G_CALLBACK (on_ampm_selected), time_row);
+  }
+
+  time_popover = gtk_popover_new ();
+  gtk_popover_set_child (GTK_POPOVER (time_popover), time_box);
+  gtk_menu_button_set_popover (GTK_MENU_BUTTON (time_button), time_popover);
+
+  g_object_set_data (G_OBJECT (time_row), "hour-spin", hour_spin);
+  g_object_set_data (G_OBJECT (time_row), "minute-spin", minute_spin);
+
+  {
+    g_autoptr (GDateTime) dt = g_date_time_new_local (2000, 1, 1, hour24, 0, 0);
+
+    time_str = g_date_time_format (dt, use_twelve_hour ? "%l:%M %p" : "%H:%M");
+  }
+  gtk_editable_set_text (GTK_EDITABLE (time_row), time_str);
+  g_signal_connect (hour_spin, "value-changed", G_CALLBACK (on_time_value_changed), time_row);
+  g_signal_connect (minute_spin, "value-changed", G_CALLBACK (on_time_value_changed), time_row);
+
+  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), date_row);
+  adw_preferences_group_add (ADW_PREFERENCES_GROUP (group), time_row);
+
+  g_object_set_data (G_OBJECT (page), "calendar", calendar);
+  g_object_set_data (G_OBJECT (page), "hour-spin", hour_spin);
+  g_object_set_data (G_OBJECT (page), "minute-spin", minute_spin);
+  g_object_set_data (G_OBJECT (page), "twelve-hour", GINT_TO_POINTER (use_twelve_hour));
+  if (use_twelve_hour)
+    g_object_set_data (G_OBJECT (page), "am-pm", GINT_TO_POINTER (is_pm));
+
+  adw_alert_dialog_set_extra_child (ADW_ALERT_DIALOG (dialog), page);
+
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", _("_Cancel"));
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "schedule", _("_Schedule"));
+  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "schedule", ADW_RESPONSE_SUGGESTED);
+  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "schedule");
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
+
+  g_signal_connect (dialog, "response", G_CALLBACK (on_schedule_dialog_response), self);
+  adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+static void
 on_send_activated (GSimpleAction *action,
                    GVariant      *parameter,
                    gpointer       user_data)
@@ -1168,7 +1590,7 @@ present_image_resize_dialog (AttachmentBatch *batch,
     adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "actual");
   }
 
-  g_signal_connect_data (dialog, "response", G_CALLBACK (on_image_resize_response), data, (GClosureNotify)resize_data_free, 0);
+  g_signal_connect_data (dialog, "response", G_CALLBACK (on_image_resize_response), data, (GClosureNotify)resize_data_free, G_CONNECT_DEFAULT);
 
   adw_dialog_present (dialog, GTK_WIDGET (self));
 }
@@ -1671,6 +2093,7 @@ static const GActionEntry stamp_composer_action_entries[] = {
   { "numbered-list", on_edit_activate, "s", "''", NULL},
   { "insert-link", on_insert_link_activated },
   { "send", on_send_activated },
+  { "schedule", on_schedule_activated },
   { "remove-format", on_remove_format_activated },
   { "add-attachment", on_add_attachment_activated },
 };
@@ -1837,12 +2260,20 @@ stamp_composer_init (StampComposer *self)
 
   action = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "send");
   g_object_bind_property (self->to, "has-entries", action, "enabled", G_BINDING_SYNC_CREATE);
+
+  action = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "schedule");
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), FALSE);
+  g_object_bind_property (self->to, "has-entries", action, "enabled", G_BINDING_SYNC_CREATE);
+
   build_signature_menu (self);
 
   controller = gtk_shortcut_controller_new ();
   gtk_widget_add_controller (GTK_WIDGET (self), controller);
 
   shortcut = gtk_shortcut_new (gtk_shortcut_trigger_parse_string ("<primary>Return"), gtk_named_action_new ("composer.send"));
+  gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+  shortcut = gtk_shortcut_new (gtk_shortcut_trigger_parse_string ("<primary><shift>Return"), gtk_named_action_new ("composer.schedule"));
   gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
 
   shortcut = gtk_shortcut_new (gtk_shortcut_trigger_parse_string ("Escape"), gtk_named_action_new ("window.close"));

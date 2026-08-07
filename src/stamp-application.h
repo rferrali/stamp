@@ -30,4 +30,6 @@ G_DECLARE_FINAL_TYPE (StampApplication, stamp_application, STAMP, APPLICATION, A
 StampApplication *stamp_application_new (const gchar        *application_id,
                                          GApplicationFlags  flags);
 
+gboolean stamp_application_confirm_quit (void);
+
 G_END_DECLS

@@ -27,6 +27,7 @@
 #include <libportal-gtk4/portal-gtk4.h>
 
 #include "stamp-account.h"
+#include "stamp-application.h"
 #include "stamp-calendar-view.h"
 #include "stamp-contact-view.h"
 #include "stamp-helper.h"
@@ -104,6 +105,16 @@ on_show_calendar (GSimpleAction *action G_GNUC_UNUSED,
   adw_view_stack_set_visible_child_name (self->main_view_stack, "calendar");
 }
 
+static gboolean
+on_close_request (GtkWindow *source,
+                  gpointer   user_data)
+{
+  if (gtk_window_get_hide_on_close (source))
+    return FALSE;
+
+  return !stamp_application_confirm_quit ();
+}
+
 static const GActionEntry stamp_window_action_entries[] = {
   { .name = "show-mail", .activate = on_show_mail },
   { .name = "show-contacts", .activate = on_show_contacts },
@@ -179,6 +190,8 @@ stamp_window_init (StampWindow *self)
   g_autoptr (XdpParent) parent_window = xdp_parent_new_gtk (GTK_WINDOW (self));
 
   gtk_widget_init_template (GTK_WIDGET (self));
+
+  g_signal_connect (self, "close-request", G_CALLBACK (on_close_request), self);
 
   g_action_map_add_action_entries (G_ACTION_MAP (self),
                                    stamp_window_action_entries,
