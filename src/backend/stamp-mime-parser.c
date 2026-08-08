@@ -186,22 +186,37 @@ stamp_mime_parser_new (CamelSession *session)
 static void
 convert_newlines_to_br (gchar **content)
 {
-  static GRegex *newline_regex = NULL;
-  g_autofree char *converted = NULL;
+  const gchar *p;
+  GString *out;
+  gboolean changed = FALSE;
 
-  if (!newline_regex)
-    newline_regex = g_regex_new ("\r?\n", 0, 0, NULL);
+  if (!*content)
+    return;
 
-  if (newline_regex && *content) {
-    g_autoptr (GError) error = NULL;
+  out = g_string_new (NULL);
 
-    converted = g_regex_replace_literal (newline_regex, *content, -1, 0, "<br/>", 0, &error);
-    if (error) {
-      g_warning ("%s: Could not apply regex: %s", G_STRFUNC, error->message);
-    } else if (converted) {
-      g_free (*content);
-      *content = g_steal_pointer (&converted);
+  for (p = *content; *p; p++) {
+    if (*p == '\n') {
+      g_string_append (out, "<br/>");
+      changed = TRUE;
+    } else if (*p == '\r') {
+      if (p[1] == '\n') {
+        g_string_append (out, "<br/>");
+        p++;
+        changed = TRUE;
+      } else {
+        g_string_append_c (out, *p);
+      }
+    } else {
+      g_string_append_c (out, *p);
     }
+  }
+
+  if (changed) {
+    g_free (*content);
+    *content = g_string_free (out, FALSE);
+  } else {
+    g_string_free (out, TRUE);
   }
 }
 
@@ -308,46 +323,137 @@ map_validity_status (CamelCipherValiditySign status)
   }
 }
 
+static gboolean
+is_email_char (gchar c)
+{
+  return g_ascii_isalnum (c) || c == '.' || c == '_' || c == '%' || c == '+' || c == '-';
+}
+
+static gboolean
+is_domain_char (gchar c)
+{
+  return g_ascii_isalnum (c) || c == '.' || c == '-';
+}
+
+static gboolean
+is_scheme (const gchar *p)
+{
+  if (*p != 'h' && *p != 'f' && *p != 'g')
+    return FALSE;
+
+  return strncmp (p, "http://", 7) == 0
+         || strncmp (p, "https://", 8) == 0
+         || strncmp (p, "ftp://", 6) == 0
+         || strncmp (p, "git://", 6) == 0;
+}
+
+static gboolean
+is_trailing_url_char (gchar c)
+{
+  return c == '.' || c == ',' || c == ';' || c == ':' || c == '!'
+         || c == '?' || c == ')' || c == '\'' || c == '"';
+}
+
+static gchar *
+linkify_urls (const gchar *text)
+{
+  GString *out = g_string_new (NULL);
+  const gchar *p = text;
+
+  while (*p) {
+    if (is_scheme (p)) {
+      const gchar *start = p;
+      const gchar *end = p;
+
+      while (*end && !g_ascii_isspace (*end) && *end != '<' && *end != '>' && *end != '"')
+        end++;
+
+      while (end > start && is_trailing_url_char (end[-1]))
+        end--;
+
+      if (end > start + 7) {
+        g_autofree char *url = g_strndup (start, end - start);
+
+        g_string_append_printf (out, "<a href=\"%s\">%s</a>", url, url);
+        p = end;
+        continue;
+      }
+    }
+
+    g_string_append_c (out, *p);
+    p++;
+  }
+
+  return g_string_free (out, FALSE);
+}
+
+static gchar *
+linkify_emails (const gchar *text)
+{
+  GString *out = g_string_new (NULL);
+  const gchar *p = text;
+
+  while (*p) {
+    if (*p == '@') {
+      const gchar *local_start = p;
+      const gchar *domain = p + 1;
+      const gchar *domain_end = domain;
+      const gchar *last_dot = NULL;
+
+      while (local_start > text && is_email_char (local_start[-1]))
+        local_start--;
+
+      while (*domain_end && is_domain_char (*domain_end)) {
+        if (*domain_end == '.')
+          last_dot = domain_end;
+        domain_end++;
+      }
+
+      if (local_start < p && last_dot && last_dot + 2 <= domain_end) {
+        gboolean tld_ok = TRUE;
+        const gchar *t;
+
+        for (t = last_dot + 1; t < domain_end; t++) {
+          if (!g_ascii_isalpha (*t)) {
+            tld_ok = FALSE;
+            break;
+          }
+        }
+
+        if (tld_ok) {
+          g_autofree char *email = g_strndup (local_start, domain_end - local_start);
+
+          g_string_truncate (out, out->len - (p - local_start));
+          g_string_append_printf (out, "<a href=\"mailto:%s\">%s</a>", email, email);
+          p = domain_end;
+          continue;
+        }
+      }
+    }
+
+    g_string_append_c (out, *p);
+    p++;
+  }
+
+  return g_string_free (out, FALSE);
+}
+
 static void
 convert_links (StampMimeParser *self)
 {
-  static GRegex *email_regex = NULL;
-  static GRegex *url_regex = NULL;
+  g_autofree char *linked = NULL;
+  g_autofree char *with_emails = NULL;
+  g_autofree char *wrapped = NULL;
 
-  if (!email_regex) {
-    email_regex = g_regex_new (
-      "([a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,})",
-      0,
-      0,
-      NULL);
-  }
+  if (!self->plain_body->text)
+    return;
 
-  if (!url_regex) {
-    url_regex = g_regex_new (
-      "((https?://|ftp://|git://)[^[:space:]<>\"]*[^[:space:]<>\".,;:!?)'\"])",
-      0,
-      0,
-      NULL);
-  }
+  linked = linkify_urls (self->plain_body->text);
+  with_emails = linkify_emails (linked);
 
-  if (self->plain_body->text) {
-    if (email_regex) {
-      g_autofree char *linked_content = g_regex_replace (email_regex, self->plain_body->text, -1, 0, "<a href=\"mailto:\\1\">\\1</a>", 0, NULL);
-
-      if (linked_content)
-        g_set_str (&self->plain_body->text, g_steal_pointer (&linked_content));
-    }
-
-    if (url_regex) {
-      g_autofree char *linked_content = g_regex_replace (url_regex, self->plain_body->text, -1, 0, "<a href=\"\\1\">\\1</a>", 0, NULL);
-
-      if (linked_content)
-        g_set_str (&self->plain_body->text, g_steal_pointer (&linked_content));
-    }
-
-    convert_newlines_to_br (&self->plain_body->text);
-    self->plain_body->length = strlen (self->plain_body->text);
-  }
+  wrapped = g_strdup_printf ("<pre>%s</pre>", with_emails);
+  g_set_str (&self->plain_body->text, wrapped);
+  self->plain_body->length = strlen (self->plain_body->text);
 }
 
 #define STAMP_PGP_ARMOR_SIGNED     "-----BEGIN PGP SIGNED MESSAGE-----"
