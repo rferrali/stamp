@@ -2260,8 +2260,12 @@ void
 stamp_composer_set_to (StampComposer *self,
                        gchar         *to)
 {
-  CamelInternetAddress *to_address = camel_internet_address_new ();
+  g_autoptr (CamelInternetAddress) to_address = NULL;
 
+  if (!to || strlen (to) == 0)
+    return;
+
+  to_address = camel_internet_address_new ();
   camel_internet_address_add (to_address, "", to);
 
   if (to_address)
@@ -2282,4 +2286,24 @@ stamp_composer_set_body (StampComposer *self,
   stamp_web_view_set_body_content (self->webview, body);
 
   gtk_widget_grab_focus (GTK_WIDGET (self->webview));
+}
+
+void
+stamp_composer_add_attachment (StampComposer *self,
+                               gchar         *path)
+{
+  g_autoptr (GFile) file = g_file_new_for_path (path);
+  GtkWidget *button;
+
+  if (!file) {
+    g_warning ("%s: Could not get file for path %s, abort", G_STRFUNC, path);
+    return;
+  }
+
+  button = stamp_attachment_button_new_from_file (file);
+
+  self->attachments = g_list_append (self->attachments, button);
+  adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
+  attach_box_update_max_height (GTK_SCROLLED_WINDOW (self->scrolled_window), ADW_WRAP_BOX (self->attachment_box));
+  gtk_revealer_set_reveal_child (GTK_REVEALER (self->attachment_revealer), TRUE);
 }

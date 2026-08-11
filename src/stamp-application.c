@@ -34,6 +34,8 @@ struct _StampApplication {
   AdwApplication parent_instance;
 
   gboolean start_hidden;
+  gboolean startup_finished;
+  GQueue *pending_mailto;
   StampSession *session;
   gchar *password;
 };
@@ -86,11 +88,89 @@ stamp_application_activate (GApplication *app)
   gtk_window_present (main_window);
 }
 
+static void
+stamp_application_open_composer (StampApplication *self,
+                                 const gchar      *mailto_uri)
+{
+  g_autoptr (GError) error = NULL;
+  g_autofree char *to = NULL;
+  g_autoptr (GUri) mailto = NULL;
+  GtkWidget *composer;
+  const gchar *uri_query;
+
+  mailto = g_uri_parse (mailto_uri, G_URI_FLAGS_NONE, &error);
+  if (error) {
+    g_warning ("%s: Argument is not a URL: %s", G_STRFUNC, error->message);
+    return;
+  }
+
+  if (g_strcmp0 (g_uri_get_scheme (mailto), "mailto") != 0) {
+    g_warning ("%s: Cannot open non-mailto URL", G_STRFUNC);
+    return;
+  }
+
+  to = g_uri_unescape_string (g_uri_get_path (mailto), NULL);
+
+  composer = stamp_composer_new (NULL);
+  stamp_composer_set_to (STAMP_COMPOSER (composer), to);
+  gtk_window_present (GTK_WINDOW (composer));
+
+  uri_query = g_uri_get_query (mailto);
+  if (uri_query) {
+    GUriParamsIter qp;
+    gchar *name;
+    gchar *value;
+    g_autoptr (GString) body = g_string_new (NULL);
+    g_autofree char *escaped = NULL;
+    g_autofree char *markup = NULL;
+    g_autoptr (GRegex) regex = NULL;
+
+    g_uri_params_iter_init (&qp, uri_query, -1, "&", G_URI_PARAMS_NONE);
+    while (g_uri_params_iter_next (&qp, &name, &value, &error)) {
+      if (!name || !value || error) {
+        break;
+      }
+
+      if (g_strcmp0 (name, "subject") == 0)
+        stamp_composer_set_subject (STAMP_COMPOSER (composer), value);
+      else if (g_strcmp0 (name, "body") == 0)
+        g_string_append (body, value);
+      else if (g_strcmp0 (name, "attachment") == 0)
+        stamp_composer_add_attachment (STAMP_COMPOSER (composer), value);
+      else
+        g_string_append_printf (body, "&%s=%s", name, value);
+
+      g_free (name);
+      g_free (value);
+    }
+
+    escaped = g_markup_escape_text (body->str, body->len);
+    regex = g_regex_new ("\n", 0, 0, NULL);
+    markup = g_regex_replace_literal (regex, escaped, -1, 0, "<br/>", 0, NULL);
+
+    stamp_composer_set_body (STAMP_COMPOSER (composer), markup);
+  }
+}
+
+static void
+on_startup_finished (StampSession *session,
+                     gpointer      user_data)
+{
+  StampApplication *self = STAMP_APPLICATION (user_data);
+  gchar *mailto_uri;
+
+  self->startup_finished = TRUE;
+
+  while ((mailto_uri = g_queue_pop_head (self->pending_mailto))) {
+    stamp_application_open_composer (self, mailto_uri);
+    g_free (mailto_uri);
+  }
+}
+
 static gint
 stamp_application_command_line (GApplication            *app,
                                 GApplicationCommandLine *cmdline)
 {
-  g_autoptr (GError) error = NULL;
   g_auto (GStrv) argv = NULL;
   gint argc;
 
@@ -98,61 +178,20 @@ stamp_application_command_line (GApplication            *app,
   stamp_application_activate (app);
 
   for (gint i = 1; argv[i]; i++) {
+    StampApplication *self = STAMP_APPLICATION (app);
     g_autoptr (GUri) mailto = NULL;
-    g_autofree char *to = NULL;
-    GtkWidget *composer;
-    gchar *mailto_uri = argv[i];
-    const gchar *uri_query;
 
-    mailto = g_uri_parse (mailto_uri, G_URI_FLAGS_NONE, &error);
-    if (error) {
-      g_warning ("%s: Argument is not a URL: %s", G_STRFUNC, error->message);
-      return G_OPTION_ERROR_BAD_VALUE;
+    mailto = g_uri_parse (argv[i], G_URI_FLAGS_NONE, NULL);
+    if (g_uri_get_scheme (mailto) == NULL ||
+        g_strcmp0 (g_uri_get_scheme (mailto), "mailto") != 0) {
+      g_warning ("%s: Cannot open non-mailto URL: %s", G_STRFUNC, argv[i]);
+      continue;
     }
 
-    if (g_strcmp0 (g_uri_get_scheme (mailto), "mailto") != 0) {
-      g_warning ("%s: Cannot open non-mailto URL", G_STRFUNC);
-      return G_OPTION_ERROR_BAD_VALUE;
-    }
-
-    to = g_uri_unescape_string (g_uri_get_path (mailto), NULL);
-
-    composer = stamp_composer_new (NULL);
-    stamp_composer_set_to (STAMP_COMPOSER (composer), to);
-    gtk_window_present (GTK_WINDOW (composer));
-
-    uri_query = g_uri_get_query (mailto);
-    if (uri_query) {
-      GUriParamsIter qp;
-      gchar *name;
-      gchar *value;
-      g_autoptr (GString) body = g_string_new (NULL);
-      g_autofree char *escaped = NULL;
-      g_autofree char *markup = NULL;
-      g_autoptr (GRegex) regex = NULL;
-
-      g_uri_params_iter_init (&qp, uri_query, -1, "&", G_URI_PARAMS_NONE);
-      while (g_uri_params_iter_next (&qp, &name, &value, &error)) {
-        if (!name || !value || error) {
-          break;
-        }
-
-        if (g_strcmp0 (name, "subject") == 0)
-          stamp_composer_set_subject (STAMP_COMPOSER (composer), value);
-        else if (g_strcmp0 (name, "body") == 0)
-          g_string_append (body, value);
-        else
-          g_string_append_printf (body, "&%s=%s", name, value);
-
-        g_free (name);
-        g_free (value);
-      }
-
-      escaped = g_markup_escape_text (body->str, body->len);
-      regex = g_regex_new ("\n", 0, 0, NULL);
-      markup = g_regex_replace_literal (regex, escaped, -1, 0, "<br/>", 0, NULL);
-
-      stamp_composer_set_body (STAMP_COMPOSER (composer), markup);
+    if (self->startup_finished) {
+      stamp_application_open_composer (self, argv[i]);
+    } else {
+      g_queue_push_tail (self->pending_mailto, g_strdup (argv[i]));
     }
   }
 
@@ -232,6 +271,7 @@ stamp_application_startup (GApplication *app)
 
   self->session = stamp_session_get_default ();
   g_signal_connect_object (self->session, "pk11-password", G_CALLBACK (on_pk11_password), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (self->session, "startup-finished", G_CALLBACK (on_startup_finished), self, G_CONNECT_DEFAULT);
 }
 
 static gint
@@ -252,6 +292,11 @@ stamp_application_dispose (GObject *object)
 
   g_clear_object (&self->session);
   g_clear_pointer (&self->password, g_free);
+
+  if (self->pending_mailto) {
+    g_queue_free_full (self->pending_mailto, g_free);
+    self->pending_mailto = NULL;
+  }
 
   G_OBJECT_CLASS (stamp_application_parent_class)->dispose (object);
 }
@@ -359,6 +404,8 @@ static const GActionEntry app_actions[] = {
 static void
 stamp_application_init (StampApplication *self)
 {
+  self->pending_mailto = g_queue_new ();
+
   g_action_map_add_action_entries (G_ACTION_MAP (self),
                                    app_actions,
                                    G_N_ELEMENTS (app_actions),

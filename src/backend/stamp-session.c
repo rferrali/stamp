@@ -55,6 +55,7 @@ enum {
   ACCOUNT_REMOVED,
   ACCOUNT_CHANGED,
   PK11_PASSWORD,
+  STARTUP_FINISHED,
   LAST_SIGNAL,
 };
 
@@ -138,13 +139,13 @@ on_accounts_loaded (GObject      *src,
 
   if (error) {
     g_warning ("%s: Error loading accounts: %s\n", G_STRFUNC, error->message);
-    return;
+    goto out;
   }
 
   g_debug ("%s: %u account(s) found", G_STRFUNC, accounts->len);
 
   if (accounts->len == 0)
-    return;
+    goto out;
 
   for (guint idx = 0; idx < accounts->len; idx++) {
     StampAccount *account = g_ptr_array_index (accounts, idx);
@@ -155,6 +156,9 @@ on_accounts_loaded (GObject      *src,
 
     stamp_account_init_async (g_object_ref (account), self->cancellable, on_account_ready, self);
   }
+
+out:
+  g_signal_emit (self, signals[STARTUP_FINISHED], 0);
 }
 
 static GPtrArray *
@@ -671,6 +675,12 @@ stamp_session_class_init (StampSessionClass *klass)
                                          0, NULL, NULL, NULL,
                                          G_TYPE_NONE,
                                          3, G_TYPE_POINTER, G_TYPE_INT, G_TYPE_POINTER);
+
+  signals[STARTUP_FINISHED] = g_signal_new ("startup-finished", G_OBJECT_CLASS_TYPE (klass),
+                                            G_SIGNAL_RUN_FIRST | G_SIGNAL_RUN_LAST,
+                                            0, NULL, NULL, NULL,
+                                            G_TYPE_NONE,
+                                            0);
 }
 
 StampSession *

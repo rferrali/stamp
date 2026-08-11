@@ -59,5 +59,9 @@ void
 stamp_composer_set_body (StampComposer *self,
                          gchar          *body);
 
+void
+stamp_composer_add_attachment (StampComposer *self,
+                               gchar         *path);
+
 G_END_DECLS
 
