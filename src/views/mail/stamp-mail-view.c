@@ -425,6 +425,20 @@ on_junk (GSimpleAction *action,
 }
 
 static void
+on_archive (GSimpleAction *action,
+            GVariant      *parameter,
+            gpointer       user_data)
+{
+  StampMailView *self = STAMP_MAIL_VIEW (user_data);
+  AdwToast *toast;
+
+  stamp_conversation_list_archive (self->conversation_list, NULL);
+
+  toast = adw_toast_new (_("Conversations moved to archives"));
+  adw_toast_overlay_add_toast (self->toast_overlay, toast);
+}
+
+static void
 on_refresh (GSimpleAction *action,
             GVariant      *parameter,
             gpointer       user_data)
@@ -447,6 +461,7 @@ static const GActionEntry stamp_mail_view_action_entries[] = {
   { .name = "undo-trash", .activate = on_undo_trash },
   { .name = "junk", .activate = on_junk },
   { .name = "refresh", .activate = on_refresh },
+  { .name = "archive", .activate = on_archive },
 };
 
 static void
@@ -513,9 +528,10 @@ static const Shortcut MailShortcuts[] = {
   { "mail.mark-unread-current", "<primary><shift>u" },
   { "mail.print-current", "<primary>p" },
   { "mail.trash", "<primary>d" },
+  { "mail.junk", "<primary>j" },
+  { "mail.archive", "<primary>a" },
   { "mail.trash", "Delete" },
   { "mail.undo-trash", "<primary>z" },
-  { "mail.junk", "<primary>j" },
   { "mail.view-source", "<primary>s" },
   { "mail.refresh", "F5" },
 };

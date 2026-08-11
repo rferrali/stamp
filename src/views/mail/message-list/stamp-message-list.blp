@@ -92,6 +92,13 @@ template $StampMessageList: Adw.BreakpointBin {
               tooltip-text: _("Mark Message as Spam");
               action-name: 'mail.junk';
             }
+
+            [end]
+            Button archive_btn {
+              icon-name: 'archive-symbolic';
+              tooltip-text: _("Archive Message");
+              action-name: 'mail.archive';
+            }
           }
 
           [top]
@@ -242,6 +249,16 @@ template $StampMessageList: Adw.BreakpointBin {
               icon-name: 'junk-symbolic';
               action-name: 'mail.junk';
               tooltip-text: _("Mark Junk");
+            }
+
+            Button {
+              accessibility {
+                label: _("Archive");
+              }
+
+              icon-name: 'archive-symbolic';
+              action-name: 'mail.archive';
+              tooltip-text: _("Archive");
             }
 
             Button {

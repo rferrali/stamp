@@ -47,6 +47,7 @@ struct _StampMessageList {
   GtkWidget *forward_btn;
   GtkWidget *delete_btn;
   GtkWidget *spam_btn;
+  GtkWidget *archive_btn;
   GtkWidget *toolbar;
 
   GHashTable *messages;
@@ -241,6 +242,7 @@ stamp_message_list_size_allocate (GtkWidget *widget,
     gtk_widget_set_visible (self->forward_btn, !narrow);
     gtk_widget_set_visible (self->delete_btn, !narrow);
     gtk_widget_set_visible (self->spam_btn, !narrow);
+    gtk_widget_set_visible (self->archive_btn, !narrow);
     gtk_widget_set_visible (self->toolbar, narrow);
   }
 }
@@ -257,6 +259,7 @@ stamp_message_list_set_mobile_mode (StampMessageList *self,
     gtk_widget_set_visible (self->forward_btn, TRUE);
     gtk_widget_set_visible (self->delete_btn, TRUE);
     gtk_widget_set_visible (self->spam_btn, TRUE);
+    gtk_widget_set_visible (self->archive_btn, TRUE);
     gtk_widget_set_visible (self->toolbar, FALSE);
   }
 }
@@ -285,6 +288,7 @@ stamp_message_list_class_init (StampMessageListClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, forward_btn);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, delete_btn);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, spam_btn);
+  gtk_widget_class_bind_template_child (widget_class, StampMessageList, archive_btn);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, toolbar);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, carousel);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, message_stack);
@@ -638,6 +642,8 @@ stamp_message_list_set_conversation (StampMessageList      *self,
   StampConversationItem *adjacent;
 
   self->account = account;
+
+  gtk_widget_set_visible (self->archive_btn, account && stamp_account_get_mail_archives_folder (account) != NULL);
 
   self->rebuilding = TRUE;
 

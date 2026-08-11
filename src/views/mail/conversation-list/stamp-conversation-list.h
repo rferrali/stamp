@@ -93,6 +93,10 @@ stamp_conversation_list_junk (StampConversationList *self,
                                StampConversationItem *item);
 
 void
+stamp_conversation_list_archive (StampConversationList *self,
+                                  StampConversationItem *item);
+
+void
 stamp_conversation_list_move_conversation (StampConversationList *self,
                                             StampConversationItem *item,
                                             const gchar           *target_full_name);
