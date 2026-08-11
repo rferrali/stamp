@@ -552,37 +552,12 @@ rebuild_move_menu (StampConversationList *self)
 }
 
 static void
-on_get_folder (GObject      *source,
-               GAsyncResult *res,
-               gpointer      user_data)
+rebuild_list (StampConversationList *self)
 {
-  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
-  CamelStore *store = CAMEL_STORE (source);
-  g_autoptr (CamelFolder) folder = NULL;
-  g_autoptr (GError) error = NULL;
-  g_autoptr (GPtrArray) uids = NULL;
-  g_autoptr (GList) folders = NULL;
   g_autoptr (GPtrArray) array = NULL;
   CamelFolderThread *thread;
   StampMailService *mail_service;
-
-  if (self->folder) {
-    g_signal_handlers_disconnect_by_func (self->folder, on_conversation_list_folder_changed, self);
-    g_clear_object (&self->folder);
-  }
-
-  folder = camel_store_get_folder_finish (store, res, &error);
-  if (error) {
-    g_warning ("Could not get folder: %s", error->message);
-    gtk_widget_set_visible (self->spinner, FALSE);
-    gtk_widget_set_margin_top (self->spinner, 12);
-
-    rebuild_category_actions (self);
-    return;
-  }
-
-  self->folder = g_object_ref (folder);
-  g_signal_connect_object (folder, "changed", G_CALLBACK (on_conversation_list_folder_changed), self, G_CONNECT_DEFAULT);
+  CamelFolder *folder = self->folder;
 
   mail_service = stamp_account_get_mail_service (self->account);
   g_hash_table_insert (self->folders, g_strdup (camel_service_get_uid (stamp_mail_service_get_service (mail_service))), g_object_ref (folder));
@@ -625,6 +600,52 @@ on_get_folder (GObject      *source,
   rebuild_move_menu (self);
 }
 
+static void
+on_folder_refreshed (GObject      *source,
+                     GAsyncResult *res,
+                     gpointer      user_data)
+{
+  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+  CamelFolder *folder = CAMEL_FOLDER (source);
+  g_autoptr (GError) error = NULL;
+
+  if (!camel_folder_refresh_info_finish (folder, res, &error))
+    g_warning ("Could not refresh folder %s: %s", camel_folder_get_display_name (folder), error->message);
+
+  rebuild_list (self);
+}
+
+static void
+on_get_folder (GObject      *source,
+               GAsyncResult *res,
+               gpointer      user_data)
+{
+  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+  CamelStore *store = CAMEL_STORE (source);
+  g_autoptr (CamelFolder) folder = NULL;
+  g_autoptr (GError) error = NULL;
+
+  if (self->folder) {
+    g_signal_handlers_disconnect_by_func (self->folder, on_conversation_list_folder_changed, self);
+    g_clear_object (&self->folder);
+  }
+
+  folder = camel_store_get_folder_finish (store, res, &error);
+  if (error) {
+    g_warning ("Could not get folder: %s", error->message);
+    gtk_widget_set_visible (self->spinner, FALSE);
+    gtk_widget_set_margin_top (self->spinner, 12);
+
+    rebuild_category_actions (self);
+    return;
+  }
+
+  self->folder = g_object_ref (folder);
+  g_signal_connect_object (folder, "changed", G_CALLBACK (on_conversation_list_folder_changed), self, G_CONNECT_DEFAULT);
+
+  rebuild_list (self);
+}
+
 void
 stamp_conversation_list_load_folder (StampConversationList *self,
                                      StampAccount          *account,
@@ -652,6 +673,15 @@ stamp_conversation_list_load_folder (StampConversationList *self,
   g_set_str (&self->full_name, full_name);
 
   camel_store_get_folder (CAMEL_STORE (stamp_mail_service_get_service (mail_service)), full_name, CAMEL_STORE_FOLDER_NONE, G_PRIORITY_DEFAULT, self->cancellable, on_get_folder, self);
+}
+
+void
+stamp_conversation_list_refresh (StampConversationList *self)
+{
+  if (!self->folder)
+    return;
+
+  camel_folder_refresh_info (self->folder, G_PRIORITY_DEFAULT, self->cancellable, on_folder_refreshed, self);
 }
 
 static void
@@ -1587,7 +1617,7 @@ static void
 load_folder_idle (gpointer user_data)
 {
   StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
-  stamp_conversation_list_load_folder (self, self->account, self->full_name);
+  stamp_conversation_list_refresh (self);
 
   self->load_folder_handler = 0;
 }

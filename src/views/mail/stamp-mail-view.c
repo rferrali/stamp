@@ -424,6 +424,16 @@ on_junk (GSimpleAction *action,
   junk (self, NULL);
 }
 
+static void
+on_refresh (GSimpleAction *action,
+            GVariant      *parameter,
+            gpointer       user_data)
+{
+  StampMailView *self = STAMP_MAIL_VIEW (user_data);
+
+  stamp_conversation_list_refresh (self->conversation_list);
+}
+
 static const GActionEntry stamp_mail_view_action_entries[] = {
   { .name = "composer-new", .activate = on_composer_new },
   { .name = "edit", .activate = on_edit },
@@ -436,6 +446,7 @@ static const GActionEntry stamp_mail_view_action_entries[] = {
   { .name = "trash", .activate = on_trash },
   { .name = "undo-trash", .activate = on_undo_trash },
   { .name = "junk", .activate = on_junk },
+  { .name = "refresh", .activate = on_refresh },
 };
 
 static void
@@ -506,6 +517,7 @@ static const Shortcut MailShortcuts[] = {
   { "mail.undo-trash", "<primary>z" },
   { "mail.junk", "<primary>j" },
   { "mail.view-source", "<primary>s" },
+  { "mail.refresh", "F5" },
 };
 
 static void

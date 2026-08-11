@@ -40,6 +40,9 @@ stamp_conversation_list_load_folder (StampConversationList *self,
                                      gchar                  *full_name);
 
 void
+stamp_conversation_list_refresh (StampConversationList *self);
+
+void
 stamp_conversation_list_mark_read (StampConversationList *self,
                                    CamelFolderThreadNode *node);
 
