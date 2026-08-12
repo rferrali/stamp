@@ -594,7 +594,7 @@ rebuild_list (StampConversationList *self)
   gtk_widget_set_visible (self->spinner, FALSE);
   gtk_widget_set_margin_top (self->spinner, 12);
 
-  if (g_list_model_get_n_items (G_LIST_MODEL (self->list_store)) > 0)
+  if (g_list_model_get_n_items (G_LIST_MODEL (gtk_list_view_get_model (GTK_LIST_VIEW (self->listview)))) > 0)
     gtk_list_view_scroll_to (GTK_LIST_VIEW (self->listview), 0, GTK_LIST_SCROLL_FOCUS, NULL);
 
   rebuild_move_menu (self);
