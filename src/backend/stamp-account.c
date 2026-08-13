@@ -722,6 +722,12 @@ on_folder_info_for_special_folders (GObject      *src,
   g_autoptr (GError) error = NULL;
   g_autoptr (CamelFolderInfo) root = camel_store_get_folder_info_finish (CAMEL_STORE (src), res, &error);
   CamelFolderInfo *fi;
+  g_autofree gchar *possible_sent = NULL;
+  g_autofree gchar *possible_archives = NULL;
+  g_autofree gchar *possible_drafts = NULL;
+  g_autofree gchar *possible_trash = NULL;
+  g_autofree gchar *possible_junk = NULL;
+  g_autofree gchar *possible_templates = NULL;
 
   if (error) {
     g_warning ("%s: get_folder_info: %s", G_STRFUNC, error->message);
@@ -731,62 +737,121 @@ on_folder_info_for_special_folders (GObject      *src,
 
   fi = root;
   while (fi) {
+    g_debug ("%s: Checking %s", G_STRFUNC, fi->display_name);
+
     if (!data->have_sent && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_SENT)) {
       data->have_sent = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
-                              G_PRIORITY_DEFAULT, NULL,
-                              on_sent_folder_ready, data);
-    }
-
-    if (!data->have_drafts && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_DRAFTS)) {
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_sent_folder_ready, data);
+    } else if (!data->have_drafts && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_DRAFTS)) {
       data->have_drafts = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
-                              G_PRIORITY_DEFAULT, NULL,
-                              on_drafts_folder_ready, data);
-    }
-
-    if (!data->have_trash && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_TRASH)) {
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_drafts_folder_ready, data);
+    } else if (!data->have_trash && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_TRASH)) {
       data->have_trash = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
-                              G_PRIORITY_DEFAULT, NULL,
-                              on_trash_folder_ready, data);
-    }
-
-    if (!data->have_junk && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_JUNK)) {
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_trash_folder_ready, data);
+    } else if (!data->have_junk && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_JUNK)) {
       data->have_junk = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
-                              G_PRIORITY_DEFAULT, NULL,
-                              on_junk_folder_ready, data);
-    }
-
-    if (!data->have_archives && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_ARCHIVE)) {
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_junk_folder_ready, data);
+    } else if (!data->have_archives && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_ARCHIVE)) {
       data->have_archives = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
-                              G_PRIORITY_DEFAULT, NULL,
-                              on_archives_folder_ready, data);
-    }
-
-    if (!data->have_templates && g_strcmp0 (fi->display_name, "Templates") == 0) {
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_archives_folder_ready, data);
+    } else if (!data->have_templates && g_strcmp0 (fi->display_name, "Templates") == 0) {
       data->have_templates = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0,
-                              G_PRIORITY_DEFAULT, NULL,
-                              on_templates_folder_ready, data);
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_templates_folder_ready, data);
+    } else {
+      /* Ugly part, let's try to guess based on it's name */
+
+      if (!data->have_sent &&
+          (g_ascii_strcasecmp (fi->display_name, "Sent") == 0 ||
+           g_ascii_strcasecmp (fi->display_name, "Sent Mail") == 0 ||
+           g_ascii_strcasecmp (fi->display_name, "Gesendet") == 0)) {
+        g_set_str (&possible_sent, fi->full_name);
+      } else if (!data->have_archives &&
+                 (g_ascii_strcasecmp (fi->display_name, "Archive") == 0 ||
+                  g_ascii_strcasecmp (fi->display_name, "Archiv") == 0)) { /* codespell:ignore */
+        g_set_str (&possible_archives, fi->full_name);
+      } else if (!data->have_drafts &&
+                 (g_ascii_strcasecmp (fi->display_name, "Drafts") == 0 ||
+                  g_ascii_strcasecmp (fi->display_name, "Entwürfe") == 0)) {
+        g_set_str (&possible_drafts, fi->full_name);
+      } else if (!data->have_trash &&
+                 (g_ascii_strcasecmp (fi->display_name, "Trash") == 0 ||
+                  g_ascii_strcasecmp (fi->display_name, "Papierkorb") == 0)) {
+        g_set_str (&possible_trash, fi->full_name);
+      } else if (!data->have_junk &&
+                 (g_ascii_strcasecmp (fi->display_name, "Junk") == 0 ||
+                  g_ascii_strcasecmp (fi->display_name, "Spam") == 0)) {
+        g_set_str (&possible_junk, fi->full_name);
+      } else if (!data->have_templates &&
+                 (g_ascii_strcasecmp (fi->display_name, "Templates") == 0 ||
+                  g_ascii_strcasecmp (fi->display_name, "Vorlagen") == 0)) {
+        g_set_str (&possible_templates, fi->full_name);
+      }
     }
 
     if (fi->child) {
       fi = fi->child;
       continue;
     }
+
     while (fi && !fi->next)
       fi = fi->parent;
+
     if (fi)
       fi = fi->next;
+  }
+
+  if (!data->have_sent && possible_sent) {
+    data->have_sent = TRUE;
+    data->pending += 1;
+
+    g_debug ("%s: Trying to load fallback sent folder", G_STRFUNC);
+    camel_store_get_folder (CAMEL_STORE (src), possible_sent, 0, G_PRIORITY_DEFAULT, NULL, on_sent_folder_ready, data);
+  }
+
+  if (!data->have_archives && possible_archives) {
+    data->have_archives = TRUE;
+    data->pending += 1;
+
+    g_debug ("%s: Trying to load fallback archives folder", G_STRFUNC);
+    camel_store_get_folder (CAMEL_STORE (src), possible_archives, 0, G_PRIORITY_DEFAULT, NULL, on_archives_folder_ready, data);
+  }
+
+  if (!data->have_drafts && possible_drafts) {
+    data->have_drafts = TRUE;
+    data->pending += 1;
+
+    g_debug ("%s: Trying to load fallback drafts folder", G_STRFUNC);
+    camel_store_get_folder (CAMEL_STORE (src), possible_drafts, 0, G_PRIORITY_DEFAULT, NULL, on_drafts_folder_ready, data);
+  }
+
+  if (!data->have_trash && possible_trash) {
+    data->have_trash = TRUE;
+    data->pending += 1;
+
+    g_debug ("%s: Trying to load fallback trash folder", G_STRFUNC);
+    camel_store_get_folder (CAMEL_STORE (src), possible_trash, 0, G_PRIORITY_DEFAULT, NULL, on_trash_folder_ready, data);
+  }
+
+  if (!data->have_junk && possible_junk) {
+    data->have_junk = TRUE;
+    data->pending += 1;
+
+    g_debug ("%s: Trying to load fallback junk folder", G_STRFUNC);
+    camel_store_get_folder (CAMEL_STORE (src), possible_junk, 0, G_PRIORITY_DEFAULT, NULL, on_junk_folder_ready, data);
+  }
+
+  if (!data->have_templates && possible_templates) {
+    data->have_templates = TRUE;
+    data->pending += 1;
+
+    g_debug ("%s: Trying to load fallback templates folder", G_STRFUNC);
+    camel_store_get_folder (CAMEL_STORE (src), possible_templates, 0, G_PRIORITY_DEFAULT, NULL, on_templates_folder_ready, data);
   }
 
   mail_enable_one_done (data);
