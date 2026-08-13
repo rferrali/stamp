@@ -293,7 +293,6 @@ stamp_account_item_find_and_delete_item (StampAccountItem *self,
 
     if (g_strcmp0 (stamp_folder_item_get_full_name (item), full_name) == 0) {
       g_list_store_remove (store, idx);
-      g_list_model_items_changed (G_LIST_MODEL (store), idx, 1, 0);
       return TRUE;
     }
 
@@ -389,6 +388,55 @@ find_folder_item_by_folder (GListStore  *store,
   return ret;
 }
 
+static gboolean
+is_folder_item_in_tree (GListStore      *store,
+                        StampFolderItem *target)
+{
+  guint list_len = g_list_model_get_n_items (G_LIST_MODEL (store));
+
+  for (guint idx = 0; idx < list_len; idx++) {
+    g_autoptr (StampFolderItem) item = g_list_model_get_item (G_LIST_MODEL (store), idx);
+    GListStore *child_store;
+
+    if (item == target)
+      return TRUE;
+
+    child_store = stamp_item_get_list_store (STAMP_ITEM (item));
+    if (child_store && is_folder_item_in_tree (child_store, target))
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+static void
+on_refresh (GObject      *source,
+            GAsyncResult *result,
+            gpointer      user_data);
+
+static gboolean
+stamp_account_item_start_next_refresh (StampAccountItem *self)
+{
+  GListStore *store = stamp_item_get_list_store (STAMP_ITEM (self));
+
+  while (!g_queue_is_empty (self->refresh_queue)) {
+    g_autoptr (StampFolderItem) folder_item = g_queue_pop_head (self->refresh_queue);
+    CamelFolder *folder = stamp_folder_item_get_folder (folder_item);
+
+    if (CAMEL_IS_FOLDER (folder) && is_folder_item_in_tree (store, folder_item)) {
+      self->refresh_queue_running = TRUE;
+
+      g_debug ("%s: Refreshing %s", G_STRFUNC, camel_folder_get_display_name (folder));
+      stamp_item_set_loading (STAMP_ITEM (folder_item), TRUE);
+      camel_folder_refresh_info (folder, G_PRIORITY_DEFAULT, self->cancellable, on_refresh, self);
+
+      return TRUE;
+    }
+  }
+
+  self->refresh_queue_running = FALSE;
+  return FALSE;
+}
 
 static void
 on_refresh (GObject      *source,
@@ -399,35 +447,24 @@ on_refresh (GObject      *source,
   CamelFolder *folder = CAMEL_FOLDER (source);
   g_autoptr (GError) error = NULL;
   GListStore *store = stamp_item_get_list_store (STAMP_ITEM (self));
-  StampFolderItem *folder_item;
+  g_autoptr (StampFolderItem) folder_item = NULL;
 
   folder_item = find_folder_item_by_folder (store, folder);
-  stamp_item_set_loading (STAMP_ITEM (folder_item), FALSE);
+  if (folder_item)
+    stamp_item_set_loading (STAMP_ITEM (folder_item), FALSE);
 
   if (!camel_folder_refresh_info_finish (folder, result, &error)) {
-    if (!stamp_item_get_error (STAMP_ITEM (folder_item)))
+    if (!folder_item || !stamp_item_get_error (STAMP_ITEM (folder_item)))
       g_warning ("Could not refresh folder %s: %s", camel_folder_get_display_name (folder), error->message);
 
-    stamp_item_set_error (STAMP_ITEM (folder_item), error);
+    if (folder_item)
+      stamp_item_set_error (STAMP_ITEM (folder_item), error);
     /* Continue */
-  } else {
+  } else if (folder_item) {
     stamp_item_set_error (STAMP_ITEM (folder_item), NULL);
   }
 
-  self->refresh_queue_running = FALSE;
-
-  if (!g_queue_is_empty (self->refresh_queue)) {
-    CamelFolder *next;
-
-    folder_item = g_queue_pop_head (self->refresh_queue);
-    next = stamp_folder_item_get_folder (folder_item);
-
-    self->refresh_queue_running = TRUE;
-
-    g_debug ("%s: Refreshing %s", G_STRFUNC, camel_folder_get_display_name (next));
-    stamp_item_set_loading (STAMP_ITEM (folder_item), TRUE);
-    camel_folder_refresh_info (next, G_PRIORITY_DEFAULT, self->cancellable, on_refresh, self);
-  }
+  stamp_account_item_start_next_refresh (self);
 }
 
 static void
@@ -527,28 +564,17 @@ refresh_folder_main (gpointer user_data)
       self->first_refresh = FALSE;
       folder_item = find_priority_folder_item (self);
       g_debug ("%s: First refresh - looking for INBOX, found: %p", G_STRFUNC, folder_item);
-    }
 
-    /* If no priority folder found or not first refresh, use first in queue */
-    if (!folder_item) {
-      folder_item = g_queue_pop_head (self->refresh_queue);
-    }
+      if (folder_item) {
+        if (g_queue_find (self->refresh_queue, folder_item)) {
+          g_queue_remove (self->refresh_queue, folder_item);
+        }
 
-    if (folder_item) {
-      CamelFolder *folder;
-
-      /* Remove from queue if not already removed */
-      if (g_queue_find (self->refresh_queue, folder_item)) {
-        g_queue_remove (self->refresh_queue, folder_item);
+        g_queue_push_head (self->refresh_queue, folder_item);
       }
-
-      folder = stamp_folder_item_get_folder (folder_item);
-      self->refresh_queue_running = TRUE;
-      stamp_item_set_loading (STAMP_ITEM (folder_item), TRUE);
-
-      g_debug ("%s: Starting refresh for: %s", G_STRFUNC, camel_folder_get_display_name (folder));
-      camel_folder_refresh_info (folder, G_PRIORITY_DEFAULT, self->cancellable, on_refresh, self);
     }
+
+    stamp_account_item_start_next_refresh (self);
   } else {
     g_debug ("%s: Refresh already running, queue updated for next iteration", G_STRFUNC);
   }
