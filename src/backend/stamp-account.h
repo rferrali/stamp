@@ -37,6 +37,18 @@ typedef struct _StampMailService StampMailService;
 typedef struct _StampContactsService StampContactsService;
 typedef struct _StampCalendarService StampCalendarService;
 
+typedef enum {
+  STAMP_FOLDER_TYPE_INBOX = 0,
+  STAMP_FOLDER_TYPE_OUTBOX,
+  STAMP_FOLDER_TYPE_DRAFTS,
+  STAMP_FOLDER_TYPE_SENT,
+  STAMP_FOLDER_TYPE_JUNK,
+  STAMP_FOLDER_TYPE_TRASH,
+  STAMP_FOLDER_TYPE_ARCHIVES,
+  STAMP_FOLDER_TYPE_TEMPLATES,
+  STAMP_FOLDER_TYPE_NORMAL,
+} StampFolderType;
+
 /*
  * Setup
  */
@@ -247,6 +259,10 @@ stamp_account_get_mail_templates_folder (StampAccount *self);
 
 GList *
 stamp_account_get_categories (StampAccount *self);
+
+gint
+stamp_account_get_folder_order_rank (StampAccount    *self,
+                                     CamelFolderInfo *info);
 
 StampCategory *
 stamp_account_find_category (StampAccount *self,

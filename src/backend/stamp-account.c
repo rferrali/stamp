@@ -1611,3 +1611,58 @@ stamp_account_get_mail_templates_folder (StampAccount *self)
 {
   return self->mail->templates_folder;
 }
+
+gint
+stamp_account_get_folder_order_rank (StampAccount    *self,
+                                     CamelFolderInfo *info)
+{
+  const gchar *full_name;
+  guint flags;
+
+  if (!info)
+    return STAMP_FOLDER_TYPE_NORMAL;
+
+  full_name = info->full_name ? info->full_name : info->display_name;
+
+  if (self && self->mail) {
+    if (self->mail->trash_folder && full_name && g_strcmp0 (camel_folder_get_full_name (self->mail->trash_folder), full_name) == 0)
+      return STAMP_FOLDER_TYPE_TRASH;
+
+    if (self->mail->drafts_folder && full_name && g_strcmp0 (camel_folder_get_full_name (self->mail->drafts_folder), full_name) == 0)
+      return STAMP_FOLDER_TYPE_DRAFTS;
+
+    if (self->mail->sent_folder && full_name && g_strcmp0 (camel_folder_get_full_name (self->mail->sent_folder), full_name) == 0)
+      return STAMP_FOLDER_TYPE_SENT;
+
+    if (self->mail->junk_folder && full_name && g_strcmp0 (camel_folder_get_full_name (self->mail->junk_folder), full_name) == 0)
+      return STAMP_FOLDER_TYPE_JUNK;
+
+    if (self->mail->archives_folder && full_name && g_strcmp0 (camel_folder_get_full_name (self->mail->archives_folder), full_name) == 0)
+      return STAMP_FOLDER_TYPE_ARCHIVES;
+
+    if (self->mail->templates_folder && full_name && g_strcmp0 (camel_folder_get_full_name (self->mail->templates_folder), full_name) == 0)
+      return STAMP_FOLDER_TYPE_TEMPLATES;
+  }
+
+  flags = info->flags & CAMEL_FOLDER_TYPE_MASK;
+  switch (flags) {
+    case CAMEL_FOLDER_TYPE_INBOX:
+      return STAMP_FOLDER_TYPE_INBOX;
+    case CAMEL_FOLDER_TYPE_OUTBOX:
+      return STAMP_FOLDER_TYPE_OUTBOX;
+    case CAMEL_FOLDER_TYPE_TRASH:
+      return STAMP_FOLDER_TYPE_TRASH;
+    case CAMEL_FOLDER_TYPE_JUNK:
+      return STAMP_FOLDER_TYPE_JUNK;
+    case CAMEL_FOLDER_TYPE_SENT:
+      return STAMP_FOLDER_TYPE_SENT;
+    case CAMEL_FOLDER_TYPE_ARCHIVE:
+      return STAMP_FOLDER_TYPE_ARCHIVES;
+    case CAMEL_FOLDER_TYPE_DRAFTS:
+      return STAMP_FOLDER_TYPE_DRAFTS;
+    default:
+      break;
+  }
+
+  return STAMP_FOLDER_TYPE_NORMAL;
+}

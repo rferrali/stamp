@@ -50,5 +50,8 @@ stamp_folder_item_get_flags (StampFolderItem *self);
 void
 stamp_folder_item_disconnect (StampFolderItem *self);
 
+gint
+stamp_folder_item_get_order_rank (StampFolderItem *self);
+
 G_END_DECLS
 

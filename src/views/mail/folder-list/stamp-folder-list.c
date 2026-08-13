@@ -324,34 +324,18 @@ folders_sorter (gconstpointer a,
   StampItem *item_b = (StampItem *)(b);
 
   if (STAMP_IS_FOLDER_ITEM (item_a) && STAMP_IS_FOLDER_ITEM (item_b)) {
-    gint flags_a = stamp_folder_item_get_flags (STAMP_FOLDER_ITEM (item_a));
-    gint flags_b = stamp_folder_item_get_flags (STAMP_FOLDER_ITEM (item_b));
-    gint type_a = flags_a & CAMEL_FOLDER_TYPE_MASK;
-    gint type_b = flags_b & CAMEL_FOLDER_TYPE_MASK;
+    const gchar *name_a;
+    const gchar *name_b;
+    gint rank_a = stamp_folder_item_get_order_rank (STAMP_FOLDER_ITEM (item_a));
+    gint rank_b = stamp_folder_item_get_order_rank (STAMP_FOLDER_ITEM (item_b));
 
-    if (type_a == type_b) {
-      const gchar *name_a = stamp_folder_item_get_full_name (STAMP_FOLDER_ITEM (item_a));
-      const gchar *name_b = stamp_folder_item_get_full_name (STAMP_FOLDER_ITEM (item_b));
+    if (rank_a != rank_b)
+      return rank_a - rank_b;
 
-      return g_strcmp0 (name_a, name_b);
-    }
+    name_a = stamp_item_get_name (item_a);
+    name_b = stamp_item_get_name (item_b);
 
-    if (type_a == CAMEL_FOLDER_TYPE_NORMAL)
-      return 1;
-
-    if (type_b == CAMEL_FOLDER_TYPE_NORMAL)
-      return -1;
-
-    if (type_a < type_b)
-      return -1;
-
-    return 1;
-  } else if (STAMP_IS_ACCOUNT_ITEM (item_a) && STAMP_IS_ACCOUNT_ITEM (item_b)) {
-    /* const char *name_a = stamp_item_get_name (item_a); */
-    /* const char *name_b = stamp_item_get_name (item_b); */
-
-    /* return g_strcmp0 (name_a, name_b); */
-    return 0;
+    return g_utf8_collate (name_a ? name_a : "", name_b ? name_b : "");
   } else {
     g_debug ("%s: Failed to compare unknown combination", G_STRFUNC);
   }

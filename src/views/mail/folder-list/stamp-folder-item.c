@@ -516,3 +516,9 @@ stamp_folder_item_get_folder (StampFolderItem *self)
 {
   return self->folder;
 }
+
+gint
+stamp_folder_item_get_order_rank (StampFolderItem *self)
+{
+  return stamp_account_get_folder_order_rank (stamp_item_get_account (STAMP_ITEM (self)), self->folder_info);
+}
