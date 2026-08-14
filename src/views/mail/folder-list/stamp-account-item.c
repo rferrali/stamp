@@ -20,6 +20,7 @@
 #include "stamp-account-item.h"
 
 #include <camel/camel.h>
+#include <glib/gi18n.h>
 
 #include "stamp-account.h"
 #include "stamp-folder-item.h"
@@ -85,11 +86,68 @@ on_folder_item_changed (GtkWidget *folder,
 }
 
 static void
+add_folder_info_item (StampAccountItem *self,
+                      GPtrArray        *items,
+                      GPtrArray        *user_items,
+                      CamelFolderInfo  *info)
+{
+  StampFolderType type = stamp_account_get_folder_order_rank (stamp_item_get_account (STAMP_ITEM (self)), info);
+  gboolean is_special = type != STAMP_FOLDER_TYPE_NORMAL;
+  g_autoptr (StampFolderItem) folder_item = stamp_folder_item_new (stamp_item_get_account (STAMP_ITEM (self)), info);
+
+  g_signal_connect_object (folder_item, "folder-item-added", G_CALLBACK (on_folder_item_changed), self, G_CONNECT_DEFAULT);
+
+  if (is_special)
+    g_ptr_array_add (items, g_steal_pointer (&folder_item));
+  else
+    g_ptr_array_add (user_items, g_steal_pointer (&folder_item));
+}
+
+static gboolean
+folder_info_contains_gmail (CamelFolderInfo *info)
+{
+  for (CamelFolderInfo *fi = info; fi; fi = fi->next) {
+    if (fi->full_name && (g_ascii_strcasecmp (fi->full_name, "[Gmail]") == 0 ||
+                          g_ascii_strncasecmp (fi->full_name, "[Gmail]/", 8) == 0 ||
+                          g_ascii_strcasecmp (fi->full_name, "[Google Mail]") == 0 ||
+                          g_ascii_strncasecmp (fi->full_name, "[Google Mail]/", 14) == 0))
+      return TRUE;
+
+    if (fi->child && folder_info_contains_gmail (fi->child))
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+static gboolean
+check_is_gmail (StampAccount    *account,
+                CamelFolderInfo *folder_info)
+{
+  CamelInternetAddress *addr = stamp_account_get_address (account);
+
+  if (addr) {
+    g_autofree gchar *str = camel_address_format (CAMEL_ADDRESS (addr));
+
+    if (str && (g_strrstr (str, "@gmail.com") || g_strrstr (str, "@googlemail.com")))
+      return TRUE;
+  }
+
+  if (folder_info && folder_info_contains_gmail (folder_info))
+    return TRUE;
+
+  return FALSE;
+}
+
+
+static void
 show_info (StampAccountItem *self,
            CamelFolderInfo  *folder_info)
 {
   GListStore *list_store = stamp_item_get_list_store (STAMP_ITEM (self));
-  g_autoptr (GPtrArray) array = NULL;
+  g_autoptr (GPtrArray) items = g_ptr_array_new ();
+  g_autoptr (GPtrArray) user_items = g_ptr_array_new ();
+  CamelFolderInfo *root_info = folder_info;
   guint old;
 
   old = g_list_model_get_n_items (G_LIST_MODEL (list_store));
@@ -100,31 +158,51 @@ show_info (StampAccountItem *self,
     stamp_folder_item_disconnect (item);
   }
 
-  array = g_ptr_array_new ();
   while (folder_info) {
     if (folder_info->full_name && (g_ascii_strcasecmp (folder_info->full_name, "[Google Mail]") == 0 || g_ascii_strcasecmp (folder_info->full_name, "[Gmail]") == 0)) {
       CamelFolderInfo *child = folder_info->child;
 
       while (child) {
-        g_autoptr (StampFolderItem) folder_item = stamp_folder_item_new (stamp_item_get_account (STAMP_ITEM (self)), child);
-
-        g_signal_connect_object (folder_item, "folder-item-added", G_CALLBACK (on_folder_item_changed), self, G_CONNECT_DEFAULT);
-
-        g_ptr_array_add (array, g_steal_pointer (&folder_item));
+        add_folder_info_item (self, items, user_items, child);
         child = child->next;
       }
     } else {
-      g_autoptr (StampFolderItem) folder_item = stamp_folder_item_new (stamp_item_get_account (STAMP_ITEM (self)), folder_info);
-
-      g_signal_connect_object (folder_item, "folder-item-added", G_CALLBACK (on_folder_item_changed), self, G_CONNECT_DEFAULT);
-
-      g_ptr_array_add (array, g_steal_pointer (&folder_item));
+      add_folder_info_item (self, items, user_items, folder_info);
     }
 
     folder_info = folder_info->next;
   }
 
-  g_list_store_splice (list_store, 0, old, array->pdata, array->len);
+  if (user_items->len > 0) {
+    CamelFolderInfo *labels_info = camel_folder_info_new ();
+    g_autoptr (StampFolderItem) labels_item = NULL;
+    GListStore *child_store = NULL;
+    StampAccount *account = stamp_item_get_account (STAMP_ITEM (self));
+    gboolean is_gmail = check_is_gmail (account, root_info);
+    const gchar *section_name = is_gmail ? _("Labels") : _("Folders");
+    const gchar *section_icon = is_gmail ? "user-bookmarks-symbolic" : "folder-symbolic";
+
+    labels_info->display_name = g_strdup (section_name);
+    labels_info->full_name = g_strdup (section_name);
+    labels_info->flags = CAMEL_FOLDER_NOSELECT | CAMEL_FOLDER_TYPE_NORMAL;
+
+    labels_item = stamp_folder_item_new (account, labels_info);
+    camel_folder_info_free (labels_info);
+
+    stamp_item_set_icon_name (STAMP_ITEM (labels_item), section_icon);
+    stamp_item_set_list_store_type (STAMP_ITEM (labels_item), STAMP_TYPE_FOLDER_ITEM);
+    child_store = stamp_item_get_list_store (STAMP_ITEM (labels_item));
+
+    for (guint i = 0; i < user_items->len; i++) {
+      StampFolderItem *item = g_ptr_array_index (user_items, i);
+
+      g_list_store_append (child_store, STAMP_ITEM (item));
+    }
+
+    g_ptr_array_add (items, g_steal_pointer (&labels_item));
+  }
+
+  g_list_store_splice (list_store, 0, old, items->pdata, items->len);
 }
 
 static gboolean
