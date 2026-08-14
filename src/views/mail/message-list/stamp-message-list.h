@@ -65,4 +65,8 @@ void
 stamp_message_list_set_mobile_mode (StampMessageList *self,
                                     gboolean          mobile);
 
+void
+stamp_message_list_set_key_capture_widget (StampMessageList *self,
+                                           gboolean          enable);
+
 G_END_DECLS

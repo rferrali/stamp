@@ -915,3 +915,11 @@ stamp_message_list_set_external (StampMessageList *self,
 {
   gtk_widget_set_visible (self->external, is_external);
 }
+
+void
+stamp_message_list_set_key_capture_widget (StampMessageList *self,
+                                           gboolean          enable)
+{
+  gtk_search_bar_set_key_capture_widget (GTK_SEARCH_BAR (self->search_bar),
+                                         enable ? self->message_stack : NULL);
+}

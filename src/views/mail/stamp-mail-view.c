@@ -295,6 +295,7 @@ on_apply_view (AdwBreakpoint *breakpoint,
 
   stamp_consersation_list_set_show_buttons (self->conversation_list, show);
   stamp_conversation_list_set_key_capture_widget (self->conversation_list, !show);
+  stamp_message_list_set_key_capture_widget (self->message_list, !show);
 }
 
 void
