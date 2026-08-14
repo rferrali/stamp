@@ -373,6 +373,12 @@ stamp_folder_item_constructed (GObject *object)
   if (self->folder_info->flags & CAMEL_FOLDER_NOSELECT)
     return;
 
+  if (self->folder_info->flags & CAMEL_FOLDER_VIRTUAL)
+    return;
+
+  if (self->folder_info->flags & CAMEL_FOLDER_VTRASH)
+    return;
+
   mail_service = stamp_account_get_mail_service (account);
 
   stamp_item_set_loading (STAMP_ITEM (self), TRUE);
