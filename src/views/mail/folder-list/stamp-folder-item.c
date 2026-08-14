@@ -56,54 +56,32 @@ static const gchar *
 get_icon (StampFolderItem *self,
           CamelFolderInfo *info)
 {
-  CamelFolder *archives_folder = stamp_account_get_mail_archives_folder (stamp_item_get_account (STAMP_ITEM (self)));
-  CamelFolder *drafts_folder = stamp_account_get_mail_drafts_folder (stamp_item_get_account (STAMP_ITEM (self)));
-  CamelFolder *sent_folder = stamp_account_get_mail_sent_folder (stamp_item_get_account (STAMP_ITEM (self)));
-  CamelFolder *templates_folder = stamp_account_get_mail_templates_folder (stamp_item_get_account (STAMP_ITEM (self)));
-  CamelFolder *trash_folder = stamp_account_get_mail_trash_folder (stamp_item_get_account (STAMP_ITEM (self)));
-  CamelFolder *junk_folder = stamp_account_get_mail_junk_folder (stamp_item_get_account (STAMP_ITEM (self)));
+  StampFolderType type = stamp_account_get_folder_order_rank (stamp_item_get_account (STAMP_ITEM (self)), info);
 
-  if (archives_folder && g_strcmp0 (camel_folder_get_full_name (archives_folder), info->full_name) == 0) {
-    return "archive-symbolic";
-  }
-
-  if (drafts_folder && g_strcmp0 (camel_folder_get_full_name (drafts_folder), info->full_name) == 0) {
-    return "drafts-symbolic";
-  }
-
-  if (sent_folder && g_strcmp0 (camel_folder_get_full_name (sent_folder), info->full_name) == 0) {
-    return "sent-symbolic";
-  }
-
-  if (templates_folder && g_strcmp0 (camel_folder_get_full_name (templates_folder), info->full_name) == 0) {
-    return "folder-templates-symbolic";
-  }
-
-  if (trash_folder && g_strcmp0 (camel_folder_get_full_name (trash_folder), info->full_name) == 0) {
-    return "user-trash-symbolic";
-  }
-
-  if (junk_folder && g_strcmp0 (camel_folder_get_full_name (junk_folder), info->full_name) == 0) {
-    return "junk-symbolic";
-  }
-
-  switch (info->flags & CAMEL_FOLDER_TYPE_MASK) {
-    case CAMEL_FOLDER_TYPE_INBOX:
+  switch (type) {
+    case STAMP_FOLDER_TYPE_INBOX:
       return "inbox-symbolic";
-    case CAMEL_FOLDER_TYPE_OUTBOX:
+    case STAMP_FOLDER_TYPE_STARRED:
+      return "starred-symbolic";
+    case STAMP_FOLDER_TYPE_IMPORTANT:
+      return "mail-mark-important-symbolic";
+    case STAMP_FOLDER_TYPE_OUTBOX:
       return "outbox-symbolic";
-    case CAMEL_FOLDER_TYPE_TRASH:
-      return "user-trash-symbolic";
-    case CAMEL_FOLDER_TYPE_JUNK:
-      return "junk-symbolic";
-    case CAMEL_FOLDER_TYPE_SENT:
-      return "sent-symbolic";
-    case CAMEL_FOLDER_TYPE_ARCHIVE:
-      return "archive-symbolic";
-    case CAMEL_FOLDER_TYPE_DRAFTS:
+    case STAMP_FOLDER_TYPE_DRAFTS:
       return "drafts-symbolic";
+    case STAMP_FOLDER_TYPE_SENT:
+      return "sent-symbolic";
+    case STAMP_FOLDER_TYPE_JUNK:
+      return "junk-symbolic";
+    case STAMP_FOLDER_TYPE_TRASH:
+      return "user-trash-symbolic";
+    case STAMP_FOLDER_TYPE_ARCHIVES:
+      return "archive-symbolic";
+    case STAMP_FOLDER_TYPE_TEMPLATES:
+      return "folder-templates-symbolic";
+    case STAMP_FOLDER_TYPE_NORMAL:
     default:
-      return "folder-symbolic";
+      break;
   }
 
   return "folder-symbolic";

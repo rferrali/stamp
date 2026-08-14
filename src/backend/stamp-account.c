@@ -773,7 +773,9 @@ on_folder_info_for_special_folders (GObject      *src,
         g_set_str (&possible_sent, fi->full_name);
       } else if (!data->have_archives &&
                  (g_ascii_strcasecmp (fi->display_name, "Archive") == 0 ||
-                  g_ascii_strcasecmp (fi->display_name, "Archiv") == 0)) { /* codespell:ignore */
+                  g_ascii_strcasecmp (fi->display_name, "Archiv") == 0 ||  /* codespell:ignore */
+                  g_ascii_strcasecmp (fi->display_name, "All Mail") == 0 ||
+                  g_ascii_strcasecmp (fi->display_name, "Alle Nachrichten") == 0)) { /* codespell:ignore */
         g_set_str (&possible_archives, fi->full_name);
       } else if (!data->have_drafts &&
                  (g_ascii_strcasecmp (fi->display_name, "Drafts") == 0 ||
@@ -1728,6 +1730,14 @@ stamp_account_get_folder_order_rank (StampAccount    *self,
     default:
       break;
   }
+
+  if (g_ascii_strcasecmp (info->display_name, "Starred") == 0 ||
+      g_ascii_strcasecmp (info->display_name, "Markiert") == 0)
+    return STAMP_FOLDER_TYPE_STARRED;
+
+  if (g_ascii_strcasecmp (info->display_name, "Important") == 0 ||
+      g_ascii_strcasecmp (info->display_name, "Wichtig") == 0)
+    return STAMP_FOLDER_TYPE_IMPORTANT;
 
   return STAMP_FOLDER_TYPE_NORMAL;
 }
