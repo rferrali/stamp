@@ -100,6 +100,7 @@ struct _StampConversationList {
   GPtrArray *trash_array;
   GPtrArray *trash_uids;
   CamelFolder *trash_source_folder;
+  CamelFolder *trash_target_folder;
 
   GSimpleActionGroup *actions;
   GMenu *move_menu;
@@ -1450,6 +1451,7 @@ stamp_conversation_list_dispose (GObject *object)
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
   g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
   g_clear_object (&self->trash_source_folder);
+  g_clear_object (&self->trash_target_folder);
 
   gtk_widget_dispose_template (GTK_WIDGET (self), STAMP_TYPE_CONVERSATION_LIST);
 
@@ -2348,6 +2350,7 @@ stamp_conversation_list_trash (StampConversationList *self,
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
   g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
   g_clear_object (&self->trash_source_folder);
+  g_clear_object (&self->trash_target_folder);
 
   self->trash_array = g_ptr_array_new_with_free_func (g_object_unref);
   for (guint i = 0; i < node_array->len; i++)
@@ -2382,6 +2385,7 @@ stamp_conversation_list_trash (StampConversationList *self,
     g_ptr_array_add (self->trash_uids, g_strdup (g_ptr_array_index (uid_array, idx_u)));
 
   self->trash_source_folder = g_object_ref (folder);
+  self->trash_target_folder = trash_folder ? g_object_ref (trash_folder) : NULL;
 
   return TRUE;
 }
@@ -2395,11 +2399,12 @@ stamp_conversation_list_finalize_trash (StampConversationList *self)
   if (!self->trash_array || !self->trash_uids)
     return;
 
-  trash_folder = stamp_account_get_mail_trash_folder (self->account);
+  trash_folder = self->trash_target_folder;
   if (!self->trash_source_folder || !trash_folder) {
     g_clear_pointer (&self->trash_array, g_ptr_array_unref);
     g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
     g_clear_object (&self->trash_source_folder);
+    g_clear_object (&self->trash_target_folder);
     return;
   }
 
@@ -2426,6 +2431,7 @@ stamp_conversation_list_finalize_trash (StampConversationList *self)
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
   g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
   g_clear_object (&self->trash_source_folder);
+  g_clear_object (&self->trash_target_folder);
 }
 
 void
@@ -2456,6 +2462,7 @@ stamp_conversation_list_undo_trash (StampConversationList *self)
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
   g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
   g_clear_object (&self->trash_source_folder);
+  g_clear_object (&self->trash_target_folder);
 }
 
 GtkToggleButton *
