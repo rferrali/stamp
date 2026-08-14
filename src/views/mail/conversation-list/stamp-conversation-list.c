@@ -49,6 +49,7 @@ struct _StampConversationList {
   AdwBin parent_instance;
 
   GtkWidget *listview;
+  GtkWidget *conversation_view;
   GtkWidget *search_bar;
   GtkWidget *search_entry;
   GtkWidget *window_title;
@@ -1490,6 +1491,7 @@ stamp_conversation_list_class_init (StampConversationListClass *klass)
   object_class->dispose = stamp_conversation_list_dispose;
 
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, listview);
+  gtk_widget_class_bind_template_child (widget_class, StampConversationList, conversation_view);
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, search_bar);
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, search_entry);
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, window_title);
@@ -2477,6 +2479,14 @@ stamp_consersation_list_set_show_buttons (StampConversationList *self,
 {
   adw_header_bar_set_show_end_title_buttons (ADW_HEADER_BAR (self->normal_headerbar), show);
   adw_header_bar_set_show_end_title_buttons (ADW_HEADER_BAR (self->selection_headerbar), show);
+}
+
+void
+stamp_conversation_list_set_key_capture_widget (StampConversationList *self,
+                                                gboolean               enable)
+{
+  gtk_search_bar_set_key_capture_widget (GTK_SEARCH_BAR (self->search_bar),
+                                         enable ? self->conversation_view : NULL);
 }
 
 void

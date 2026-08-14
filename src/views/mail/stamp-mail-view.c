@@ -294,6 +294,7 @@ on_apply_view (AdwBreakpoint *breakpoint,
   gboolean show = is_mobile_view (self);
 
   stamp_consersation_list_set_show_buttons (self->conversation_list, show);
+  stamp_conversation_list_set_key_capture_widget (self->conversation_list, !show);
 }
 
 void

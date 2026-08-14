@@ -81,6 +81,10 @@ stamp_consersation_list_set_show_buttons (StampConversationList *self,
                                           gboolean               show);
 
 void
+stamp_conversation_list_set_key_capture_widget (StampConversationList *self,
+                                                gboolean               enable);
+
+void
 stamp_conversation_list_select_relative (StampConversationList *self,
                                          gint                    direction);
 
