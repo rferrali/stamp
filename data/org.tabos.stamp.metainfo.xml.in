@@ -11,8 +11,8 @@
     <name>Jan-Michael Brummer</name>
   </developer>
   <url type="homepage">https://www.tabos.org/</url>
-  <url type="vcs-browser">https://www.gitlab.com/tabos/stamp</url>
-  <url type="bugtracker">https://www.gitlab.com/tabos/stamp/issues</url>
+  <url type="vcs-browser">https://gitlab.gnome.org/jbrummer/stamp</url>
+  <url type="bugtracker">https://gitlab.gnome.org/jbrummer/stamp/-/work_items</url>
   <translation type="gettext">stamp</translation>
   <launchable type="desktop-id">org.tabos.stamp.desktop</launchable>
   <content_rating type="oars-1.1" />
