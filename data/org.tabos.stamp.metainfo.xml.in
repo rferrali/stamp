@@ -7,6 +7,21 @@
   <description>
     <p>No description</p>
   </description>
+
+  <!-- These allow us to be found in GNOME Software, as it ignores the description for searching: -->
+  <keywords>
+    <keyword>PIM</keyword>
+    <keyword>Personal Information Manager</keyword>
+    <keyword>groupware</keyword>
+    <keyword>emails</keyword>
+    <keyword>email client</keyword>
+    <keyword translate="no">IMAP</keyword>
+    <keyword>contacts</keyword>
+    <keyword>addressbook</keyword>
+    <keyword translate="no">Evolution Data Server</keyword>
+    <keyword translate="no">GNOME Online Accounts</keyword>
+  </keywords>
+
   <developer id="org.tabos">
     <name>Jan-Michael Brummer</name>
   </developer>
