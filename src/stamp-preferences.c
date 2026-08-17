@@ -220,18 +220,22 @@ init_accounts (StampPreferences *self)
 
   for (GList *iter = accounts; iter && iter->data; iter = g_list_next (iter)) {
     StampAccount *account = STAMP_ACCOUNT (iter->data);
-    GtkWidget *row = adw_action_row_new ();
-    GtkWidget *image = gtk_image_new_from_icon_name ("go-next-symbolic");
     StampMailService *service = stamp_account_get_mail_service (account);
+    GtkWidget *row;
+    GtkWidget *image;
     gboolean enabled = FALSE;
 
-    gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), TRUE);
     enabled = service && stamp_mail_service_get_enabled (service);
+    if (!enabled)
+      continue;
+
+    row = adw_action_row_new ();
+    gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), TRUE);
+    image = gtk_image_new_from_icon_name ("go-next-symbolic");
 
     g_object_set_data_full (G_OBJECT (row), "account", g_object_ref (account), g_object_unref);
     g_signal_connect_object (row, "activated", G_CALLBACK (on_account_activated), self, G_CONNECT_DEFAULT);
     adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), stamp_account_get_name (account));
-    adw_action_row_set_subtitle (ADW_ACTION_ROW (row), enabled ? _("Enabled") : _("Disabled"));
     adw_action_row_add_suffix (ADW_ACTION_ROW (row), image);
     adw_preferences_group_add (self->accounts_group, row);
   }
