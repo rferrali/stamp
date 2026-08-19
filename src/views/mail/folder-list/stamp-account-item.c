@@ -253,7 +253,7 @@ stamp_account_item_load (StampAccountItem *self)
 
   camel_store_get_folder_info (CAMEL_STORE (self->offline_store),
                                NULL,
-                               CAMEL_STORE_FOLDER_INFO_RECURSIVE | CAMEL_STORE_FOLDER_INFO_FAST,
+                               CAMEL_STORE_FOLDER_INFO_RECURSIVE | CAMEL_STORE_FOLDER_INFO_FAST | CAMEL_STORE_FOLDER_INFO_NO_VIRTUAL,
                                G_PRIORITY_DEFAULT,
                                self->cancellable,
                                on_get_folder_info,
