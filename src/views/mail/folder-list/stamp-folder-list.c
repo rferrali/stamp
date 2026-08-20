@@ -429,11 +429,11 @@ save_account_order (StampFolderList *self)
 }
 
 static gboolean
-on_drop (GtkDropTarget *target,
-         const GValue  *value,
-         gdouble        x,
-         gdouble        y,
-         gpointer       user_data)
+on_account_drop (GtkDropTarget *target,
+                 const GValue  *value,
+                 gdouble        x,
+                 gdouble        y,
+                 gpointer       user_data)
 {
   StampFolderList *self = STAMP_FOLDER_LIST (user_data);
   GListStore *store = G_LIST_STORE (self->list_store);
@@ -469,44 +469,6 @@ on_drop (GtkDropTarget *target,
 }
 
 static gboolean
-on_accept (GtkDropTarget *self,
-           GdkDrop       *drop,
-           gpointer       user_data)
-{
-  GtkListItem *list_item = GTK_LIST_ITEM (user_data);
-  GtkTreeExpander *expander = GTK_TREE_EXPANDER (gtk_list_item_get_child (list_item));
-  StampItem *item = STAMP_ITEM (gtk_tree_expander_get_item (expander));
-
-  if (STAMP_IS_ACCOUNT_ITEM (item))
-    return TRUE;
-
-  return FALSE;
-}
-
-static void
-on_drag_begin (GtkDragSource  *source,
-               GdkDrag        *drag,
-               StampFolderRow *self)
-{
-  /* Set the widget as the drag icon */
-  g_autoptr (GdkPaintable) paintable = gtk_widget_paintable_new (GTK_WIDGET (self));
-
-  gtk_drag_source_set_icon (source, paintable, 0, 0);
-}
-
-static gboolean
-on_conversation_accept (GtkDropTarget *target,
-                        GdkDrop       *drop,
-                        gpointer       user_data)
-{
-  GtkListItem *list_item = GTK_LIST_ITEM (user_data);
-  GtkTreeExpander *expander = GTK_TREE_EXPANDER (gtk_list_item_get_child (list_item));
-  StampItem *item = STAMP_ITEM (gtk_tree_expander_get_item (expander));
-
-  return STAMP_IS_FOLDER_ITEM (item);
-}
-
-static gboolean
 on_conversation_drop (GtkDropTarget *target,
                       const GValue  *value,
                       gdouble        x,
@@ -530,6 +492,52 @@ on_conversation_drop (GtkDropTarget *target,
   return TRUE;
 }
 
+static gboolean
+on_drop (GtkDropTarget *target,
+         const GValue  *value,
+         gdouble        x,
+         gdouble        y,
+         gpointer       user_data)
+{
+  if (G_VALUE_HOLDS (value, STAMP_TYPE_ITEM))
+    return on_account_drop (target, value, x, y, user_data);
+
+  if (G_VALUE_HOLDS (value, STAMP_TYPE_CONVERSATION_ITEM))
+    return on_conversation_drop (target, value, x, y, user_data);
+
+  return FALSE;
+}
+
+static gboolean
+on_accept (GtkDropTarget *self,
+           GdkDrop       *drop,
+           gpointer       user_data)
+{
+  GtkListItem *list_item = GTK_LIST_ITEM (user_data);
+  GtkTreeExpander *expander = GTK_TREE_EXPANDER (gtk_list_item_get_child (list_item));
+  StampItem *item = STAMP_ITEM (gtk_tree_expander_get_item (expander));
+  GdkContentFormats *formats = gdk_drop_get_formats (drop);
+
+  if (STAMP_IS_ACCOUNT_ITEM (item) && gdk_content_formats_contain_gtype (formats, STAMP_TYPE_ITEM))
+    return TRUE;
+
+  if (STAMP_IS_FOLDER_ITEM (item) && gdk_content_formats_contain_gtype (formats, STAMP_TYPE_CONVERSATION_ITEM))
+    return TRUE;
+
+  return FALSE;
+}
+
+static void
+on_drag_begin (GtkDragSource  *source,
+               GdkDrag        *drag,
+               StampFolderRow *self)
+{
+  /* Set the widget as the drag icon */
+  g_autoptr (GdkPaintable) paintable = gtk_widget_paintable_new (GTK_WIDGET (self));
+
+  gtk_drag_source_set_icon (source, paintable, 0, 0);
+}
+
 static void
 on_setup_folder (GtkListItemFactory *factory,
                  GtkListItem        *list_item,
@@ -540,8 +548,7 @@ on_setup_folder (GtkListItemFactory *factory,
   GtkWidget *expander;
   GtkGesture *click = gtk_gesture_click_new ();
   GtkDragSource *drag = gtk_drag_source_new ();
-  GtkDropTarget *drop = gtk_drop_target_new (STAMP_TYPE_ITEM, GDK_ACTION_MOVE);
-  GtkDropTarget *conv_drop = gtk_drop_target_new (STAMP_TYPE_CONVERSATION_ITEM, GDK_ACTION_MOVE);
+  GtkDropTarget *drop = gtk_drop_target_new (G_TYPE_INVALID, GDK_ACTION_MOVE);
 
   gtk_list_item_set_activatable (list_item, TRUE);
 
@@ -560,14 +567,13 @@ on_setup_folder (GtkListItemFactory *factory,
   g_signal_connect (drag, "drag-begin", G_CALLBACK (on_drag_begin), row);
   gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (drag));
 
+  gtk_drop_target_set_gtypes (drop,
+                              (GType[2]) { STAMP_TYPE_ITEM, STAMP_TYPE_CONVERSATION_ITEM },
+                              2);
   g_object_set_data (G_OBJECT (row), "list-item", list_item);
   g_signal_connect (drop, "accept", G_CALLBACK (on_accept), list_item);
   g_signal_connect (drop, "drop", G_CALLBACK (on_drop), self);
   gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (drop));
-
-  g_signal_connect (conv_drop, "accept", G_CALLBACK (on_conversation_accept), list_item);
-  g_signal_connect (conv_drop, "drop", G_CALLBACK (on_conversation_drop), self);
-  gtk_widget_add_controller (row, GTK_EVENT_CONTROLLER (conv_drop));
 }
 
 void
