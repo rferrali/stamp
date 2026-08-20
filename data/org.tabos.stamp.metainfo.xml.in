@@ -5,7 +5,9 @@
   <name>Stamp</name>
   <summary>Mails and more</summary>
   <description>
-    <p>No description</p>
+    <p>Stamp is a modern personal information management application that provides integrated mail and contacts functionality, designed for the GNOME desktop.</p>
+    <p>Built on the Evolution Data Server stack, Stamp supports a wide range of industry standard data formats and network protocols for information exchange, with an emphasis on standards compliance and security. Messages can be signed and encrypted using OpenPGP and S/MIME, and Stamp supports Brand Indicators for Message Identification (BIMI) as well as one-click unsubscribe from mailing lists.</p>
+    <p>Manage your email accounts, stay on top of your conversations and keep your address books in sync — all in a clean, focused and privacy-friendly interface.</p>
   </description>
 
   <!-- These allow us to be found in GNOME Software, as it ignores the description for searching: -->
@@ -41,7 +43,7 @@
       <caption>Overview</caption>
     </screenshot>
     <screenshot>
-      <image>https://www.tabos.org/stamp/stamp1.png</image>
+      <image>https://www.tabos.org/stamp/stamp2.png</image>
       <caption>Mail</caption>
     </screenshot>
   </screenshots>
