@@ -1128,7 +1128,7 @@ on_conversation_drag_begin (GtkDragSource *source,
                              gtk_widget_get_height (row));
   snapshot = gtk_snapshot_new ();
   gtk_widget_snapshot_child (parent, row, snapshot);
-  paintable = gtk_snapshot_free_to_paintable (snapshot, &size);
+  paintable = gtk_snapshot_free_to_paintable (g_steal_pointer (&snapshot), &size);
 
   if (paintable)
     gtk_drag_source_set_icon (source, paintable, 0, 0);
