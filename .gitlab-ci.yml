@@ -49,7 +49,6 @@ build-flatpak-aarch64:
   extends: '.flatpak@aarch64'
   stage: build
   before_script: []
-  when: manual
 
 scan-build-gate:
   stage: analysis
@@ -73,7 +72,6 @@ nightly:
 nightly-aarch64:
   extends: '.publish_nightly'
   needs: ['build-flatpak-aarch64']
-  when: manual
 
 pages:
   stage: deploy
