@@ -1241,7 +1241,12 @@ stamp_message_list_item_get_message (StampMessageListItem *self)
 guint64
 stamp_message_list_item_get_timestamp (StampMessageListItem *self)
 {
-  return camel_message_info_get_date_received (self->message_info);
+  guint64 timestamp = camel_message_info_get_date_received (self->message_info);
+
+  if (!timestamp)
+    timestamp = camel_message_info_get_date_sent (self->message_info);
+
+  return timestamp;
 }
 
 void

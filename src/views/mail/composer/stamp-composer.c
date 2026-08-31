@@ -2103,7 +2103,8 @@ on_accept (GtkDropTarget *self,
            GdkDrop       *drop,
            gpointer       user_data)
 {
-  return TRUE;
+  return gdk_content_formats_contain_gtype (gdk_drop_get_formats (drop),
+                                            GDK_TYPE_FILE_LIST);
 }
 
 static gboolean
@@ -2613,10 +2614,15 @@ stamp_composer_set_quote_content (StampComposer          *self,
       g_autoptr (GDateTime) when = NULL;
       g_autofree char *date_received = NULL;
       gchar *date_format = _("%a, %b %-e, %Y at %-l:%M %p");
+      guint64 timestamp;
 
       message_content = g_string_append (message_content, "<br/><br/>");
 
-      when = g_date_time_new_from_unix_utc (camel_message_info_get_date_received (info));
+      timestamp = camel_message_info_get_date_received (info);
+      if (!timestamp)
+        timestamp = camel_message_info_get_date_sent (info);
+
+      when = g_date_time_new_from_unix_utc (timestamp);
       date_received = g_date_time_format (when, date_format);
 
       if (type == STAMP_COMPOSER_REPLY || type == STAMP_COMPOSER_REPLY_ALL) {

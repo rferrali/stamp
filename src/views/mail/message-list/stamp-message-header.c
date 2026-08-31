@@ -562,6 +562,7 @@ stamp_message_header_set_mail (StampMessageHeader    *self,
   g_autoptr (GMenuItem) item = NULL;
   g_autofree char *time = NULL;
   guint hidden = 0;
+  guint64 timestamp;
 
   self->message_info = message_info;
 
@@ -688,7 +689,11 @@ stamp_message_header_set_mail (StampMessageHeader    *self,
 
   g_object_bind_property_full (G_OBJECT (message_info), "flags", self->starred_icon, "icon-name", G_BINDING_SYNC_CREATE, transfer_flags_to_icon, NULL, self, NULL);
 
-  time = stamp_time_helpers_utf_friendly_time (camel_message_info_get_date_received (message_info), FALSE);
+  timestamp = camel_message_info_get_date_received (message_info);
+  if (!timestamp)
+    timestamp = camel_message_info_get_date_sent (message_info);
+
+  time = stamp_time_helpers_utf_friendly_time (timestamp, FALSE);
   gtk_label_set_text (GTK_LABEL (self->date), time);
 
   update_visibility (self);
