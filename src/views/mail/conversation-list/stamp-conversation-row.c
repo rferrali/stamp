@@ -490,7 +490,7 @@ transfer_labels_to_box (GBinding     *binding,
     }
   }
 
-  g_value_set_boolean (to, TRUE);
+  g_value_set_boolean (to, labels != NULL && labels->len != 0);
 
   return TRUE;
 }
