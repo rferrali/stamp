@@ -179,7 +179,7 @@ on_autostart (GObject    *object,
   g_ptr_array_add (commandline, g_strdup ("stamp"));
   g_ptr_array_add (commandline, g_strdup ("--hidden"));
 
-  xdp_portal_request_background (portal, parent_window, NULL, commandline, XDP_BACKGROUND_FLAG_AUTOSTART, self->cancellable, on_request_autostart, self);
+  xdp_portal_request_background (portal, parent_window, NULL, g_steal_pointer (&commandline), XDP_BACKGROUND_FLAG_AUTOSTART, self->cancellable, on_request_autostart, self);
 }
 
 static void
