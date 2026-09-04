@@ -21,6 +21,7 @@
 
 #include <adwaita.h>
 
+#include "stamp-collection-item.h"
 #include "stamp-conversation-list.h"
 
 G_BEGIN_DECLS

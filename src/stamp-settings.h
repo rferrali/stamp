@@ -39,6 +39,7 @@ G_BEGIN_DECLS
 
 #define STAMP_PREFS_MAIL_SCHEMA               "org.tabos.stamp.mail"
 #define STAMP_PREFS_MAIL_SELECTED_FOLDER      "selected-folder"
+#define STAMP_PREFS_MAIL_ALL_MAILBOXES_EXPANDED "all-mailboxes-expanded"
 #define STAMP_PREFS_MAIL_ALWAYS_SHOW_IMAGES   "always-show-images"
 #define STAMP_PREFS_MAIL_LOAD_BIMI_IMAGES     "load-bimi-images"
 #define STAMP_PREFS_MAIL_MARK_READ_TIMEOUT    "mark-read-timeout"

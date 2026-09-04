@@ -26,6 +26,8 @@
 
 G_BEGIN_DECLS
 
+typedef struct _StampAccount StampAccount;
+
 #define STAMP_TYPE_SESSION (stamp_session_get_type ())
 G_DECLARE_FINAL_TYPE (StampSession, stamp_session, STAMP, SESSION, CamelSession);
 
@@ -34,6 +36,10 @@ stamp_session_get_default (void);
 
 GList *
 stamp_session_get_accounts (StampSession *self);
+
+StampAccount *
+stamp_session_find_account_by_mail_uid (StampSession *self,
+                                        const gchar   *mail_uid);
 
 GList *
 stamp_session_get_signatures (StampSession *self);

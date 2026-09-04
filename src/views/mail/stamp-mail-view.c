@@ -22,6 +22,7 @@
 #include <glib/gi18n.h>
 
 #include "stamp-conversation-list.h"
+#include "stamp-collection-item.h"
 #include "stamp-folder-list.h"
 #include "stamp-header-bar.h"
 #include "stamp-message-list.h"
@@ -161,6 +162,22 @@ on_folder_selected (GtkWidget    *object,
 }
 
 static void
+on_collection_selected (GtkWidget           *object,
+                        StampCollectionItem *collection,
+                        gpointer             user_data)
+{
+  StampMailView *self = STAMP_MAIL_VIEW (user_data);
+
+  g_clear_handle_id (&self->load_folder_handler, g_source_remove);
+
+  close_overlay_sidebar (self);
+
+  g_set_object (&self->account, NULL);
+  stamp_conversation_list_load_collection (self->conversation_list, collection);
+  stamp_message_list_set_conversation (self->message_list, NULL, NULL);
+}
+
+static void
 on_conversation_selected (GtkWidget *object,
                           gpointer   thread_node,
                           gpointer   user_data)
@@ -179,7 +196,9 @@ on_conversation_selected (GtkWidget *object,
     }
   }
 
-  stamp_message_list_set_conversation (self->message_list, self->account, (CamelFolderThreadNode *)thread_node);
+  stamp_message_list_set_conversation (self->message_list,
+                                       stamp_conversation_list_get_selected_account (self->conversation_list),
+                                       (CamelFolderThreadNode *)thread_node);
 }
 
 static void
@@ -329,6 +348,7 @@ stamp_mail_view_class_init (StampMailViewClass *klass)
   gtk_widget_class_bind_template_callback (widget_class, on_details_hidden);
   gtk_widget_class_bind_template_callback (widget_class, on_apply_view);
   gtk_widget_class_bind_template_callback (widget_class, on_folder_selected);
+  gtk_widget_class_bind_template_callback (widget_class, on_collection_selected);
   gtk_widget_class_bind_template_callback (widget_class, on_conversation_selected);
   gtk_widget_class_bind_template_callback (widget_class, on_conversation_trash);
 }

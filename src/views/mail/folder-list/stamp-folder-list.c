@@ -19,7 +19,11 @@
 
 #include "stamp-folder-list.h"
 
+#include <camel/camel.h>
+#include <glib/gi18n.h>
+
 #include "stamp-account-item.h"
+#include "stamp-collection-item.h"
 #include "stamp-conversation-item.h"
 #include "stamp-conversation-list.h"
 #include "stamp-folder-item.h"
@@ -40,6 +44,8 @@ struct _StampFolderList {
   GPtrArray *expand_queue;
   guint expand_handler;
 
+  StampCollectionItem *collection;
+  StampItem *collection_group;
   StampConversationList *conversation_list;
 };
 
@@ -47,6 +53,7 @@ G_DEFINE_FINAL_TYPE (StampFolderList, stamp_folder_list, ADW_TYPE_BIN);
 
 enum {
   FOLDER_SELECTED,
+  COLLECTION_SELECTED,
   LAST_SIGNAL
 };
 
@@ -69,7 +76,9 @@ on_selection_changed (GtkSelectionModel *selection,
   row = GTK_TREE_LIST_ROW (selected_item);
   item = STAMP_ITEM (gtk_tree_list_row_get_item (row));
 
-  if (STAMP_IS_FOLDER_ITEM (item)) {
+  if (STAMP_IS_COLLECTION_ITEM (item)) {
+    g_signal_emit (self, signals[COLLECTION_SELECTED], 0, item);
+  } else if (STAMP_IS_FOLDER_ITEM (item)) {
     StampAccount *account = stamp_item_get_account (item);
     const gchar *full_name = stamp_folder_item_get_full_name (STAMP_FOLDER_ITEM (item));
 
@@ -120,6 +129,135 @@ insert_item (StampFolderList  *self,
   }
 }
 
+static const gchar *
+find_inbox_full_name (GListStore *store)
+{
+  guint list_len = g_list_model_get_n_items (G_LIST_MODEL (store));
+
+  for (guint idx = 0; idx < list_len; idx++) {
+    g_autoptr (StampItem) item = STAMP_ITEM (g_list_model_get_item (G_LIST_MODEL (store), idx));
+    GListStore *child_store;
+
+    if (STAMP_IS_FOLDER_ITEM (item)) {
+      gint type = stamp_folder_item_get_flags (STAMP_FOLDER_ITEM (item)) & CAMEL_FOLDER_TYPE_MASK;
+
+      if (type == CAMEL_FOLDER_TYPE_INBOX)
+        return stamp_folder_item_get_full_name (STAMP_FOLDER_ITEM (item));
+    }
+
+    child_store = stamp_item_get_list_store (item);
+    if (child_store) {
+      const gchar *ret = find_inbox_full_name (child_store);
+
+      if (ret)
+        return ret;
+    }
+  }
+
+  return NULL;
+}
+
+static void
+sync_collection_for_account (StampFolderList  *self,
+                             StampAccountItem *account_item)
+{
+  StampAccount *account = stamp_item_get_account (STAMP_ITEM (account_item));
+  const gchar *full_name;
+  GList *sources;
+
+  if (!self->collection)
+    return;
+
+  full_name = find_inbox_full_name (stamp_item_get_list_store (STAMP_ITEM (account_item)));
+  if (!full_name)
+    return;
+
+  for (sources = stamp_collection_item_get_sources (self->collection); sources; sources = sources->next) {
+    StampCollectionSource *source = sources->data;
+
+    if (source->account == account)
+      return;
+  }
+
+  stamp_collection_item_add_source (self->collection, account, full_name);
+  stamp_collection_item_load (self->collection);
+}
+
+static void
+on_account_item_changed (GtkWidget *account_item,
+                         gpointer   user_data)
+{
+  StampFolderList *self = STAMP_FOLDER_LIST (user_data);
+
+  sync_collection_for_account (self, STAMP_ACCOUNT_ITEM (account_item));
+}
+
+static guint
+count_account_items (StampFolderList *self)
+{
+  guint n = g_list_model_get_n_items (G_LIST_MODEL (self->list_store));
+  guint count = 0;
+
+  for (guint idx = 0; idx < n; idx++) {
+    g_autoptr (StampItem) item = STAMP_ITEM (g_list_model_get_item (G_LIST_MODEL (self->list_store), idx));
+
+    if (STAMP_IS_ACCOUNT_ITEM (item))
+      count++;
+  }
+
+  return count;
+}
+
+static guint
+find_collection_position (StampFolderList *self)
+{
+  guint n = g_list_model_get_n_items (G_LIST_MODEL (self->list_store));
+
+  for (guint idx = 0; idx < n; idx++) {
+    g_autoptr (StampItem) item = STAMP_ITEM (g_list_model_get_item (G_LIST_MODEL (self->list_store), idx));
+
+    if (item == self->collection_group)
+      return idx;
+  }
+
+  return G_MAXUINT;
+}
+
+static void
+update_collection_visibility (StampFolderList *self)
+{
+  guint pos;
+
+  if (!self->collection || !self->collection_group)
+    return;
+
+  pos = find_collection_position (self);
+
+  if (count_account_items (self) > 1) {
+    if (pos == G_MAXUINT)
+      g_list_store_insert (self->list_store, 0, self->collection_group);
+  } else if (pos != G_MAXUINT) {
+    g_list_store_remove (self->list_store, pos);
+  }
+}
+
+static void
+clear_conversation_list_if_needed (StampFolderList *self,
+                                   StampAccount    *removed_account)
+{
+  StampConversationList *cl = self->conversation_list;
+
+  if (!cl)
+    return;
+
+  if (stamp_conversation_list_is_collection (cl)) {
+    if (count_account_items (self) <= 1)
+      stamp_conversation_list_clear (cl);
+  } else if (stamp_conversation_list_get_account (cl) == removed_account) {
+    stamp_conversation_list_clear (cl);
+  }
+}
+
 static void
 on_mail_added (GtkWidget        *object,
                StampAccount     *account,
@@ -132,9 +270,12 @@ on_mail_added (GtkWidget        *object,
 
   /* Safety: Do not account twice, shouldn't happen at all... */
   for (guint idx = 0; idx < len; idx++) {
-    g_autoptr (StampAccountItem) check_item = STAMP_ACCOUNT_ITEM (g_list_model_get_item (G_LIST_MODEL (self->list_store), idx));
+    g_autoptr (StampItem) check_item = g_list_model_get_item (G_LIST_MODEL (self->list_store), idx);
 
-    if (stamp_item_get_account (STAMP_ITEM (check_item)) == account) {
+    if (!STAMP_IS_ACCOUNT_ITEM (check_item))
+      continue;
+
+    if (stamp_item_get_account (check_item) == account) {
       return;
     }
   }
@@ -142,6 +283,10 @@ on_mail_added (GtkWidget        *object,
   item = stamp_account_item_new (account);
   stamp_account_item_load (item);
   insert_item (self, item);
+
+  g_signal_connect_object (item, "account-item-changed", G_CALLBACK (on_account_item_changed), self, G_CONNECT_DEFAULT);
+
+  update_collection_visibility (self);
 }
 
 static void
@@ -153,14 +298,23 @@ on_mail_removed (GtkWidget        *object,
   StampFolderList *self = STAMP_FOLDER_LIST (user_data);
   guint len = g_list_model_get_n_items (G_LIST_MODEL (self->list_store));
 
-  for (guint idx = 0; idx < len; idx++) {
-    g_autoptr (StampAccountItem) item = STAMP_ACCOUNT_ITEM (g_list_model_get_item (G_LIST_MODEL (self->list_store), idx));
+  if (self->collection)
+    stamp_collection_item_remove_source (self->collection, account);
 
-    if (stamp_item_get_account (STAMP_ITEM (item)) == account) {
+  for (guint idx = 0; idx < len; idx++) {
+    g_autoptr (StampItem) item = g_list_model_get_item (G_LIST_MODEL (self->list_store), idx);
+
+    if (!STAMP_IS_ACCOUNT_ITEM (item))
+      continue;
+
+    if (stamp_item_get_account (item) == account) {
       g_list_store_remove (self->list_store, idx);
-      return;
+      break;
     }
   }
+
+  update_collection_visibility (self);
+  clear_conversation_list_if_needed (self, account);
 }
 
 static void
@@ -182,6 +336,10 @@ on_stamp_folder_list_account_added (GObject      *object,
   account_item = stamp_account_item_new (account);
   stamp_account_item_load (account_item);
   insert_item (self, account_item);
+
+  g_signal_connect_object (account_item, "account-item-changed", G_CALLBACK (on_account_item_changed), self, G_CONNECT_DEFAULT);
+
+  update_collection_visibility (self);
 }
 
 static void
@@ -191,6 +349,9 @@ on_stamp_folder_list_account_removed (GObject      *object,
 {
   StampFolderList *self = STAMP_FOLDER_LIST (user_data);
   gint len = g_list_model_get_n_items (G_LIST_MODEL (self->list_store));
+
+  if (self->collection)
+    stamp_collection_item_remove_source (self->collection, account);
 
   for (gint idx = 0; idx < len; idx++) {
     g_autoptr (StampItem) item = STAMP_ITEM (g_list_model_get_item (G_LIST_MODEL (self->list_store), idx));
@@ -203,6 +364,9 @@ on_stamp_folder_list_account_removed (GObject      *object,
       break;
     }
   }
+
+  update_collection_visibility (self);
+  clear_conversation_list_if_needed (self, account);
 }
 
 static void
@@ -244,6 +408,15 @@ expand_idle (gpointer user_data)
 }
 
 static void
+on_group_expanded (GtkTreeListRow *row,
+                   GParamSpec     *pspec,
+                   gpointer        user_data)
+{
+  g_settings_set_boolean (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_ALL_MAILBOXES_EXPANDED,
+                          gtk_tree_list_row_get_expanded (row));
+}
+
+static void
 on_bind_folder (GtkListItemFactory *factory,
                 GtkListItem        *list_item,
                 gpointer            user_data)
@@ -266,6 +439,23 @@ on_bind_folder (GtkListItemFactory *factory,
   folder_row = STAMP_FOLDER_ROW (gtk_tree_expander_get_child (GTK_TREE_EXPANDER (expander)));
 
   stamp_folder_row_bind (folder_row, item);
+
+  if (STAMP_IS_COLLECTION_ITEM (item))
+    return;
+
+  if (item == self->collection_group) {
+    gtk_widget_add_css_class (GTK_WIDGET (folder_row), "bold");
+
+    if (g_settings_get_boolean (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_ALL_MAILBOXES_EXPANDED)) {
+      g_ptr_array_add (self->expand_queue, g_object_ref (row));
+
+      if (self->expand_handler == 0)
+        self->expand_handler = g_idle_add_once (expand_idle, self);
+    }
+
+    g_signal_connect_object (row, "notify::expanded", G_CALLBACK (on_group_expanded), self, G_CONNECT_DEFAULT);
+    return;
+  }
 
   /* FIXME: Optimize the following code */
   account = stamp_item_get_account (STAMP_ITEM (item));
@@ -320,8 +510,24 @@ folders_sorter (gconstpointer a,
                 gconstpointer b,
                 gpointer      user_data)
 {
+  StampFolderList *self = STAMP_FOLDER_LIST (user_data);
   StampItem *item_a = (StampItem *)(a);
   StampItem *item_b = (StampItem *)(b);
+
+  if (self->collection_group) {
+    if (item_a == self->collection_group)
+      return -1;
+    if (item_b == self->collection_group)
+      return 1;
+  }
+
+  if (STAMP_IS_COLLECTION_ITEM (item_a) && STAMP_IS_COLLECTION_ITEM (item_b)) {
+    return g_strcmp0 (stamp_item_get_name (item_a), stamp_item_get_name (item_b));
+  } else if (STAMP_IS_COLLECTION_ITEM (item_a)) {
+    return -1;
+  } else if (STAMP_IS_COLLECTION_ITEM (item_b)) {
+    return 1;
+  }
 
   if (STAMP_IS_FOLDER_ITEM (item_a) && STAMP_IS_FOLDER_ITEM (item_b)) {
     const gchar *name_a;
@@ -594,6 +800,8 @@ stamp_folder_list_dispose (GObject *object)
 
   g_clear_handle_id (&self->expand_handler, g_source_remove);
   g_clear_pointer (&self->expand_queue, g_ptr_array_unref);
+  g_clear_object (&self->collection);
+  g_clear_object (&self->collection_group);
 
   self->conversation_list = NULL;
 
@@ -623,6 +831,12 @@ stamp_folder_list_class_init (StampFolderListClass *klass)
                                            0, NULL, NULL, NULL,
                                            G_TYPE_NONE,
                                            2, G_TYPE_OBJECT, G_TYPE_STRING);
+
+  signals[COLLECTION_SELECTED] = g_signal_new ("collection-selected", G_OBJECT_CLASS_TYPE (klass),
+                                               G_SIGNAL_RUN_FIRST | G_SIGNAL_RUN_LAST,
+                                               0, NULL, NULL, NULL,
+                                               G_TYPE_NONE,
+                                               1, STAMP_TYPE_COLLECTION_ITEM);
 }
 
 static void
@@ -630,6 +844,7 @@ stamp_folder_list_init (StampFolderList *self)
 {
   StampSession *session = NULL;
   GtkTreeListModel *tree;
+  GList *accounts;
 
   gtk_widget_init_template (GTK_WIDGET (self));
 
@@ -637,13 +852,36 @@ stamp_folder_list_init (StampFolderList *self)
   tree = gtk_tree_list_model_new (G_LIST_MODEL (self->list_store), FALSE, FALSE, get_child, g_object_ref (self), g_object_unref);
 
   gtk_sort_list_model_set_model (GTK_SORT_LIST_MODEL (self->sort_list_model), G_LIST_MODEL (tree));
-  gtk_custom_sorter_set_sort_func (self->sorter, folders_sorter, NULL, NULL);
+  gtk_custom_sorter_set_sort_func (self->sorter, folders_sorter, self, NULL);
 
   session = stamp_session_get_default ();
   g_signal_connect_object (session, "account-added", G_CALLBACK (on_stamp_folder_list_account_added), self, G_CONNECT_DEFAULT);
   g_signal_connect_object (session, "account-removed", G_CALLBACK (on_stamp_folder_list_account_removed), self, G_CONNECT_DEFAULT);
 
   self->expand_queue = g_ptr_array_new_with_free_func (g_object_unref);
+
+  self->collection = stamp_collection_item_new (STAMP_COLLECTION_COMBINED_INBOX);
+  stamp_item_set_name (STAMP_ITEM (self->collection), _("Combined Inbox"));
+  stamp_item_set_icon_name (STAMP_ITEM (self->collection), "inbox-symbolic");
+
+  self->collection_group = g_object_new (STAMP_TYPE_ITEM, NULL);
+  stamp_item_set_name (self->collection_group, _("All Mailboxes"));
+  stamp_item_set_list_store_type (self->collection_group, STAMP_TYPE_COLLECTION_ITEM);
+  g_list_store_append (stamp_item_get_list_store (self->collection_group), STAMP_ITEM (self->collection));
+
+  g_list_store_append (self->list_store, self->collection_group);
+
+  for (accounts = stamp_session_get_accounts (session); accounts; accounts = accounts->next) {
+    StampAccount *account = STAMP_ACCOUNT (accounts->data);
+    StampMailService *mail_service = stamp_account_get_mail_service (account);
+
+    if (!mail_service || !stamp_mail_service_get_enabled (mail_service))
+      continue;
+
+    on_stamp_folder_list_account_added (G_OBJECT (session), account, self);
+  }
+
+  update_collection_visibility (self);
 
   g_type_ensure (STAMP_TYPE_ITEM);
 }

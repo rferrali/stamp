@@ -49,6 +49,7 @@ struct _StampConversationRow {
   GtkImage *forwarded_icon;
   GtkImage *calendar_icon;
   GtkFlowBox *labels;
+  GtkLabel *account_pill;
 
   GCancellable *cancellable;
   gboolean selected;
@@ -287,6 +288,7 @@ stamp_conversation_row_class_init (StampConversationRowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, forwarded_icon);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, calendar_icon);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, labels);
+  gtk_widget_class_bind_template_child (widget_class, StampConversationRow, account_pill);
 
   gtk_widget_class_bind_template_callback (widget_class, on_drag_update);
   gtk_widget_class_bind_template_callback (widget_class, on_drag_end);
@@ -457,6 +459,9 @@ stamp_conversation_row_unbind_mail (StampConversationRow  *self,
     g_clear_object (&self->cancellable);
   }
 
+  gtk_label_set_text (GTK_LABEL (self->account_pill), NULL);
+  gtk_widget_set_visible (GTK_WIDGET (self->account_pill), FALSE);
+
   g_ptr_array_remove_range (self->bindings, 0, self->bindings->len);
 
   g_clear_object (&self->item);
@@ -513,7 +518,8 @@ create_label (gpointer item,
 void
 stamp_conversation_row_bind_mail (StampConversationRow  *self,
                                   StampConversationItem *item,
-                                  StampAccount          *account)
+                                  StampAccount          *account,
+                                  gboolean               show_account)
 {
   g_autoptr (GPtrArray) labels = NULL;
   g_autofree char *mail = NULL;
@@ -526,6 +532,11 @@ stamp_conversation_row_bind_mail (StampConversationRow  *self,
 
   self->item = g_object_ref (item);
   self->account = g_object_ref (account);
+
+  if (show_account && account) {
+    gtk_label_set_text (GTK_LABEL (self->account_pill), stamp_account_get_name (account));
+    gtk_widget_set_visible (GTK_WIDGET (self->account_pill), TRUE);
+  }
 
   self->generation++;
   self->cancellable = g_cancellable_new ();

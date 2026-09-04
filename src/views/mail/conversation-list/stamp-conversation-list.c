@@ -23,6 +23,7 @@
 #include <glib/gi18n.h>
 
 #include "stamp-account.h"
+#include "stamp-collection-item.h"
 #include "stamp-composer.h"
 #include "stamp-conversation-item.h"
 #include "stamp-conversation-list-store.h"
@@ -31,6 +32,7 @@
 #include "stamp-mail-view.h"
 #include "stamp-message-list.h"
 #include "stamp-settings.h"
+#include "stamp-session.h"
 
 
 enum FilterMode {
@@ -44,6 +46,9 @@ enum SortMode {
   SORT_MODE_NEWEST_FIRST,
   SORT_MODE_OLDEST_FIRST,
 };
+
+static void
+trash_entry_free (gpointer data);
 
 struct _StampConversationList {
   AdwBin parent_instance;
@@ -89,6 +94,10 @@ struct _StampConversationList {
   CamelFolder *folder;
   gboolean selection_mode;
 
+  StampCollectionItem *collection;
+  gboolean is_collection;
+  GList *collection_folders;
+
   enum FilterMode filter_mode;
   enum SortMode sort_mode;
   gboolean claimed;
@@ -99,9 +108,7 @@ struct _StampConversationList {
   guint anchor_position;
   GHashTable *position_to_check;
   GPtrArray *trash_array;
-  GPtrArray *trash_uids;
-  CamelFolder *trash_source_folder;
-  CamelFolder *trash_target_folder;
+  GList *trash_entries;
 
   GSimpleActionGroup *actions;
   GMenu *move_menu;
@@ -163,6 +170,18 @@ stamp_conversation_item_find_item (GListStore  *store,
 static void
 load_folder_idle (gpointer user_data);
 
+static void
+load_collection_idle (gpointer user_data);
+
+static void
+on_collection_folder_changed (CamelFolder           *folder,
+                              CamelFolderChangeInfo *changes,
+                              gpointer               user_data);
+
+static void
+on_collection_sources_changed (StampCollectionItem *collection,
+                               gpointer             user_data);
+
 
 static void
 on_conversation_list_folder_changed (CamelFolder           *folder,
@@ -192,15 +211,15 @@ on_conversation_list_folder_changed (CamelFolder           *folder,
 }
 
 static CamelFolderThread *
-get_combined_thread (StampConversationList *self,
-                     CamelFolder           *folder)
+get_combined_thread (StampAccount *account,
+                     CamelFolder  *folder)
 {
   CamelFolder *sent_folder;
   g_autoptr (GPtrArray) items = NULL;
   g_autoptr (GPtrArray) uids = NULL;
   g_autoptr (GPtrArray) sent_uids = NULL;
 
-  sent_folder = stamp_account_get_mail_sent_folder (self->account);
+  sent_folder = stamp_account_get_mail_sent_folder (account);
   if (!sent_folder || sent_folder == folder)
     return camel_folder_thread_new (folder, NULL, CAMEL_FOLDER_THREAD_FLAG_SORT);
 
@@ -564,7 +583,7 @@ rebuild_list (StampConversationList *self)
   mail_service = stamp_account_get_mail_service (self->account);
   g_hash_table_insert (self->folders, g_strdup (camel_service_get_uid (stamp_mail_service_get_service (mail_service))), g_object_ref (folder));
 
-  thread = get_combined_thread (self, folder);
+  thread = get_combined_thread (self->account, folder);
   self->thread = thread;
 
   array = g_ptr_array_new_with_free_func (g_object_unref);
@@ -667,6 +686,10 @@ stamp_conversation_list_load_folder (StampConversationList *self,
   if (!account)
     return;
 
+  self->is_collection = FALSE;
+  if (self->collection)
+    g_signal_handlers_disconnect_by_func (self->collection, on_collection_sources_changed, self);
+  g_clear_object (&self->collection);
   self->cancellable = g_cancellable_new ();
 
   mail_service = stamp_account_get_mail_service (account);
@@ -684,6 +707,252 @@ stamp_conversation_list_refresh (StampConversationList *self)
     return;
 
   camel_folder_refresh_info (self->folder, G_PRIORITY_DEFAULT, self->cancellable, on_folder_refreshed, self);
+}
+
+typedef struct {
+  StampConversationList *self;
+  GList *sources;
+  guint pending;
+} LoadCollectionData;
+
+static void
+load_collection_data_free (gpointer user_data)
+{
+  LoadCollectionData *data = user_data;
+
+  g_list_free (data->sources);
+  g_free (data);
+}
+
+static void
+on_get_collection_folder (GObject      *source,
+                          GAsyncResult *res,
+                          gpointer      user_data)
+{
+  LoadCollectionData *data = user_data;
+  StampConversationList *self = data->self;
+  CamelStore *store = CAMEL_STORE (source);
+  g_autoptr (CamelFolder) folder = NULL;
+  g_autoptr (GError) error = NULL;
+  g_autoptr (GPtrArray) array = NULL;
+  CamelFolderThread *thread;
+  StampAccount *account = STAMP_ACCOUNT (g_object_get_data (source, "collection-account"));
+
+  folder = camel_store_get_folder_finish (store, res, &error);
+  if (error) {
+    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      g_warning ("Could not get collection folder: %s", error->message);
+    goto done;
+  }
+
+  self->collection_folders = g_list_prepend (self->collection_folders, g_object_ref (folder));
+  g_signal_connect_object (folder, "changed", G_CALLBACK (on_collection_folder_changed), self, G_CONNECT_DEFAULT);
+
+  thread = get_combined_thread (account, folder);
+
+  array = g_ptr_array_new_with_free_func (g_object_unref);
+
+  if (thread) {
+    CamelFolderThreadNode *child;
+    const gchar *service_uid = camel_service_get_uid (CAMEL_SERVICE (store));
+
+    child = camel_folder_thread_get_tree (thread);
+
+    while (child) {
+      StampConversationItem *item = stamp_conversation_item_new (child, service_uid);
+
+      if (!node_has_message_from_folder (child, folder))
+        stamp_conversation_item_set_hidden (item, TRUE);
+
+      g_ptr_array_add (array, item);
+      child = camel_folder_thread_node_get_next (child);
+    }
+  }
+
+  g_list_store_splice (self->list_store,
+                       g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
+                       0,
+                       (gpointer *)array->pdata,
+                       array->len);
+
+done:
+  g_clear_object (&folder);
+  data->pending--;
+
+  if (data->pending == 0) {
+    gtk_widget_set_visible (self->spinner, FALSE);
+    gtk_widget_set_margin_top (self->spinner, 12);
+
+    if (g_list_model_get_n_items (G_LIST_MODEL (self->list_store)) > 0)
+      gtk_list_view_scroll_to (GTK_LIST_VIEW (self->listview), 0, GTK_LIST_SCROLL_FOCUS, NULL);
+
+    load_collection_data_free (data);
+  }
+}
+
+static void
+load_collection_idle (gpointer user_data)
+{
+  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+
+  stamp_conversation_list_load_collection (self, self->collection);
+  self->load_folder_handler = 0;
+}
+
+static void
+on_collection_folder_changed (CamelFolder           *folder,
+                              CamelFolderChangeInfo *changes,
+                              gpointer               user_data)
+{
+  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+
+  if (changes->uid_changed && changes->uid_changed->len > 0) {
+    GPtrArray *changed = changes->uid_changed;
+
+    for (gint idx = 0; idx < changed->len; idx++) {
+      g_autoptr (StampConversationItem) item = stamp_conversation_item_find_item (self->list_store, changed->pdata[idx]);
+      CamelMessageInfo *message_info;
+      gchar *uid = (char *)changed->pdata[idx];
+
+      message_info = camel_folder_summary_get (camel_folder_get_folder_summary (folder), uid);
+
+      if (item)
+        stamp_conversation_item_update (item, message_info);
+    }
+  }
+
+  if ((changes->uid_added && changes->uid_added->len > 0) || (changes->uid_removed && changes->uid_removed->len > 0)) {
+    g_clear_handle_id (&self->load_folder_handler, g_source_remove);
+    self->load_folder_handler = g_idle_add_once (load_collection_idle, self);
+  }
+}
+
+static void
+on_collection_sources_changed (StampCollectionItem *collection,
+                               gpointer             user_data)
+{
+  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+
+  if (!self->is_collection)
+    return;
+
+  g_clear_handle_id (&self->load_folder_handler, g_source_remove);
+  self->load_folder_handler = g_idle_add_once (load_collection_idle, self);
+}
+
+void
+stamp_conversation_list_load_collection (StampConversationList *self,
+                                         StampCollectionItem   *collection)
+{
+  LoadCollectionData *data;
+  GList *iter;
+
+  if (self->cancellable) {
+    g_cancellable_cancel (self->cancellable);
+    g_clear_object (&self->cancellable);
+  }
+
+  g_clear_handle_id (&self->load_folder_handler, g_source_remove);
+
+  for (iter = self->collection_folders; iter; iter = iter->next)
+    g_signal_handlers_disconnect_by_func (iter->data, on_collection_folder_changed, self);
+
+  g_list_free_full (g_steal_pointer (&self->collection_folders), g_object_unref);
+
+  if (self->folder) {
+    g_signal_handlers_disconnect_by_func (self->folder, on_conversation_list_folder_changed, self);
+    g_clear_object (&self->folder);
+  }
+
+  g_list_store_splice (self->list_store,
+                       0,
+                       g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
+                       NULL,
+                       0);
+
+  self->is_collection = TRUE;
+  g_clear_object (&self->account);
+  if (self->collection)
+    g_signal_handlers_disconnect_by_func (self->collection, on_collection_sources_changed, self);
+  g_set_object (&self->collection, collection);
+  g_signal_connect_object (collection, "sources-changed", G_CALLBACK (on_collection_sources_changed), self, G_CONNECT_DEFAULT);
+  g_clear_pointer (&self->full_name, g_free);
+
+  self->cancellable = g_cancellable_new ();
+
+  data = g_new0 (LoadCollectionData, 1);
+  data->self = self;
+  data->sources = g_list_copy (stamp_collection_item_get_sources (collection));
+
+  for (iter = data->sources; iter; iter = iter->next) {
+    StampCollectionSource *source = iter->data;
+    StampMailService *mail_service = stamp_account_get_mail_service (source->account);
+
+    if (!mail_service || !stamp_mail_service_get_enabled (mail_service))
+      continue;
+
+    data->pending++;
+
+    g_object_set_data (G_OBJECT (stamp_mail_service_get_service (mail_service)),
+                       "collection-account",
+                       source->account);
+    camel_store_get_folder (CAMEL_STORE (stamp_mail_service_get_service (mail_service)),
+                            source->full_name,
+                            CAMEL_STORE_FOLDER_NONE,
+                            G_PRIORITY_DEFAULT,
+                            self->cancellable,
+                            on_get_collection_folder,
+                            data);
+  }
+
+  if (data->pending == 0) {
+    load_collection_data_free (data);
+    return;
+  }
+
+  gtk_widget_set_visible (self->spinner, TRUE);
+}
+
+StampAccount *
+stamp_conversation_list_get_selected_account (StampConversationList *self)
+{
+  StampConversationItem *item;
+  const gchar *service_uid;
+  StampSession *session;
+
+  if (!self->is_collection)
+    return self->account;
+
+  item = STAMP_CONVERSATION_ITEM (gtk_single_selection_get_selected_item (GTK_SINGLE_SELECTION (self->single_selection)));
+  if (!item)
+    return NULL;
+
+  service_uid = stamp_conversation_item_get_service_uid (item);
+  if (!service_uid)
+    return NULL;
+
+  session = stamp_session_get_default ();
+
+  return stamp_session_find_account_by_mail_uid (session, service_uid);
+}
+
+static StampAccount *
+get_item_account (StampConversationList *self,
+                  StampConversationItem *item)
+{
+  StampSession *session;
+  const gchar *service_uid;
+
+  if (!self->is_collection)
+    return self->account;
+
+  service_uid = stamp_conversation_item_get_service_uid (item);
+  if (!service_uid)
+    return NULL;
+
+  session = stamp_session_get_default ();
+
+  return stamp_session_find_account_by_mail_uid (session, service_uid);
 }
 
 static void
@@ -1256,7 +1525,7 @@ on_bind_list_item (GtkListItemFactory *factory,
   row = gtk_list_item_get_child (list_item);
   model = STAMP_CONVERSATION_ITEM (gtk_list_item_get_item (list_item));
 
-  stamp_conversation_row_bind_mail (STAMP_CONVERSATION_ROW (row), model, self->account);
+  stamp_conversation_row_bind_mail (STAMP_CONVERSATION_ROW (row), model, get_item_account (self, model), self->is_collection);
   stamp_conversation_row_set_selection_visible (STAMP_CONVERSATION_ROW (row), self->selection_mode);
 
   check_button = stamp_conversation_row_get_check_button (STAMP_CONVERSATION_ROW (row));
@@ -1446,13 +1715,19 @@ stamp_conversation_list_dispose (GObject *object)
   g_clear_list (&self->moved_messages, g_object_unref);
   g_clear_object (&self->account);
   g_clear_object (&self->folder);
+  if (self->collection)
+    g_signal_handlers_disconnect_by_func (self->collection, on_collection_sources_changed, self);
+  g_clear_object (&self->collection);
+
+  for (GList *iter = self->collection_folders; iter; iter = iter->next)
+    g_signal_handlers_disconnect_by_func (iter->data, on_collection_folder_changed, self);
+
+  g_list_free_full (g_steal_pointer (&self->collection_folders), g_object_unref);
 
   g_clear_pointer (&self->selected, gtk_bitset_unref);
   g_clear_pointer (&self->position_to_check, g_hash_table_unref);
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
-  g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
-  g_clear_object (&self->trash_source_folder);
-  g_clear_object (&self->trash_target_folder);
+  g_clear_list (&self->trash_entries, trash_entry_free);
 
   gtk_widget_dispose_template (GTK_WIDGET (self), STAMP_TYPE_CONVERSATION_LIST);
 
@@ -2263,14 +2538,140 @@ stamp_conversation_list_unselect (StampConversationList *self)
   gtk_bitset_remove_all (self->selected);
 }
 
+StampAccount *
+stamp_conversation_list_get_account (StampConversationList *self)
+{
+  g_return_val_if_fail (STAMP_IS_CONVERSATION_LIST (self), NULL);
+
+  return self->account;
+}
+
+gboolean
+stamp_conversation_list_is_collection (StampConversationList *self)
+{
+  g_return_val_if_fail (STAMP_IS_CONVERSATION_LIST (self), FALSE);
+
+  return self->is_collection;
+}
+
+void
+stamp_conversation_list_clear (StampConversationList *self)
+{
+  g_return_if_fail (STAMP_IS_CONVERSATION_LIST (self));
+
+  if (self->cancellable) {
+    g_cancellable_cancel (self->cancellable);
+    g_clear_object (&self->cancellable);
+  }
+
+  if (self->transfer_cancellable) {
+    g_cancellable_cancel (self->transfer_cancellable);
+    g_clear_object (&self->transfer_cancellable);
+  }
+
+  g_clear_handle_id (&self->load_folder_handler, g_source_remove);
+
+  if (self->folder) {
+    g_signal_handlers_disconnect_by_func (self->folder, on_conversation_list_folder_changed, self);
+    g_clear_object (&self->folder);
+  }
+
+  for (GList *iter = self->collection_folders; iter; iter = iter->next)
+    g_signal_handlers_disconnect_by_func (iter->data, on_collection_folder_changed, self);
+
+  g_list_free_full (g_steal_pointer (&self->collection_folders), g_object_unref);
+
+  if (self->collection)
+    g_signal_handlers_disconnect_by_func (self->collection, on_collection_sources_changed, self);
+
+  g_clear_object (&self->account);
+  g_clear_object (&self->collection);
+  g_clear_pointer (&self->full_name, g_free);
+
+  g_list_store_splice (self->list_store,
+                       0,
+                       g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
+                       NULL,
+                       0);
+
+  self->is_collection = FALSE;
+  gtk_widget_set_visible (self->spinner, FALSE);
+}
+
+typedef struct {
+  CamelFolder *source_folder;
+  StampAccount *account;
+  GPtrArray *uids;
+} StampTrashEntry;
+
+static void
+trash_entry_free (gpointer data)
+{
+  StampTrashEntry *entry = data;
+
+  g_clear_object (&entry->source_folder);
+  g_clear_object (&entry->account);
+  g_clear_pointer (&entry->uids, g_ptr_array_unref);
+  g_free (entry);
+}
+
+static GList *
+collect_trash_entries (StampConversationList *self,
+                       GPtrArray             *items)
+{
+  GHashTable *by_folder = g_hash_table_new (g_direct_hash, g_direct_equal);
+  GList *entries = NULL;
+
+  for (guint i = 0; i < items->len; i++) {
+    StampConversationItem *child_item = STAMP_CONVERSATION_ITEM (items->pdata[i]);
+    StampAccount *account = get_item_account (self, child_item);
+    g_autoptr (GPtrArray) all = collect_messages (stamp_conversation_item_get_node (child_item), NULL);
+
+    if (!account)
+      continue;
+
+    for (guint m = 0; m < all->len; m++) {
+      CamelFolderThreadNode *child_node = all->pdata[m];
+      const CamelMessageInfo *info = camel_folder_thread_node_get_item (child_node);
+      g_autoptr (CamelFolderSummary) summary = NULL;
+      CamelFolder *msg_folder;
+      StampTrashEntry *entry;
+
+      if (!info)
+        continue;
+
+      g_object_get (G_OBJECT (info), "summary", &summary, NULL);
+      msg_folder = camel_folder_summary_get_folder (summary);
+      if (!msg_folder)
+        continue;
+
+      entry = g_hash_table_lookup (by_folder, msg_folder);
+      if (!entry) {
+        entry = g_new0 (StampTrashEntry, 1);
+        entry->source_folder = g_object_ref (msg_folder);
+        entry->account = g_object_ref (account);
+        entry->uids = g_ptr_array_new_with_free_func (g_free);
+        g_hash_table_insert (by_folder, msg_folder, entry);
+        entries = g_list_prepend (entries, entry);
+      }
+
+      g_ptr_array_add (entry->uids, g_strdup (camel_message_info_get_uid (info)));
+    }
+  }
+
+  g_hash_table_destroy (by_folder);
+
+  return entries;
+}
+
 gboolean
 stamp_conversation_list_trash (StampConversationList *self,
                                StampConversationItem *item)
 {
   g_autoptr (GPtrArray) node_array = g_ptr_array_new ();
-  g_autoptr (GPtrArray) uid_array = NULL;
   CamelFolder *folder;
   CamelFolder *trash_folder;
+  gboolean has_uid = FALSE;
 
   if (self->selection_mode) {
     GtkBitset *selected_items = self->selected;
@@ -2299,49 +2700,51 @@ stamp_conversation_list_trash (StampConversationList *self,
     g_ptr_array_add (node_array, item);
   }
 
-  folder = self->folder;
-  trash_folder = stamp_account_get_mail_trash_folder (self->account);
+  if (!self->is_collection) {
+    folder = self->folder;
+    trash_folder = stamp_account_get_mail_trash_folder (self->account);
 
-  if (folder == trash_folder || folder == stamp_account_get_mail_junk_folder (self->account)) {
-    g_autoptr (GError) error = NULL;
+    if (folder == trash_folder || folder == stamp_account_get_mail_junk_folder (self->account)) {
+      g_autoptr (GError) error = NULL;
 
-    g_autoptr (GPtrArray) flush_uids = g_ptr_array_new_with_free_func (g_free);
+      g_autoptr (GPtrArray) flush_uids = g_ptr_array_new_with_free_func (g_free);
 
-    for (gint idx = 0; idx < node_array->len; idx++) {
-      CamelFolderThreadNode *child_node = stamp_conversation_item_get_node (STAMP_CONVERSATION_ITEM (node_array->pdata[idx]));
-      g_autoptr (GPtrArray) folder_uids = collect_uids_for_folder (child_node, folder);
+      for (gint idx = 0; idx < node_array->len; idx++) {
+        CamelFolderThreadNode *child_node = stamp_conversation_item_get_node (STAMP_CONVERSATION_ITEM (node_array->pdata[idx]));
+        g_autoptr (GPtrArray) folder_uids = collect_uids_for_folder (child_node, folder);
 
-      for (guint ui = 0; ui < folder_uids->len; ui++)
-        g_ptr_array_add (flush_uids, g_strdup (g_ptr_array_index (folder_uids, ui)));
-    }
+        for (guint ui = 0; ui < folder_uids->len; ui++)
+          g_ptr_array_add (flush_uids, g_strdup (g_ptr_array_index (folder_uids, ui)));
+      }
 
-    if (self->transfer_cancellable) {
-      g_cancellable_cancel (self->transfer_cancellable);
-      g_clear_object (&self->transfer_cancellable);
-    }
+      if (self->transfer_cancellable) {
+        g_cancellable_cancel (self->transfer_cancellable);
+        g_clear_object (&self->transfer_cancellable);
+      }
 
-    if (flush_uids->len == 0) {
-      g_warning ("%s: No uids from current folder, abort", G_STRFUNC);
+      if (flush_uids->len == 0) {
+        g_warning ("%s: No uids from current folder, abort", G_STRFUNC);
+        return FALSE;
+      }
+
+      for (gint idx = flush_uids->len - 1; idx >= 0; idx--)
+        camel_folder_set_message_flags (folder, flush_uids->pdata[idx], CAMEL_MESSAGE_SEEN | CAMEL_MESSAGE_DELETED, CAMEL_MESSAGE_SEEN | CAMEL_MESSAGE_DELETED);
+
+      camel_folder_synchronize_sync (folder, FALSE, NULL, &error);
+      if (error)
+        g_warning ("%s: Could not synchronize folder: %s", G_STRFUNC, error->message);
+
+      for (gint idx = 0; idx < node_array->len; idx++)
+        stamp_conversation_item_set_hidden (STAMP_CONVERSATION_ITEM (node_array->pdata[idx]), TRUE);
+
+      g_list_model_items_changed (G_LIST_MODEL (self->list_store),
+                                  0,
+                                  g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
+                                  g_list_model_get_n_items (G_LIST_MODEL (self->list_store)));
+
+      stamp_conversation_list_unselect (self);
       return FALSE;
     }
-
-    for (gint idx = flush_uids->len - 1; idx >= 0; idx--)
-      camel_folder_set_message_flags (folder, flush_uids->pdata[idx], CAMEL_MESSAGE_SEEN | CAMEL_MESSAGE_DELETED, CAMEL_MESSAGE_SEEN | CAMEL_MESSAGE_DELETED);
-
-    camel_folder_synchronize_sync (folder, FALSE, NULL, &error);
-    if (error)
-      g_warning ("%s: Could not synchronize folder: %s", G_STRFUNC, error->message);
-
-    for (gint idx = 0; idx < node_array->len; idx++)
-      stamp_conversation_item_set_hidden (STAMP_CONVERSATION_ITEM (node_array->pdata[idx]), TRUE);
-
-    g_list_model_items_changed (G_LIST_MODEL (self->list_store),
-                                0,
-                                g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
-                                g_list_model_get_n_items (G_LIST_MODEL (self->list_store)));
-
-    stamp_conversation_list_unselect (self);
-    return FALSE;
   }
 
   if (self->transfer_cancellable) {
@@ -2350,44 +2753,55 @@ stamp_conversation_list_trash (StampConversationList *self,
   }
 
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
-  g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
-  g_clear_object (&self->trash_source_folder);
-  g_clear_object (&self->trash_target_folder);
+  g_clear_list (&self->trash_entries, trash_entry_free);
 
   self->trash_array = g_ptr_array_new_with_free_func (g_object_unref);
   for (guint i = 0; i < node_array->len; i++)
     g_ptr_array_add (self->trash_array, g_object_ref (node_array->pdata[i]));
 
-  uid_array = g_ptr_array_new_with_free_func (g_free);
+  if (self->is_collection) {
+    self->trash_entries = collect_trash_entries (self, node_array);
+  } else {
+    StampTrashEntry *entry = g_new0 (StampTrashEntry, 1);
 
-  for (gint idx = 0; idx < node_array->len; idx++) {
-    StampConversationItem *child_item = STAMP_CONVERSATION_ITEM (node_array->pdata[idx]);
-    CamelFolderThreadNode *child_node = stamp_conversation_item_get_node (child_item);
-    g_autoptr (GPtrArray) folder_uids = NULL;
+    entry->source_folder = g_object_ref (folder);
+    entry->account = g_object_ref (self->account);
+    entry->uids = g_ptr_array_new_with_free_func (g_free);
 
-    stamp_conversation_item_set_hidden (child_item, TRUE);
-    folder_uids = collect_uids_for_folder (child_node, folder);
+    for (gint idx = 0; idx < node_array->len; idx++) {
+      CamelFolderThreadNode *child_node = stamp_conversation_item_get_node (STAMP_CONVERSATION_ITEM (node_array->pdata[idx]));
+      g_autoptr (GPtrArray) folder_uids = collect_uids_for_folder (child_node, folder);
 
-    for (guint ui = 0; ui < folder_uids->len; ui++)
-      g_ptr_array_add (uid_array, g_strdup (g_ptr_array_index (folder_uids, ui)));
+      for (guint ui = 0; ui < folder_uids->len; ui++)
+        g_ptr_array_add (entry->uids, g_strdup (g_ptr_array_index (folder_uids, ui)));
+    }
+
+    self->trash_entries = g_list_append (NULL, entry);
   }
+
+  for (GList *l = self->trash_entries; l; l = l->next) {
+    StampTrashEntry *entry = l->data;
+
+    if (entry->uids->len > 0) {
+      has_uid = TRUE;
+      break;
+    }
+  }
+
+  if (!has_uid) {
+    g_warning ("%s: No uids from current folder, abort", G_STRFUNC);
+    g_clear_pointer (&self->trash_array, g_ptr_array_unref);
+    g_clear_list (&self->trash_entries, trash_entry_free);
+    return FALSE;
+  }
+
+  for (gint idx = 0; idx < node_array->len; idx++)
+    stamp_conversation_item_set_hidden (STAMP_CONVERSATION_ITEM (node_array->pdata[idx]), TRUE);
 
   g_list_model_items_changed (G_LIST_MODEL (self->list_store),
                               0,
                               g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
                               g_list_model_get_n_items (G_LIST_MODEL (self->list_store)));
-
-  if (uid_array->len == 0) {
-    g_warning ("%s: No uids from current folder, abort", G_STRFUNC);
-    return FALSE;
-  }
-
-  self->trash_uids = g_ptr_array_new_with_free_func (g_free);
-  for (guint idx_u = 0; idx_u < uid_array->len; idx_u++)
-    g_ptr_array_add (self->trash_uids, g_strdup (g_ptr_array_index (uid_array, idx_u)));
-
-  self->trash_source_folder = g_object_ref (folder);
-  self->trash_target_folder = trash_folder ? g_object_ref (trash_folder) : NULL;
 
   return TRUE;
 }
@@ -2395,35 +2809,34 @@ stamp_conversation_list_trash (StampConversationList *self,
 void
 stamp_conversation_list_finalize_trash (StampConversationList *self)
 {
-  CamelFolder *trash_folder;
-  g_autoptr (GPtrArray) uid_array = NULL;
-
-  if (!self->trash_array || !self->trash_uids)
+  if (!self->trash_array || !self->trash_entries)
     return;
 
-  trash_folder = self->trash_target_folder;
-  if (!self->trash_source_folder || !trash_folder) {
-    g_clear_pointer (&self->trash_array, g_ptr_array_unref);
-    g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
-    g_clear_object (&self->trash_source_folder);
-    g_clear_object (&self->trash_target_folder);
-    return;
+  for (GList *l = self->trash_entries; l; l = l->next) {
+    StampTrashEntry *entry = l->data;
+    CamelFolder *trash_folder;
+    g_autoptr (GPtrArray) uid_array = NULL;
+
+    trash_folder = stamp_account_get_mail_trash_folder (entry->account);
+    if (!entry->source_folder || !trash_folder || entry->uids->len == 0)
+      continue;
+
+    uid_array = g_ptr_array_new_with_free_func (g_free);
+    for (guint i = 0; i < entry->uids->len; i++)
+      g_ptr_array_add (uid_array, g_strdup (g_ptr_array_index (entry->uids, i)));
+
+    for (gint idx = uid_array->len - 1; idx >= 0; idx--)
+      camel_folder_set_message_flags (entry->source_folder,
+                                      g_ptr_array_index (uid_array, idx),
+                                      CAMEL_MESSAGE_SEEN, CAMEL_MESSAGE_SEEN);
+
+    if (!self->transfer_cancellable)
+      self->transfer_cancellable = g_cancellable_new ();
+    camel_folder_transfer_messages_to (entry->source_folder, uid_array,
+                                       trash_folder, TRUE,
+                                       G_PRIORITY_DEFAULT, self->transfer_cancellable,
+                                       on_transfer_messages_to, self);
   }
-
-  uid_array = g_ptr_array_new_with_free_func (g_free);
-  for (guint i = 0; i < self->trash_uids->len; i++)
-    g_ptr_array_add (uid_array, g_strdup (g_ptr_array_index (self->trash_uids, i)));
-
-  for (gint idx = uid_array->len - 1; idx >= 0; idx--)
-    camel_folder_set_message_flags (self->trash_source_folder,
-                                    g_ptr_array_index (uid_array, idx),
-                                    CAMEL_MESSAGE_SEEN, CAMEL_MESSAGE_SEEN);
-
-  self->transfer_cancellable = g_cancellable_new ();
-  camel_folder_transfer_messages_to (self->trash_source_folder, uid_array,
-                                     trash_folder, TRUE,
-                                     G_PRIORITY_DEFAULT, self->transfer_cancellable,
-                                     on_transfer_messages_to, self);
 
   if (self->selection_mode)
     stamp_conversation_list_unselect (self);
@@ -2431,9 +2844,8 @@ stamp_conversation_list_finalize_trash (StampConversationList *self)
     stamp_conversation_list_select_relative (self, 1);
 
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
-  g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
-  g_clear_object (&self->trash_source_folder);
-  g_clear_object (&self->trash_target_folder);
+  g_clear_list (&self->trash_entries, trash_entry_free);
+  g_clear_object (&self->transfer_cancellable);
 }
 
 void
@@ -2462,9 +2874,7 @@ stamp_conversation_list_undo_trash (StampConversationList *self)
                               g_list_model_get_n_items (G_LIST_MODEL (self->list_store)));
 
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
-  g_clear_pointer (&self->trash_uids, g_ptr_array_unref);
-  g_clear_object (&self->trash_source_folder);
-  g_clear_object (&self->trash_target_folder);
+  g_clear_list (&self->trash_entries, trash_entry_free);
 }
 
 GtkToggleButton *

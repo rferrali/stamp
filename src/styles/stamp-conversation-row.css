@@ -18,6 +18,19 @@
   min-width: 1rem;
 }
 
+.account-pill {
+  border-radius: 999px;
+  padding-left: 6px;
+  padding-right: 6px;
+  font-size: smaller;
+  font-weight: bold;
+  border-style: solid;
+  border-width: 1px;
+  background-color: alpha(@accent_color, 0.1);
+  border-color: alpha(@accent_color, 0.4);
+  color: @accent_color;
+}
+
 .category-pill.light-bg { color: #1a1a1a; }
 .category-pill.dark-bg  { color: #ffffff; }
 

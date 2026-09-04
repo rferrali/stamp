@@ -59,6 +59,11 @@
       <summary>The account name and folder name of the last selected folder</summary>
       <description>The account name and folder name of the last selected folder</description>
     </key>
+    <key type="b" name="all-mailboxes-expanded">
+      <default>true</default>
+      <summary>Whether the All Mailboxes group is expanded</summary>
+      <description>Whether the All Mailboxes combined inbox group is expanded in the sidebar.</description>
+    </key>
     <key type="b" name="always-show-images">
         <default>false</default>
         <summary>Always show images</summary>

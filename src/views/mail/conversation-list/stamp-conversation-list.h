@@ -23,6 +23,7 @@
 #include <camel/camel.h>
 
 #include "stamp-account.h"
+#include "stamp-collection-item.h"
 #include "stamp-conversation-item.h"
 
 G_BEGIN_DECLS
@@ -41,6 +42,22 @@ stamp_conversation_list_load_folder (StampConversationList *self,
 
 void
 stamp_conversation_list_refresh (StampConversationList *self);
+
+void
+stamp_conversation_list_load_collection (StampConversationList  *self,
+                                         StampCollectionItem    *collection);
+
+StampAccount *
+stamp_conversation_list_get_selected_account (StampConversationList *self);
+
+StampAccount *
+stamp_conversation_list_get_account (StampConversationList *self);
+
+gboolean
+stamp_conversation_list_is_collection (StampConversationList *self);
+
+void
+stamp_conversation_list_clear (StampConversationList *self);
 
 void
 stamp_conversation_list_mark_read (StampConversationList *self,

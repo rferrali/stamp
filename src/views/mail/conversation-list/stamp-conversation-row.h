@@ -36,7 +36,8 @@ stamp_conversation_row_new (void);
 void
 stamp_conversation_row_bind_mail (StampConversationRow  *self,
                                   StampConversationItem *item,
-                                  StampAccount          *account);
+                                  StampAccount          *account,
+                                  gboolean               show_account);
 
 void
 stamp_conversation_row_unbind_mail (StampConversationRow  *self,

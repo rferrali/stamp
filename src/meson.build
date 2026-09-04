@@ -47,6 +47,7 @@ stamp_sources = [
   'views/mail/composer/stamp-composer-from.c',
   'views/mail/composer/stamp-contact-completion.c',
   'views/mail/folder-list/stamp-account-item.c',
+  'views/mail/folder-list/stamp-collection-item.c',
   'views/mail/folder-list/stamp-folder-item.c',
   'views/mail/folder-list/stamp-folder-list.c',
   'views/mail/folder-list/stamp-folder-row.c',

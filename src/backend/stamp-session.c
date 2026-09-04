@@ -702,6 +702,29 @@ stamp_session_get_accounts (StampSession *self)
   return self->accounts;
 }
 
+StampAccount *
+stamp_session_find_account_by_mail_uid (StampSession *self,
+                                        const gchar  *mail_uid)
+{
+  if (!mail_uid)
+    return NULL;
+
+  for (GList *iter = self->accounts; iter; iter = iter->next) {
+    StampAccount *account = STAMP_ACCOUNT (iter->data);
+    StampMailService *mail_service = stamp_account_get_mail_service (account);
+    CamelService *service;
+
+    if (!mail_service)
+      continue;
+
+    service = stamp_mail_service_get_service (mail_service);
+    if (service && g_strcmp0 (camel_service_get_uid (service), mail_uid) == 0)
+      return account;
+  }
+
+  return NULL;
+}
+
 ESourceRegistry *
 stamp_session_get_registry (StampSession *self)
 {

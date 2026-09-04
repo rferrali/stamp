@@ -239,6 +239,7 @@ on_get_folder_info (GObject      *source,
   if (folder_info) {
     show_info (self, folder_info);
     stamp_account_item_connect_to_account (self);
+    g_signal_emit (self, signals[ACCOUNT_ITEM_CHANGED], 0);
 
     /* Defer folder refresh to give folder items time to load their folders */
     g_clear_handle_id (&self->refresh_folder_handler, g_source_remove);
