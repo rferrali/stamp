@@ -50,6 +50,7 @@ struct _StampConversationRow {
   GtkImage *calendar_icon;
   GtkFlowBox *labels;
   GtkLabel *account_pill;
+  const gchar *account_color_class;
 
   GCancellable *cancellable;
   gboolean selected;
@@ -425,6 +426,19 @@ set_avatar (StampConversationRow *self,
   adw_avatar_set_text (self->avatar, tmp);
 }
 
+static void
+on_account_color_changed (StampAccount         *account,
+                          StampConversationRow *self)
+{
+  if (self->account_color_class)
+    gtk_widget_remove_css_class (GTK_WIDGET (self->account_pill), self->account_color_class);
+
+  self->account_color_class = stamp_account_get_color_class (account);
+
+  if (self->account_color_class)
+    gtk_widget_add_css_class (GTK_WIDGET (self->account_pill), self->account_color_class);
+}
+
 void
 stamp_conversation_row_unbind_mail (StampConversationRow  *self,
                                     StampConversationItem *item)
@@ -435,6 +449,16 @@ stamp_conversation_row_unbind_mail (StampConversationRow  *self,
   if (self->cancellable) {
     g_cancellable_cancel (self->cancellable);
     g_clear_object (&self->cancellable);
+  }
+
+  if (self->account_color_class) {
+    gtk_widget_remove_css_class (GTK_WIDGET (self->account_pill), self->account_color_class);
+    self->account_color_class = NULL;
+  }
+
+  if (self->account) {
+    g_signal_handlers_disconnect_by_func (self->account, on_account_color_changed, self);
+    g_clear_object (&self->account);
   }
 
   gtk_label_set_text (GTK_LABEL (self->account_pill), NULL);
@@ -511,11 +535,20 @@ stamp_conversation_row_bind_mail (StampConversationRow  *self,
   g_return_if_fail (self->item == NULL);
 
   self->item = g_object_ref (item);
-  self->account = g_object_ref (account);
+  if (account)
+    self->account = g_object_ref (account);
 
   if (show_account && account) {
+    self->account_color_class = stamp_account_get_color_class (account);
+    if (self->account_color_class)
+      gtk_widget_add_css_class (GTK_WIDGET (self->account_pill), self->account_color_class);
+
     gtk_label_set_text (GTK_LABEL (self->account_pill), stamp_account_get_name (account));
     gtk_widget_set_visible (GTK_WIDGET (self->account_pill), TRUE);
+
+    g_signal_connect_object (account, "color-changed",
+                             G_CALLBACK (on_account_color_changed), self,
+                             G_CONNECT_DEFAULT);
   }
 
   self->generation++;

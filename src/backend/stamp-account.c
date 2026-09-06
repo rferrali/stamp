@@ -62,6 +62,8 @@ struct _StampAccount {
 
   StampPhotoCache *photo_cache;
   GList *categories;
+  const gchar *color_class;
+  GSettings *settings;
 };
 
 G_DEFINE_FINAL_TYPE (StampAccount, stamp_account, G_TYPE_OBJECT);
@@ -79,6 +81,7 @@ enum {
   MAIL_REMOVED,
   BOOK_ADDED,
   BOOK_REMOVED,
+  COLOR_CHANGED,
   LAST_SIGNAL,
 };
 
@@ -170,6 +173,11 @@ stamp_account_dispose (GObject *object)
 
   g_clear_pointer (&self->photo_cache, stamp_photo_cache_free);
 
+  if (self->settings) {
+    g_signal_handlers_disconnect_by_data (self->settings, self);
+    g_clear_object (&self->settings);
+  }
+
   G_OBJECT_CLASS (stamp_account_parent_class)->dispose (object);
 }
 
@@ -204,18 +212,161 @@ stamp_account_class_init (StampAccountClass *klass)
                                         G_TYPE_NONE,
                                         2, STAMP_TYPE_ACCOUNT,
                                         G_TYPE_POINTER);
+  signals[COLOR_CHANGED] = g_signal_new ("color-changed", G_OBJECT_CLASS_TYPE (klass),
+                                         G_SIGNAL_RUN_FIRST,
+                                         0, NULL, NULL, NULL,
+                                         G_TYPE_NONE,
+                                         0);
+}
+
+#define NUMBER_OF_COLORS 14
+
+static const gchar *ACCOUNT_COLOR_CLASSES[NUMBER_OF_COLORS] = {
+  "color1",
+  "color2",
+  "color3",
+  "color4",
+  "color5",
+  "color6",
+  "color7",
+  "color8",
+  "color9",
+  "color10",
+  "color11",
+  "color12",
+  "color13",
+  "color14",
+};
+
+static void
+update_color_class (StampAccount *self)
+{
+  g_autofree gchar *badge_color = NULL;
+  const gchar *text;
+  guint color_index;
+  StampSession *session;
+
+  if (self->settings)
+    badge_color = g_settings_get_string (self->settings, "badge-color");
+
+  if (badge_color && *badge_color && g_strcmp0 (badge_color, "auto") != 0) {
+    for (guint i = 0; i < NUMBER_OF_COLORS; i++) {
+      if (g_strcmp0 (badge_color, ACCOUNT_COLOR_CLASSES[i]) == 0) {
+        self->color_class = ACCOUNT_COLOR_CLASSES[i];
+        return;
+      }
+    }
+  }
+
+  text = self->display_name ? self->display_name : self->uid;
+  color_index = (text && *text) ? (g_str_hash (text) % NUMBER_OF_COLORS) : 0;
+
+  session = stamp_session_get_default ();
+  if (session) {
+    GList *accounts = stamp_session_get_accounts (session);
+    gboolean used[NUMBER_OF_COLORS] = { FALSE };
+    guint probes = 0;
+    GList *l;
+
+    /* First pass: reserve colors explicitly set to a custom color by other accounts */
+    for (l = accounts; l; l = l->next) {
+      StampAccount *other = STAMP_ACCOUNT (l->data);
+      if (other != self && other->settings) {
+        g_autofree gchar *other_setting = g_settings_get_string (other->settings, "badge-color");
+        if (other_setting && *other_setting && g_strcmp0 (other_setting, "auto") != 0) {
+          for (guint i = 0; i < NUMBER_OF_COLORS; i++) {
+            if (g_strcmp0 (other_setting, ACCOUNT_COLOR_CLASSES[i]) == 0) {
+              used[i] = TRUE;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    /* Second pass: reserve colors already used by preceding accounts in the list */
+    for (l = accounts; l; l = l->next) {
+      StampAccount *other = STAMP_ACCOUNT (l->data);
+      if (other == self)
+        break;
+
+      if (other->color_class) {
+        for (guint i = 0; i < NUMBER_OF_COLORS; i++) {
+          if (g_strcmp0 (other->color_class, ACCOUNT_COLOR_CLASSES[i]) == 0) {
+            used[i] = TRUE;
+            break;
+          }
+        }
+      }
+    }
+
+    /* Probe forward to next available color in case of collision */
+    while (used[color_index] && probes < NUMBER_OF_COLORS) {
+      color_index = (color_index + 1) % NUMBER_OF_COLORS;
+      probes++;
+    }
+  }
+
+  self->color_class = ACCOUNT_COLOR_CLASSES[color_index];
+}
+
+void
+stamp_account_update_color (StampAccount *self)
+{
+  const gchar *old_color;
+
+  g_return_if_fail (STAMP_IS_ACCOUNT (self));
+
+  old_color = self->color_class;
+  update_color_class (self);
+
+  if (g_strcmp0 (old_color, self->color_class) != 0)
+    g_signal_emit (self, signals[COLOR_CHANGED], 0);
+}
+
+static void
+update_all_accounts_colors (void)
+{
+  StampSession *session = stamp_session_get_default ();
+  GList *accounts;
+  GList *l;
+
+  if (!session)
+    return;
+
+  accounts = stamp_session_get_accounts (session);
+  for (l = accounts; l; l = l->next) {
+    StampAccount *acc = STAMP_ACCOUNT (l->data);
+    stamp_account_update_color (acc);
+  }
+}
+
+static void
+on_settings_badge_color_changed (GSettings    *settings,
+                                 const gchar  *key,
+                                 StampAccount *self)
+{
+  update_all_accounts_colors ();
 }
 
 StampAccount *
 stamp_account_new (ESource         *collection,
                    ESourceRegistry *registry)
 {
+  g_autofree gchar *settings_path = NULL;
   StampAccount *self = g_object_new (STAMP_TYPE_ACCOUNT, NULL);
 
   self->uid = g_strdup (e_source_get_uid (collection));
   self->display_name = g_strdup (e_source_get_display_name (collection));
   self->registry = g_object_ref (registry);
   self->collection = g_object_ref (collection);
+
+  settings_path = g_strdup_printf ("/org/tabos/stamp/mail/accounts/%s/", self->uid);
+  self->settings = g_settings_new_with_path ("org.tabos.stamp.mail.accounts", settings_path);
+  g_signal_connect_object (self->settings, "changed::badge-color",
+                           G_CALLBACK (on_settings_badge_color_changed), self, G_CONNECT_DEFAULT);
+
+  update_color_class (self);
 
   self->photo_cache = stamp_photo_cache_new (self);
 
@@ -232,6 +383,43 @@ const gchar *
 stamp_account_get_uid (StampAccount *self)
 {
   return self->uid;
+}
+
+const gchar *
+stamp_account_get_color_class (StampAccount *self)
+{
+  g_return_val_if_fail (STAMP_IS_ACCOUNT (self), ACCOUNT_COLOR_CLASSES[0]);
+
+  if (!self->color_class)
+    update_color_class (self);
+
+  return self->color_class;
+}
+
+void
+stamp_account_set_badge_color (StampAccount *self,
+                               const gchar  *badge_color)
+{
+  g_return_if_fail (STAMP_IS_ACCOUNT (self));
+
+  if (!self->settings)
+    return;
+
+  if (!badge_color || !*badge_color)
+    badge_color = "auto";
+
+  g_settings_set_string (self->settings, "badge-color", badge_color);
+}
+
+gchar *
+stamp_account_get_badge_color (StampAccount *self)
+{
+  g_return_val_if_fail (STAMP_IS_ACCOUNT (self), g_strdup ("auto"));
+
+  if (!self->settings)
+    return g_strdup ("auto");
+
+  return g_settings_get_string (self->settings, "badge-color");
 }
 
 static EBookClient *
@@ -1143,6 +1331,7 @@ stamp_account_set_name (StampAccount *self,
     return;
 
   g_set_str (&self->display_name, name);
+  update_all_accounts_colors ();
 }
 
 void

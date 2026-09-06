@@ -21,6 +21,33 @@ template $StampPreferencesAccount: Adw.NavigationPage {
         }
       }
 
+      Adw.PreferencesGroup badge_color_group {
+        title: _("Badge Color");
+        description: _("Color for the account badge in the combined inbox");
+
+        header-suffix: Button reset_badge_color_button {
+          label: _("Reset to Automatic");
+          valign: center;
+          tooltip-text: _("Reset to automatically generated color");
+          styles [
+            "flat",
+          ]
+        };
+
+        Adw.PreferencesRow {
+          accessible-role: group;
+          activatable: false;
+          focusable: false;
+
+          Box badge_color_box {
+            spacing: 8;
+            margin-top: 12;
+            margin-bottom: 12;
+            halign: center;
+          }
+        }
+      }
+
       Adw.PreferencesGroup alias_group {
         title: _("Aliases");
         description: _("Add different names or email addresses to your account");

@@ -145,5 +145,10 @@
       <summary>S/MIME encryption certificate nickname</summary>
       <description>The nickname of the S/MIME certificate used for encryption.</description>
     </key>
+    <key name="badge-color" type="s">
+      <default>'auto'</default>
+      <summary>Account badge color</summary>
+      <description>Color class for account badge ('auto' or 'color1'..'color14')</description>
+    </key>
   </schema>
 </schemalist>

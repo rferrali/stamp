@@ -102,3 +102,48 @@
   background-color: var(--accent-bg-color);
   padding: 4px;
 }
+
+.accent-button {
+  border-radius: 9999px;
+  padding: 3px;
+  background: var(--accent-bg-color);
+  min-width: 24px;
+  min-height: 24px;
+  outline: none;
+  border: none;
+  background-clip: content-box;
+  box-shadow: none;
+  transition: box-shadow 150ms ease-in-out;
+}
+
+.accent-button:checked {
+  box-shadow: 0 0 0 3px var(--accent-bg-color);
+}
+
+.accent-button:focus:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-bg-color) 40%, transparent);
+}
+
+.accent-button:checked:focus:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-bg-color),
+              0 0 0 6px color-mix(in srgb, var(--accent-bg-color) 40%, transparent);
+}
+
+.accent-button:hover {
+  filter: brightness(1.15);
+}
+
+.accent-button.color1  { --accent-bg-color: #337fdc; }
+.accent-button.color2  { --accent-bg-color: #0f9ac8; }
+.accent-button.color3  { --accent-bg-color: #29ae74; }
+.accent-button.color4  { --accent-bg-color: #6ab85b; }
+.accent-button.color5  { --accent-bg-color: #d29d09; }
+.accent-button.color6  { --accent-bg-color: #d68400; }
+.accent-button.color7  { --accent-bg-color: #ed5b00; }
+.accent-button.color8  { --accent-bg-color: #e62d42; }
+.accent-button.color9  { --accent-bg-color: #e33b6a; }
+.accent-button.color10 { --accent-bg-color: #9945b5; }
+.accent-button.color11 { --accent-bg-color: #7a59ca; }
+.accent-button.color12 { --accent-bg-color: #b08952; }
+.accent-button.color13 { --accent-bg-color: #785336; }
+.accent-button.color14 { --accent-bg-color: #6e6d71; }

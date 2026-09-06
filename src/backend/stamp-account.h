@@ -102,6 +102,19 @@ stamp_account_set_name (StampAccount *self,
 const gchar *
 stamp_account_get_uid (StampAccount *self);
 
+const gchar *
+stamp_account_get_color_class (StampAccount *self);
+
+void
+stamp_account_set_badge_color (StampAccount *self,
+                               const gchar  *badge_color);
+
+gchar *
+stamp_account_get_badge_color (StampAccount *self);
+
+void
+stamp_account_update_color (StampAccount *self);
+
 CamelInternetAddress *
 stamp_account_get_address (StampAccount *self);
 

@@ -38,6 +38,9 @@ struct _StampPreferencesAccount {
   AdwWindowTitle *window_title;
   AdwPreferencesPage *page;
   AdwComboRow *default_signature;
+  GtkBox *badge_color_box;
+  GtkButton *reset_badge_color_button;
+  gboolean updating_badge_colors;
   AdwPreferencesGroup *alias_group;
   AdwComboRow *notification_mode;
   AdwPreferencesGroup *notification_folders_group;
@@ -336,6 +339,142 @@ on_notification_mode_changed (GObject    *gobject,
   }
 }
 
+#define NUMBER_OF_COLORS 14
+
+static const struct {
+  const gchar *name;
+  const gchar *title;
+} ACCOUNT_COLORS[NUMBER_OF_COLORS] = {
+  { "color1", N_("Blue") },
+  { "color2", N_("Cyan") },
+  { "color3", N_("Green") },
+  { "color4", N_("Lime") },
+  { "color5", N_("Yellow") },
+  { "color6", N_("Gold") },
+  { "color7", N_("Orange") },
+  { "color8", N_("Raspberry") },
+  { "color9", N_("Magenta") },
+  { "color10", N_("Purple") },
+  { "color11", N_("Violet") },
+  { "color12", N_("Beige") },
+  { "color13", N_("Brown") },
+  { "color14", N_("Gray") },
+};
+
+static void
+reload_badge_color_toggles (StampPreferencesAccount *self)
+{
+  g_autofree gchar *current_color = stamp_account_get_badge_color (self->account);
+  gboolean is_auto = (!current_color || !*current_color || g_strcmp0 (current_color, "auto") == 0);
+  GtkWidget *child;
+
+  self->updating_badge_colors = TRUE;
+
+  gtk_widget_set_sensitive (GTK_WIDGET (self->reset_badge_color_button), !is_auto);
+
+  for (child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box));
+       child;
+       child = gtk_widget_get_next_sibling (child)) {
+    const gchar *color_name = g_object_get_data (G_OBJECT (child), "color-class");
+    gboolean active = (!is_auto && g_strcmp0 (current_color, color_name) == 0);
+
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (child), active);
+  }
+
+  self->updating_badge_colors = FALSE;
+}
+
+static void
+on_badge_color_toggled (StampPreferencesAccount *self,
+                        GtkToggleButton         *toggle)
+{
+  GtkWidget *child;
+
+  if (self->updating_badge_colors)
+    return;
+
+  if (gtk_toggle_button_get_active (toggle)) {
+    const gchar *color_name = g_object_get_data (G_OBJECT (toggle), "color-class");
+
+    self->updating_badge_colors = TRUE;
+    for (child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box));
+         child;
+         child = gtk_widget_get_next_sibling (child)) {
+      if (child != GTK_WIDGET (toggle))
+        gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (child), FALSE);
+    }
+    self->updating_badge_colors = FALSE;
+
+    gtk_widget_set_sensitive (GTK_WIDGET (self->reset_badge_color_button), TRUE);
+    stamp_account_set_badge_color (self->account, color_name);
+  } else {
+    gboolean any_active = FALSE;
+    for (child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box));
+         child;
+         child = gtk_widget_get_next_sibling (child)) {
+      if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (child))) {
+        any_active = TRUE;
+        break;
+      }
+    }
+
+    if (!any_active) {
+      gtk_widget_set_sensitive (GTK_WIDGET (self->reset_badge_color_button), FALSE);
+      stamp_account_set_badge_color (self->account, "auto");
+    }
+  }
+}
+
+static void
+on_reset_badge_color_clicked (StampPreferencesAccount *self)
+{
+  GtkWidget *child;
+
+  self->updating_badge_colors = TRUE;
+  for (child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box));
+       child;
+       child = gtk_widget_get_next_sibling (child)) {
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (child), FALSE);
+  }
+  self->updating_badge_colors = FALSE;
+
+  gtk_widget_set_sensitive (GTK_WIDGET (self->reset_badge_color_button), FALSE);
+  stamp_account_set_badge_color (self->account, "auto");
+}
+
+static void
+setup_badge_color (StampPreferencesAccount *self)
+{
+  GtkWidget *child;
+  guint i;
+
+  while ((child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box))))
+    gtk_box_remove (self->badge_color_box, child);
+
+  for (i = 0; i < NUMBER_OF_COLORS; i++) {
+    GtkWidget *button = gtk_toggle_button_new ();
+
+    gtk_widget_set_tooltip_text (button, _(ACCOUNT_COLORS[i].title));
+    gtk_widget_add_css_class (button, "accent-button");
+    gtk_widget_add_css_class (button, ACCOUNT_COLORS[i].name);
+
+    g_object_set_data (G_OBJECT (button), "color-class", (gpointer)ACCOUNT_COLORS[i].name);
+
+    g_signal_connect_object (button, "toggled",
+                             G_CALLBACK (on_badge_color_toggled), self,
+                             G_CONNECT_SWAPPED);
+
+    gtk_box_append (self->badge_color_box, button);
+  }
+
+  g_signal_handlers_disconnect_by_func (self->reset_badge_color_button, on_reset_badge_color_clicked, self);
+  g_signal_connect_object (self->reset_badge_color_button, "clicked",
+                           G_CALLBACK (on_reset_badge_color_clicked), self,
+                           G_CONNECT_SWAPPED);
+
+  reload_badge_color_toggles (self);
+}
+
 static void
 setup_notifications (StampPreferencesAccount *self)
 {
@@ -614,6 +753,7 @@ set_account (StampPreferencesAccount *self,
   refresh_default_signature (self);
   refresh_alias_list (self);
 
+  setup_badge_color (self);
   setup_notifications (self);
   setup_crypto (self);
 }
@@ -699,6 +839,8 @@ stamp_preferences_account_class_init (StampPreferencesAccountClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, window_title);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, page);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, default_signature);
+  gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, badge_color_box);
+  gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, reset_badge_color_button);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, alias_group);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, notification_mode);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, notification_folders_group);

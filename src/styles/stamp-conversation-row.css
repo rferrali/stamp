@@ -31,6 +31,176 @@
   color: @accent_color;
 }
 
+.account-pill.color1 {
+  background-color: alpha(#337fdc, 0.12);
+  border-color: alpha(#337fdc, 0.4);
+  color: #337fdc;
+}
+
+.account-pill.color2 {
+  background-color: alpha(#0f9ac8, 0.12);
+  border-color: alpha(#0f9ac8, 0.4);
+  color: #0f9ac8;
+}
+
+.account-pill.color3 {
+  background-color: alpha(#29ae74, 0.12);
+  border-color: alpha(#29ae74, 0.4);
+  color: #29ae74;
+}
+
+.account-pill.color4 {
+  background-color: alpha(#6ab85b, 0.12);
+  border-color: alpha(#6ab85b, 0.4);
+  color: #6ab85b;
+}
+
+.account-pill.color5 {
+  background-color: alpha(#d29d09, 0.12);
+  border-color: alpha(#d29d09, 0.4);
+  color: #d29d09;
+}
+
+.account-pill.color6 {
+  background-color: alpha(#d68400, 0.12);
+  border-color: alpha(#d68400, 0.4);
+  color: #d68400;
+}
+
+.account-pill.color7 {
+  background-color: alpha(#ed5b00, 0.12);
+  border-color: alpha(#ed5b00, 0.4);
+  color: #ed5b00;
+}
+
+.account-pill.color8 {
+  background-color: alpha(#e62d42, 0.12);
+  border-color: alpha(#e62d42, 0.4);
+  color: #e62d42;
+}
+
+.account-pill.color9 {
+  background-color: alpha(#e33b6a, 0.12);
+  border-color: alpha(#e33b6a, 0.4);
+  color: #e33b6a;
+}
+
+.account-pill.color10 {
+  background-color: alpha(#9945b5, 0.12);
+  border-color: alpha(#9945b5, 0.4);
+  color: #9945b5;
+}
+
+.account-pill.color11 {
+  background-color: alpha(#7a59ca, 0.12);
+  border-color: alpha(#7a59ca, 0.4);
+  color: #7a59ca;
+}
+
+.account-pill.color12 {
+  background-color: alpha(#b08952, 0.12);
+  border-color: alpha(#b08952, 0.4);
+  color: #b08952;
+}
+
+.account-pill.color13 {
+  background-color: alpha(#785336, 0.12);
+  border-color: alpha(#785336, 0.4);
+  color: #785336;
+}
+
+.account-pill.color14 {
+  background-color: alpha(#6e6d71, 0.12);
+  border-color: alpha(#6e6d71, 0.4);
+  color: #6e6d71;
+}
+
+@media (prefers-color-scheme: dark) {
+  .account-pill.color1 {
+    background-color: alpha(#83b6ec, 0.15);
+    border-color: alpha(#83b6ec, 0.4);
+    color: #83b6ec;
+  }
+
+  .account-pill.color2 {
+    background-color: alpha(#7ad9f1, 0.15);
+    border-color: alpha(#7ad9f1, 0.4);
+    color: #7ad9f1;
+  }
+
+  .account-pill.color3 {
+    background-color: alpha(#8de6b1, 0.15);
+    border-color: alpha(#8de6b1, 0.4);
+    color: #8de6b1;
+  }
+
+  .account-pill.color4 {
+    background-color: alpha(#b5e98a, 0.15);
+    border-color: alpha(#b5e98a, 0.4);
+    color: #b5e98a;
+  }
+
+  .account-pill.color5 {
+    background-color: alpha(#f8e359, 0.15);
+    border-color: alpha(#f8e359, 0.4);
+    color: #f8e359;
+  }
+
+  .account-pill.color6 {
+    background-color: alpha(#ffcb62, 0.15);
+    border-color: alpha(#ffcb62, 0.4);
+    color: #ffcb62;
+  }
+
+  .account-pill.color7 {
+    background-color: alpha(#ffa95a, 0.15);
+    border-color: alpha(#ffa95a, 0.4);
+    color: #ffa95a;
+  }
+
+  .account-pill.color8 {
+    background-color: alpha(#f78773, 0.15);
+    border-color: alpha(#f78773, 0.4);
+    color: #f78773;
+  }
+
+  .account-pill.color9 {
+    background-color: alpha(#e973ab, 0.15);
+    border-color: alpha(#e973ab, 0.4);
+    color: #e973ab;
+  }
+
+  .account-pill.color10 {
+    background-color: alpha(#cb78d4, 0.15);
+    border-color: alpha(#cb78d4, 0.4);
+    color: #cb78d4;
+  }
+
+  .account-pill.color11 {
+    background-color: alpha(#9e91e8, 0.15);
+    border-color: alpha(#9e91e8, 0.4);
+    color: #9e91e8;
+  }
+
+  .account-pill.color12 {
+    background-color: alpha(#e3cf9c, 0.15);
+    border-color: alpha(#e3cf9c, 0.4);
+    color: #e3cf9c;
+  }
+
+  .account-pill.color13 {
+    background-color: alpha(#be916d, 0.15);
+    border-color: alpha(#be916d, 0.4);
+    color: #be916d;
+  }
+
+  .account-pill.color14 {
+    background-color: alpha(#c0bfbc, 0.15);
+    border-color: alpha(#c0bfbc, 0.4);
+    color: #c0bfbc;
+  }
+}
+
 .category-pill.light-bg { color: #1a1a1a; }
 .category-pill.dark-bg  { color: #ffffff; }
 

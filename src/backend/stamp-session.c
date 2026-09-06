@@ -157,6 +157,9 @@ on_accounts_loaded (GObject      *src,
     stamp_account_init_async (g_object_ref (account), self->cancellable, on_account_ready, self);
   }
 
+  for (GList *l = self->accounts; l; l = l->next)
+    stamp_account_update_color (STAMP_ACCOUNT (l->data));
+
 out:
   g_signal_emit (self, signals[STARTUP_FINISHED], 0);
 }
