@@ -12,6 +12,7 @@
     "--device=dri",
     "--socket=pcsc",
     "--socket=wayland",
+    "--socket=pulseaudio",
     "--talk-name=org.gnome.OnlineAccounts",
     "--talk-name=org.gnome.keyring.SystemPrompter",
     "--talk-name=org.gnome.evolution.dataserver.AddressBook10",
