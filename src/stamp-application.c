@@ -412,6 +412,7 @@ stamp_application_about_action (GSimpleAction *action,
 {
   static const gchar *developers[] = {"Jan-Michael Brummer", "Michael Catanzaro", NULL};
   static const gchar *designers[] = {"Tobias Bernard", NULL};
+  static const gchar *sponsors[] = {"grommunio GmbH https://grommunio.com/", NULL};
   StampApplication *self = STAMP_APPLICATION (user_data);
   GtkWindow *window = NULL;
   AdwDialog *dialog;
@@ -426,6 +427,8 @@ stamp_application_about_action (GSimpleAction *action,
   adw_about_dialog_set_designers (ADW_ABOUT_DIALOG (dialog), designers);
   adw_about_dialog_set_copyright (ADW_ABOUT_DIALOG (dialog), "© 2024-2026 Jan-Michael Brummer");
   adw_about_dialog_set_version (ADW_ABOUT_DIALOG (dialog), VERSION);
+
+  adw_about_dialog_add_acknowledgement_section (ADW_ABOUT_DIALOG (dialog), _("Sponsors"), sponsors);
   adw_dialog_present (dialog, GTK_WIDGET (window));
 }
 
