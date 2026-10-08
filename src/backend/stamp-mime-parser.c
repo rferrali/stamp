@@ -444,14 +444,16 @@ convert_links (StampMimeParser *self)
   g_autofree char *linked = NULL;
   g_autofree char *with_emails = NULL;
   g_autofree char *wrapped = NULL;
+  g_autofree char *escaped = NULL;
 
   if (!self->plain_body->text)
     return;
 
   linked = linkify_urls (self->plain_body->text);
   with_emails = linkify_emails (linked);
+  escaped = g_markup_escape_text (with_emails, -1);
 
-  wrapped = g_strdup_printf ("<pre>%s</pre>", with_emails);
+  wrapped = g_strdup_printf ("<pre>%s</pre>", escaped);
   g_set_str (&self->plain_body->text, wrapped);
   self->plain_body->length = strlen (self->plain_body->text);
 }
