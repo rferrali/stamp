@@ -39,6 +39,9 @@ stamp_message_list_set_conversation (StampMessageList      *self,
                                      StampAccount          *account,
                                      CamelFolderThreadNode *node);
 
+gboolean
+stamp_message_list_has_conversation (StampMessageList *self);
+
 void
 stamp_message_list_hovering_over_link (StampMessageList *self,
                                        const gchar       *title,

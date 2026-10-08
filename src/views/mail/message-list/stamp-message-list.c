@@ -923,3 +923,9 @@ stamp_message_list_set_key_capture_widget (StampMessageList *self,
   gtk_search_bar_set_key_capture_widget (GTK_SEARCH_BAR (self->search_bar),
                                          enable ? self->message_stack : NULL);
 }
+
+gboolean
+stamp_message_list_has_conversation (StampMessageList *self)
+{
+  return g_strcmp0 (gtk_stack_get_visible_child_name (GTK_STACK (self->stack)), "empty") != 0;
+}

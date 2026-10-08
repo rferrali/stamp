@@ -309,12 +309,29 @@ void
 on_apply_view (AdwBreakpoint *breakpoint,
                gpointer       user_data)
 {
-  StampMailView *self = STAMP_MAIL_VIEW (user_data);
-  gboolean show = is_mobile_view (self);
+  StampMailView *self;
+  gboolean show;
+
+  if (!user_data)
+    return;
+
+  self = STAMP_MAIL_VIEW (user_data);
+  show = is_mobile_view (self);
 
   stamp_consersation_list_set_show_buttons (self->conversation_list, show);
   stamp_conversation_list_set_key_capture_widget (self->conversation_list, !show);
   stamp_message_list_set_key_capture_widget (self->message_list, !show);
+
+  if (show && user_data) {
+    const gchar *layout = adw_multi_layout_view_get_layout_name (self->mail_layout);
+
+    if (g_strcmp0 (layout, "mobile") == 0) {
+      const gchar *tag = adw_navigation_view_get_visible_page_tag (self->mobile_nav);
+
+      if (g_strcmp0 (tag, "main") == 0 && stamp_message_list_has_conversation (self->message_list))
+        adw_navigation_view_push_by_tag (self->mobile_nav, "content");
+    }
+  }
 }
 
 void
