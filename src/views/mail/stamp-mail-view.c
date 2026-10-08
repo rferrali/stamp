@@ -650,6 +650,9 @@ stamp_mail_view_show_toast (StampMailView *self,
 {
   AdwToast *toast;
 
+  if (!self)
+    return;
+
   toast = adw_toast_new (message);
   adw_toast_overlay_add_toast (self->toast_overlay, toast);
 }

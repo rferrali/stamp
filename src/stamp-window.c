@@ -236,6 +236,8 @@ stamp_window_show_contact (StampWindow *self,
 StampMailView *
 stamp_window_get_mail_view (StampWindow *self)
 {
+  g_return_val_if_fail (STAMP_IS_WINDOW (self), NULL);
+
   return self->mail_view;
 }
 

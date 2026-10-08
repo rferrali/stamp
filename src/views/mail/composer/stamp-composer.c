@@ -105,6 +105,14 @@ typedef struct {
   gchar *draft_uid;
 } SendCompletedData;
 
+static StampMailView *
+get_main_mail_view (void)
+{
+  StampWindow *window = stamp_get_main_window ();
+
+  return window ? stamp_window_get_mail_view (window) : NULL;
+}
+
 static SendCompletedData *
 send_completed_data_new (StampMailView *mail_view,
                          StampAccount  *account,
@@ -112,7 +120,7 @@ send_completed_data_new (StampMailView *mail_view,
 {
   SendCompletedData *data = g_new0 (SendCompletedData, 1);
 
-  data->mail_view = g_object_ref (mail_view);
+  data->mail_view = mail_view ? g_object_ref (mail_view) : NULL;
   data->account = g_object_ref (account);
   data->draft_uid = g_strdup (draft_uid);
 
@@ -742,7 +750,7 @@ on_get_body_html (GObject      *source_object,
     }
   }
 
-  mail_view = stamp_window_get_mail_view (STAMP_WINDOW (stamp_get_main_window ()));
+  mail_view = get_main_mail_view ();
 
   data = send_completed_data_new (mail_view, account, self->draft_uid);
 
@@ -932,7 +940,7 @@ on_schedule_get_body_html (GObject      *source_object,
                                 do_smime_sign, do_smime_encrypt,
                                 self->draft_uid,
                                 send_at)) {
-    StampMailView *mail_view = stamp_window_get_mail_view (STAMP_WINDOW (stamp_get_main_window ()));
+    StampMailView *mail_view = get_main_mail_view ();
 
     self->is_dirty = FALSE;
     stamp_mail_view_show_toast (mail_view, _("Mail scheduled"));
