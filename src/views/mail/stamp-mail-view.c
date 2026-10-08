@@ -490,6 +490,20 @@ on_refresh (GSimpleAction *action,
   stamp_conversation_list_refresh (self->conversation_list);
 }
 
+static void
+on_toggle_collapsed (GSimpleAction *action,
+                     GVariant      *parameter,
+                     gpointer       user_data)
+{
+  StampMailView *self = STAMP_MAIL_VIEW (user_data);
+  AdwOverlaySplitView *osv = get_current_osv (self);
+
+  if (!osv)
+    return;
+
+  adw_overlay_split_view_set_collapsed (osv, !adw_overlay_split_view_get_collapsed (osv));
+}
+
 static const GActionEntry stamp_mail_view_action_entries[] = {
   { .name = "composer-new", .activate = on_composer_new },
   { .name = "edit", .activate = on_edit },
@@ -504,6 +518,7 @@ static const GActionEntry stamp_mail_view_action_entries[] = {
   { .name = "junk", .activate = on_junk },
   { .name = "refresh", .activate = on_refresh },
   { .name = "archive", .activate = on_archive },
+  { .name = "toggle-collapsed", .activate = on_toggle_collapsed },
 };
 
 static void
@@ -576,6 +591,7 @@ static const Shortcut MailShortcuts[] = {
   { "mail.undo-trash", "<primary>z" },
   { "mail.view-source", "<primary>s" },
   { "mail.refresh", "F5" },
+  { "mail.toggle-collapsed", "F9" },
 };
 
 static void
