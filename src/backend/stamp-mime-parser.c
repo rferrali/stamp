@@ -830,7 +830,7 @@ handle_attachment (StampMimeParser *self,
       att->kind = STAMP_MIME_ATTACHMENT_INVITATION;
       create_calendar (self, att);
     }
-    PARSER_LOG ("Calendar %s, internal %d, filename %s, size %ld", att->calendar_method, att->is_inline, att->filename, att->size);
+    PARSER_LOG ("Calendar %s, internal %d, filename %s, size %" G_GSIZE_FORMAT, att->calendar_method, att->is_inline, att->filename, att->size);
   } else if (g_strcmp0 (type_lc, "application") == 0 && g_strcmp0 (sub_lc, "pgp-keys") == 0) {
     att->kind = STAMP_MIME_ATTACHMENT_PGP_KEY;
     att->is_inline = FALSE;
@@ -1372,7 +1372,7 @@ send_unsubscribe_callback (GObject      *source,
   if (error) {
     g_warning ("%s: Failed to unsubscribe: %s", G_STRFUNC, error->message);
   } else {
-    g_debug ("%s: Successfully unsubscribed, size %ld", G_STRFUNC, g_bytes_get_size (bytes));
+    g_debug ("%s: Successfully unsubscribed, size %" G_GSIZE_FORMAT, G_STRFUNC, g_bytes_get_size (bytes));
   }
 }
 
