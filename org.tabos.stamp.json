@@ -131,13 +131,14 @@
         "-DENABLE_GTK_DOC=OFF",
         "-DWITH_PRIVATE_DOCS=OFF",
         "-DWITH_SYSTEMDUSERUNITDIR=OFF",
+        "-DENABLE_OAUTH2_WEBKITGTK=OFF",
         "-DENABLE_TESTS=OFF"
       ],
       "sources": [
         {
           "type": "archive",
-          "url": "https://download.gnome.org/sources/evolution-data-server/3.59/evolution-data-server-3.59.2.tar.xz",
-          "sha256": "15bd798c85dee923462bebe880761b4668b6c5065584e840900988389add83bf"
+          "url": "https://download.gnome.org/sources/evolution-data-server/3.62/evolution-data-server-3.62.0.tar.xz",
+          "sha256": "78be88e9a511f5afe7ff2e363eade84b622dd0282647fc576edb2d4ff2962cba"
         }
       ],
       "modules": [
@@ -202,17 +203,13 @@
       "buildsystem": "cmake-ninja",
       "config-opts": [
         "-DWITH_MSPACK=OFF",
-        "-DENABLE_WITH_EVOLUTION=OFF"
+        "-DWITH_EVOLUTION=OFF"
       ],
       "sources": [
         {
           "type": "archive",
-          "url": "https://download.gnome.org/sources/evolution-ews/3.59/evolution-ews-3.59.2.tar.xz",
-          "sha256": "e7f5857a1b12a793aa5028c829cd93d66a7ba7fd212564b8507071cdbec515d2"
-        },
-        {
-          "type": "patch",
-          "path": "./evolution-compilation-switch.patch"
+          "url": "https://download.gnome.org/sources/evolution-ews/3.62/evolution-ews-3.62.0.tar.xz",
+          "sha256": "85b8e7089582d9d5ea6dc1a82325b3e5c4b0396924f7a6e0f743a9128cad73d4"
         }
       ],
       "post-install": [
