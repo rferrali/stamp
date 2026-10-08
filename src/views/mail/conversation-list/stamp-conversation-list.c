@@ -1057,6 +1057,8 @@ handle_popover (RowData *row_data,
   else
     g_menu_append (menu, _("Mark Starred"), "conversation-list.mark-starred");
 
+  g_menu_append (menu, _("Move to Trash"), "mail.trash");
+
   labels = stamp_conversation_item_get_labels (STAMP_CONVERSATION_ITEM (gtk_list_item_get_item (row_data->list_item)));
   categories = stamp_account_get_categories (row_data->self->account);
   if (categories) {
