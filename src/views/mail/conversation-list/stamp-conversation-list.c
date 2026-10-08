@@ -1335,6 +1335,7 @@ on_touch_released (GtkGestureClick *gesture,
   RowData *data = g_object_get_data (G_OBJECT (gesture), "row-data");
   StampConversationList *self = data->self;
   GtkListItem *list_item = data->list_item;
+  StampConversationItem *item = STAMP_CONVERSATION_ITEM (gtk_list_item_get_item (list_item));
 
   /* Bewegung prüfen – wenn zu viel bewegt wurde war es ein Scroll */
   gdouble dx = x - data->start_x;
@@ -1352,6 +1353,12 @@ on_touch_released (GtkGestureClick *gesture,
 
   self->anchor_position = position;
   refresh_checkboxes (self);
+
+  if (item) {
+    g_signal_emit (self, signals[CONVERSATION_SELECTED], 0, stamp_conversation_item_get_node (item));
+  } else {
+    g_signal_emit (self, signals[CONVERSATION_SELECTED], 0, 0);
+  }
 }
 
 static GdkContentProvider *
