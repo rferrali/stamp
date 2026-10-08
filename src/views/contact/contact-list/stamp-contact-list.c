@@ -21,6 +21,8 @@
 #include "stamp-contact-row.h"
 #include "stamp-type-builtins.h"
 
+#include <glib/gi18n.h>
+
 struct _StampContactList {
   AdwBreakpointBin parent_instance;
 
@@ -423,9 +425,9 @@ stamp_contact_list_init (StampContactList *self)
 
   menu = g_menu_new ();
   sort_menu = g_menu_new ();
-  g_menu_append_section (menu, "Sort Order", G_MENU_MODEL (sort_menu));
-  g_menu_append (sort_menu, "Given Name", "contact.contacts-sort::given-name");
-  g_menu_append (sort_menu, "Family Name", "contact.contacts-sort::family-name");
+  g_menu_append_section (menu, _("Sort Order"), G_MENU_MODEL (sort_menu));
+  g_menu_append (sort_menu, _("Given Name"), "contact.contacts-sort::given-name");
+  g_menu_append (sort_menu, _("Family Name"), "contact.contacts-sort::family-name");
   gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (self->sort_button), G_MENU_MODEL (menu));
 
   g_signal_connect_object (sort_action, "activate", G_CALLBACK (on_sort_activate), self, G_CONNECT_DEFAULT);

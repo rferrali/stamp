@@ -216,12 +216,12 @@ on_open_activate (GAction  *action,
   GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
 
   if (self->mime_part) {
-    g_autofree char *tmp = g_strdup_printf ("Trust and open `%s`?", gtk_label_get_text (GTK_LABEL (self->filename_label)));
+    g_autofree char *tmp = g_strdup_printf (_("Trust and open `%s`?"), gtk_label_get_text (GTK_LABEL (self->filename_label)));
     AdwDialog *dialog = adw_alert_dialog_new (tmp,
-                                              "Attachment may cause damage to your system if opened. Only open files from trusted sources.");
+                                              _("Attachment may cause damage to your system if opened. Only open files from trusted sources."));
 
-    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", ("Cancel"));
-    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "open", ("Open Anyway"));
+    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", _("Cancel"));
+    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "open", _("Open Anyway"));
     adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "open");
     adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
 
@@ -229,12 +229,12 @@ on_open_activate (GAction  *action,
 
     adw_dialog_present (dialog, GTK_WIDGET (root));
   } else if (self->data) {
-    g_autofree char *tmp = g_strdup_printf ("Trust and open `%s`?", gtk_label_get_text (GTK_LABEL (self->filename_label)));
+    g_autofree char *tmp = g_strdup_printf (_("Trust and open `%s`?"), gtk_label_get_text (GTK_LABEL (self->filename_label)));
     AdwDialog *dialog = adw_alert_dialog_new (tmp,
-                                              "Attachment may cause damage to your system if opened. Only open files from trusted sources.");
+                                              _("Attachment may cause damage to your system if opened. Only open files from trusted sources."));
 
-    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", ("Cancel"));
-    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "open", ("Open Anyway"));
+    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", _("Cancel"));
+    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "open", _("Open Anyway"));
     adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "open");
     adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
 
@@ -332,7 +332,7 @@ on_save_as_activate (GAction  *action,
   StampAttachmentButton *self = STAMP_ATTACHMENT_BUTTON (user_data);
   GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
   GtkFileDialog *dialog = gtk_file_dialog_new ();
-  g_autofree char *tmp = g_strdup_printf ("Save `%s`?", gtk_label_get_text (GTK_LABEL (self->filename_label)));
+  g_autofree char *tmp = g_strdup_printf (_("Save `%s`?"), gtk_label_get_text (GTK_LABEL (self->filename_label)));
 
   gtk_file_dialog_set_accept_label (dialog, _("Save"));
   gtk_file_dialog_set_initial_name (dialog, gtk_label_get_text (GTK_LABEL (self->filename_label)));

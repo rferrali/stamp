@@ -1250,11 +1250,11 @@ on_send_activated (GSimpleAction *action,
   set_send_action_enabled (self, FALSE);
 
   if (strlen (gtk_editable_get_text (GTK_EDITABLE (self->subject))) == 0) {
-    AdwDialog *dialog = adw_alert_dialog_new ("Send without subject?", "This message has an empty subject field. The recipient may be unable to infer its scope or importance.");
+    AdwDialog *dialog = adw_alert_dialog_new (_("Send without subject?"), _("This message has an empty subject field. The recipient may be unable to infer its scope or importance."));
 
     adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog),
-                                    "cancel", ("_Cancel"),
-                                    "send-anyway", ("Send Anyway"),
+                                    "cancel", _("_Cancel"),
+                                    "send-anyway", _("Send Anyway"),
                                     NULL);
 
     adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog),
@@ -1566,7 +1566,7 @@ present_image_resize_dialog (AttachmentBatch *batch,
   adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "cancel", ADW_RESPONSE_DESTRUCTIVE);
   adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
 
-  actual_label = g_strdup_printf ("Actual Size (%s)", g_format_size (file_size));
+  actual_label = g_strdup_printf (_("Actual Size (%s)"), g_format_size (file_size));
   adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "actual", actual_label);
 
   if (pixbuf) {
@@ -1576,13 +1576,13 @@ present_image_resize_dialog (AttachmentBatch *batch,
 
     compute_resize_sizes (pixbuf, data);
 
-    large_label = g_strdup_printf ("Large (%s)", g_format_size (data->large_size));
+    large_label = g_strdup_printf (_("Large (%s)"), g_format_size (data->large_size));
     adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "large", large_label);
 
-    medium_label = g_strdup_printf ("Medium (%s)", g_format_size (data->medium_size));
+    medium_label = g_strdup_printf (_("Medium (%s)"), g_format_size (data->medium_size));
     adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "medium", medium_label);
 
-    small_label = g_strdup_printf ("Small (%s)", g_format_size (data->small_size));
+    small_label = g_strdup_printf (_("Small (%s)"), g_format_size (data->small_size));
     adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "small", small_label);
 
     adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "medium");
@@ -1881,7 +1881,7 @@ on_auto_save_get_body_html (GObject      *source_object,
     GDateTime *dt = g_date_time_new_now_local ();
     g_autofree char *time = g_date_time_format (dt, "%H:%M");
 
-    save_str = g_strdup_printf ("Saved Draft (%s)", time);
+    save_str = g_strdup_printf (_("Saved Draft (%s)"), time);
     adw_window_title_set_subtitle (ADW_WINDOW_TITLE (self->window_title), save_str);
   }
 }

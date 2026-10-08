@@ -2358,7 +2358,7 @@ stamp_conversation_list_init (StampConversationList *self)
   g_menu_append_section (menu, _("Filter"), G_MENU_MODEL (filter_menu));
 
   sort_menu = g_menu_new ();
-  g_menu_append_section (menu, "Sort Order", G_MENU_MODEL (sort_menu));
+  g_menu_append_section (menu, _("Sort Order"), G_MENU_MODEL (sort_menu));
   g_menu_append (sort_menu, _("Newest First"), "conversation.mail-sort::newest-first");
   g_menu_append (sort_menu, _("Oldest First"), "conversation.mail-sort::oldest-first");
   gtk_menu_button_set_menu_model (GTK_MENU_BUTTON (self->sort_or_filter_button), G_MENU_MODEL (menu));

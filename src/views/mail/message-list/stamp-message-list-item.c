@@ -723,8 +723,8 @@ on_send_disposition (AdwBanner *banner,
   date_str = g_date_time_format (received_dt, "%d.%m.%Y");
   time_str = g_date_time_format (now_dt, "%H:%M");
 
-  read_subject = g_strdup_printf ("Read: %s", subject ? subject : "");
-  body_text = g_strdup_printf ("Your message from %s has been opened on %s.", date_str, time_str);
+  read_subject = g_strdup_printf (_("Read: %s"), subject ? subject : "");
+  body_text = g_strdup_printf (_("Your message from %s has been opened on %s."), date_str, time_str);
 
   message = camel_mime_message_new ();
   camel_mime_message_set_subject (message, read_subject);
@@ -1134,7 +1134,7 @@ save_image_cb (GSimpleAction *action,
     if (g_strcmp0 (att->content_id, self->save_img + offset) == 0) {
       GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
       GtkFileDialog *dialog = gtk_file_dialog_new ();
-      g_autofree char *tmp = g_strdup_printf ("Save `%s`?", att->filename);
+      g_autofree char *tmp = g_strdup_printf (_("Save `%s`?"), att->filename);
 
       gtk_file_dialog_set_accept_label (dialog, _("Save"));
       gtk_file_dialog_set_initial_name (dialog, att->filename);
