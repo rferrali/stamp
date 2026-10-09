@@ -125,6 +125,7 @@ stamp_application_open_composer (StampApplication *self,
     g_autofree char *escaped = NULL;
     g_autofree char *markup = NULL;
     g_autoptr (GRegex) regex = NULL;
+    guint has_attachments = 0;
 
     g_uri_params_iter_init (&qp, uri_query, -1, "&", G_URI_PARAMS_NONE);
     while (g_uri_params_iter_next (&qp, &name, &value, &error)) {
@@ -136,9 +137,10 @@ stamp_application_open_composer (StampApplication *self,
         stamp_composer_set_subject (STAMP_COMPOSER (composer), value);
       else if (g_strcmp0 (name, "body") == 0)
         g_string_append (body, value);
-      else if (g_strcmp0 (name, "attachment") == 0)
+      else if (g_strcmp0 (name, "attachment") == 0) {
         stamp_composer_add_attachment (STAMP_COMPOSER (composer), value);
-      else
+        has_attachments++;
+      } else
         g_string_append_printf (body, "&%s=%s", name, value);
 
       g_free (name);
@@ -150,6 +152,22 @@ stamp_application_open_composer (StampApplication *self,
     markup = g_regex_replace_literal (regex, escaped, -1, 0, "<br/>", 0, NULL);
 
     stamp_composer_set_body (STAMP_COMPOSER (composer), markup);
+
+    if (has_attachments) {
+      const gchar *dialog_title = g_dngettext (GETTEXT_PACKAGE, "Review attachment before sending.", "Review attachments before sending.", has_attachments);
+      g_autofree gchar *dialog_body = g_strdup_printf (g_dngettext (GETTEXT_PACKAGE,
+                                                                    "There had been added %d attachment. Make sure it does not contain any sensitive information before sending the message.",
+                                                                    "There had been added %d attachments. Make sure they do not contain any sensitive information before sending the message.",
+                                                                    has_attachments),
+                                                       has_attachments);
+
+
+      AdwDialog *dialog = adw_alert_dialog_new (dialog_title, dialog_body);
+
+      adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "understood", _("_Understood"));
+
+      adw_dialog_present (dialog, GTK_WIDGET (composer));
+    }
   }
 }
 
