@@ -64,6 +64,7 @@
     <file>styles/stamp-message-header.css</file>
     <file>styles/stamp-signatures.css</file>
     <file>styles/stamp-window.css</file>
+    <file>styles/stamp-webview.css</file>
     <file alias="org.tabos.stamp.metainfo.xml">../data/org.tabos.stamp.metainfo.xml</file>
   </gresource>
 </gresources>

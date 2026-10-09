@@ -18,6 +18,7 @@
 
 @import url('styles/stamp-message-list.css');
 @import url('styles/stamp-message-header.css');
+@import url('styles/stamp-webview.css');
 
 @import url('styles/stamp-signatures.css');
 @import url('styles/stamp-window.css');

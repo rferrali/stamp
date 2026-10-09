@@ -345,6 +345,7 @@ stamp_webview_constructed (GObject *object)
   StampWebView *self = STAMP_WEB_VIEW (object);
   GtkEventController *controller;
   WebKitUserContentManager *content_manager;
+  GdkRGBA transparent = { 0, 0, 0, 0 };
 
   G_OBJECT_CLASS (stamp_webview_parent_class)->constructed (object);
 
@@ -356,6 +357,7 @@ stamp_webview_constructed (GObject *object)
   webkit_user_content_manager_register_script_message_handler (content_manager, "stampResize", NULL);
 
   webkit_web_view_set_settings (WEBKIT_WEB_VIEW (self), stamp_get_webkit_settings (self));
+  webkit_web_view_set_background_color (WEBKIT_WEB_VIEW (self), &transparent);
 
   controller = gtk_event_controller_key_new ();
   g_signal_connect_object (G_OBJECT (controller), "key-released", G_CALLBACK (on_key_released), self, G_CONNECT_DEFAULT);

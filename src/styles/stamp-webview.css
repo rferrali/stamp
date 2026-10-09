@@ -1,0 +1,9 @@
+webkitwebview {
+  background-color: white;
+}
+
+@media (prefers-color-scheme: dark) {
+  webkitwebview {
+    background-color: #3a3a3a;
+  }
+}
