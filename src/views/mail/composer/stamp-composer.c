@@ -1439,6 +1439,18 @@ attachment_batch_free (AttachmentBatch *batch)
 }
 
 static void
+on_attachment_destroy (GtkWidget *widget,
+                       gpointer   user_data)
+{
+  StampComposer *self = STAMP_COMPOSER (user_data);
+
+  self->attachments = g_list_remove (self->attachments, widget);
+
+  if (!self->attachments)
+    gtk_revealer_set_reveal_child (GTK_REVEALER (self->attachment_revealer), FALSE);
+}
+
+static void
 process_attachment_file (AttachmentBatch *batch);
 
 static void
@@ -1456,6 +1468,7 @@ attachment_add_simple (AttachmentBatch *batch,
   StampComposer *self = batch->self;
   GtkWidget *button = stamp_attachment_button_new_from_file (file);
 
+  g_signal_connect_object (button, "destroy", G_CALLBACK (on_attachment_destroy), self, G_CONNECT_DEFAULT);
   self->attachments = g_list_append (self->attachments, button);
   adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
 
@@ -1488,6 +1501,7 @@ on_image_resize_response (AdwAlertDialog *dialog,
       button = stamp_attachment_button_new_from_file (data->file);
     }
 
+    g_signal_connect_object (button, "destroy", G_CALLBACK (on_attachment_destroy), self, G_CONNECT_DEFAULT);
     self->attachments = g_list_append (self->attachments, button);
     adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
   }
@@ -2434,6 +2448,11 @@ stamp_composer_dispose (GObject *object)
 
   g_clear_object (&self->orig_message);
 
+  for (GList *iter = self->attachments; iter; iter = iter->next)
+    g_signal_handlers_disconnect_by_func (iter->data, on_attachment_destroy, self);
+
+  g_clear_pointer (&self->attachments, g_list_free);
+
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
 
@@ -2752,6 +2771,7 @@ stamp_composer_add_attachment (StampComposer *self,
 
   button = stamp_attachment_button_new_from_file (file);
 
+  g_signal_connect_object (button, "destroy", G_CALLBACK (on_attachment_destroy), self, G_CONNECT_DEFAULT);
   self->attachments = g_list_append (self->attachments, button);
   adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
   attach_box_update_max_height (GTK_SCROLLED_WINDOW (self->scrolled_window), ADW_WRAP_BOX (self->attachment_box));
