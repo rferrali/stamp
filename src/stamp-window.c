@@ -76,6 +76,13 @@ on_account_changed (GObject      *object,
 }
 
 static void
+on_startup_finished (GObject  *object,
+                     gpointer  user_data)
+{
+  on_account_changed (object, NULL, user_data);
+}
+
+static void
 on_show_mail (GSimpleAction *action,
               GVariant      *parameter,
               gpointer       user_data)
@@ -200,6 +207,7 @@ stamp_window_init (StampWindow *self)
 
   g_signal_connect_object (session, "account-added", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
   g_signal_connect_object (session, "account-removed", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (session, "startup-finished", G_CALLBACK (on_startup_finished), self, G_CONNECT_DEFAULT);
 
   if (stamp_is_running_inside_flatpak () && g_settings_get_boolean (STAMP_SETTINGS, STAMP_PREFS_BACKGROUND_NOTIFICATIONS))
     xdp_portal_set_background_status (portal, _("Waiting for new emails"), NULL, on_background_status, self);
