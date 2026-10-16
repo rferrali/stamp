@@ -232,6 +232,9 @@ send_pending_notification (gpointer user_data)
 
   g_application_send_notification (g_application_get_default (), "new-mail", notification);
 
+  if (g_settings_get_boolean (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_PLAY_INCOMING_SOUND))
+    play_incoming_sound ();
+
   pending_new_mail_count = 0;
   g_clear_pointer (&pending_first_uid, g_free);
   g_clear_pointer (&pending_first_subject, g_free);
@@ -309,9 +312,6 @@ on_folder_item_folder_changed (CamelFolder           *folder,
   g_clear_handle_id (&pending_debounce_id, g_source_remove);
 
   pending_debounce_id = g_timeout_add_once (500, send_pending_notification, NULL);
-
-  if (g_settings_get_boolean (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_PLAY_INCOMING_SOUND))
-    play_incoming_sound ();
 }
 
 static void
