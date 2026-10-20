@@ -50,6 +50,14 @@
   transition: background-color 150ms ease;
 }
 
+row.card .message-list-item-clickable {
+  border-radius: 12px;
+}
+
+row.card.expanded .message-list-item-clickable {
+  border-radius: 12px 12px 0 0;
+}
+
 .message-list-item-clickable:hover {
   background-color: alpha(currentColor, 0.05);
 }
