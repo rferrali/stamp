@@ -19,6 +19,8 @@
 
 #include "config.h"
 
+#include <adwaita.h>
+
 #include "stamp-webview.h"
 
 struct _StampWebView {
@@ -161,6 +163,38 @@ collapse_quotes_in_page (WebKitWebView *web_view)
 }
 
 static void
+apply_color_scheme (StampWebView *self)
+{
+  gboolean dark = adw_style_manager_get_dark (adw_style_manager_get_default ());
+  g_autofree gchar *script = NULL;
+
+  if (!self->loaded)
+    return;
+
+  script = g_strdup_printf (
+    "var s = document.getElementById('stamp-theme');"
+    "if (!s) { s = document.createElement('style'); s.id = 'stamp-theme'; document.head.appendChild(s); }"
+    "s.textContent = %s;"
+    "document.documentElement.style.colorScheme = '%s';",
+    dark ?
+    "`* { background-color: transparent !important; color: inherit !important; }"
+    " html, body { background:#3a3a3a !important; color:#ffffff !important; }"
+    " a { color:#8ab4f8 !important; }`" :
+    "''",
+    dark ? "dark" : "light");
+
+  webkit_web_view_evaluate_javascript (WEBKIT_WEB_VIEW (self), script, -1, NULL, NULL, NULL, NULL, NULL);
+}
+
+static void
+on_dark_changed (AdwStyleManager *manager,
+                 GParamSpec      *pspec,
+                 StampWebView    *self)
+{
+  apply_color_scheme (self);
+}
+
+static void
 on_load_changed (WebKitWebView   *web_view,
                  WebKitLoadEvent  load_event,
                  gpointer         user_data)
@@ -184,29 +218,7 @@ on_load_changed (WebKitWebView   *web_view,
                                          "var ed = document.getElementById('message-body'); if (ed) ed.focus();",
                                          -1, NULL, NULL, NULL, NULL, NULL);
 
-    webkit_web_view_evaluate_javascript (
-      web_view,
-      "const style = document.createElement('style');"
-      "style.innerHTML = `"
-
-      "@media (prefers-color-scheme: dark) {"
-      "  * {"
-      "    background-color: transparent !important;"
-      "    color: inherit !important;"
-      "  }"
-      "  html, body {"
-      "    background:#3a3a3a !important;"
-      "    color:#ffffff !important;"
-      "  }"
-
-      "  a {"
-      "    color:#8ab4f8 !important;"
-      "  }"
-      "}"
-      "`;"
-      "document.head.appendChild(style);",
-      -1, NULL, NULL, NULL, NULL, NULL
-      );
+    apply_color_scheme (self);
 
     if (!self->queued_body_content) {
       collapse_quotes_in_page (web_view);
@@ -348,6 +360,7 @@ stamp_webview_constructed (GObject *object)
   controller = gtk_event_controller_key_new ();
   g_signal_connect_object (G_OBJECT (controller), "key-released", G_CALLBACK (on_key_released), self, G_CONNECT_DEFAULT);
   gtk_widget_add_controller (GTK_WIDGET (self), controller);
+  g_signal_connect_object (adw_style_manager_get_default (), "notify::dark", G_CALLBACK (on_dark_changed), self, G_CONNECT_DEFAULT);
   g_signal_connect_object (G_OBJECT (self), "load-changed", G_CALLBACK (on_load_changed), self, G_CONNECT_DEFAULT);
   g_signal_connect_object (G_OBJECT (self), "decide-policy", G_CALLBACK (on_decide_policy), self, G_CONNECT_DEFAULT);
 }
