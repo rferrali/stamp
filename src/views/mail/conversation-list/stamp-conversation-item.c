@@ -31,6 +31,7 @@ struct _StampConversationItem {
   gchar *sender;
   gchar *service_uid;
   gchar *uid;
+  gint64 uid_number;
   gchar *preview;
   gboolean unread;
   gboolean flagged;
@@ -258,6 +259,7 @@ stamp_conversation_item_set_property (GObject      *object,
 
         message = camel_folder_thread_node_get_item (self->thread_node);
         self->uid = g_strdup (camel_message_info_get_uid (message));
+        self->uid_number = self->uid ? atoi (self->uid) : 0;
       }
 
       break;
@@ -574,7 +576,7 @@ stamp_conversation_item_get_preview (StampConversationItem *self)
     preview = camel_message_info_get_preview (info);
 
     if (preview && strlen (preview) > 0)
-      self->preview = g_markup_escape_text (preview, -1);
+      self->preview = g_strdup (preview);
   }
 
   return self->preview;
@@ -625,6 +627,12 @@ const gchar *
 stamp_conversation_item_get_uid (StampConversationItem *self)
 {
   return self->uid;
+}
+
+gint64
+stamp_conversation_item_get_uid_number (StampConversationItem *self)
+{
+  return self->uid_number;
 }
 
 gboolean

@@ -392,59 +392,37 @@ transform_flagged_to (GBinding     *binding,
   return TRUE;
 }
 
-static gboolean
-transfer_date_to (GBinding     *binding,
-                  const GValue *from_value,
-                  GValue       *to_value,
-                  gpointer      user_data)
+static void
+set_date (StampConversationRow *self,
+          gulong                date)
 {
-  ulong date = g_value_get_ulong (from_value);
-  g_autofree char *tmp = NULL;
+  g_autofree char *tmp = stamp_time_helpers_utf_friendly_time (date, TRUE);
 
-  tmp = stamp_time_helpers_utf_friendly_time (date, TRUE);
-  g_value_set_string (to_value, tmp);
-
-  return TRUE;
+  gtk_label_set_label (self->date, tmp);
 }
 
-static gboolean
-transfer_num_messages_to (GBinding     *binding,
-                          const GValue *from_value,
-                          GValue       *to_value,
-                          gpointer      user_data)
+static void
+set_num_messages (StampConversationRow *self,
+                  gulong                num)
 {
-  StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
-  ulong num = g_value_get_ulong (from_value);
-  g_autofree char *tmp = NULL;
+  g_autofree char *tmp = g_strdup_printf ("%ld", num);
 
-  tmp = g_strdup_printf ("%ld", num);
-  g_value_set_string (to_value, tmp);
+  gtk_label_set_label (self->counter, tmp);
 
   /* Hint: We are using opacity here as otherwise we do have weird fast mouse scrolling zitter effects
    * (not scroll wheel) as widget will be recalculated every time. So let's leave it here and change
    * opacity...
    */
-  if (num > 1)
-    gtk_widget_set_opacity (GTK_WIDGET (self->counter), 1.0);
-  else
-    gtk_widget_set_opacity (GTK_WIDGET (self->counter), 0.0);
-
-  return TRUE;
+  gtk_widget_set_opacity (GTK_WIDGET (self->counter), num > 1 ? 1.0 : 0.0);
 }
 
-static gboolean
-transfer_avatar_to (GBinding     *binding,
-                    const GValue *from_value,
-                    GValue       *to_value,
-                    gpointer      user_data)
+static void
+set_avatar (StampConversationRow *self,
+            const gchar          *from)
 {
-  const gchar *from = g_value_get_string (from_value);
-  g_autofree char *tmp = NULL;
+  g_autofree char *tmp = stamp_strip_department (from);
 
-  tmp = stamp_strip_department (from);
-  g_value_set_string (to_value, tmp);
-
-  return TRUE;
+  adw_avatar_set_text (self->avatar, tmp);
 }
 
 void
@@ -526,9 +504,11 @@ stamp_conversation_row_bind_mail (StampConversationRow  *self,
   StampPhotoToken *token;
   GListStore *store;
 
-  stamp_conversation_row_unbind_mail (self, item);
   if (!item)
     return;
+
+  /* The list view always unbinds before rebinding a row */
+  g_return_if_fail (self->item == NULL);
 
   self->item = g_object_ref (item);
   self->account = g_object_ref (account);
@@ -553,20 +533,21 @@ stamp_conversation_row_bind_mail (StampConversationRow  *self,
   gtk_flow_box_bind_model (self->labels, G_LIST_MODEL (store), create_label, NULL, NULL);
   g_object_set_data_full (G_OBJECT (self->labels), "store", store, g_object_unref);
 
-  add_binding (self, g_object_bind_property (item, "subject", self->topic, "text", G_BINDING_SYNC_CREATE));
-  add_binding (self, g_object_bind_property (item, "from", self->participants, "text", G_BINDING_SYNC_CREATE));
-  add_binding (self, g_object_bind_property_full (item, "from", self->avatar, "text", G_BINDING_SYNC_CREATE, transfer_avatar_to, NULL, NULL, NULL));
+  /* Only properties which can change while bound need a live binding, everything else is set once */
+  gtk_inscription_set_text (self->topic, stamp_conversation_item_get_subject (item));
+  gtk_inscription_set_text (self->participants, stamp_conversation_item_get_from (item));
+  set_avatar (self, stamp_conversation_item_get_from (item));
+  gtk_inscription_set_text (self->body, stamp_conversation_item_get_preview (item));
+  gtk_widget_set_visible (GTK_WIDGET (self->attachment_icon), stamp_conversation_item_has_attachment (item));
+  gtk_widget_set_visible (GTK_WIDGET (self->calendar_icon), stamp_conversation_item_get_calendar (item));
+  g_object_set (self, "important", stamp_conversation_item_is_important (item), NULL);
+  set_date (self, stamp_conversation_item_get_date (item));
+  set_num_messages (self, stamp_conversation_item_get_num_messages (item));
+
   add_binding (self, g_object_bind_property (item, "unread", self, "unread", G_BINDING_SYNC_CREATE));
-  add_binding (self, g_object_bind_property (item, "preview", self->body, "markup", G_BINDING_SYNC_CREATE));
   add_binding (self, g_object_bind_property_full (item, "flagged", self->flagged_icon, "icon-name", G_BINDING_SYNC_CREATE, transform_flagged_to, NULL, self, NULL));
-  add_binding (self, g_object_bind_property (item, "has-attachment", self->attachment_icon, "visible", G_BINDING_SYNC_CREATE));
   add_binding (self, g_object_bind_property (item, "answered", self->reply_icon, "visible", G_BINDING_SYNC_CREATE));
   add_binding (self, g_object_bind_property (item, "forwarded", self->forwarded_icon, "visible", G_BINDING_SYNC_CREATE));
-  add_binding (self, g_object_bind_property (item, "has-calendar", self->calendar_icon, "visible", G_BINDING_SYNC_CREATE));
-  add_binding (self, g_object_bind_property (item, "important", self, "important", G_BINDING_SYNC_CREATE));
-  add_binding (self, g_object_bind_property_full (item, "date", self->date, "label", G_BINDING_SYNC_CREATE, transfer_date_to, NULL, NULL, NULL));
-  add_binding (self, g_object_bind_property_full (item, "num-messages", self->counter, "label", G_BINDING_SYNC_CREATE, transfer_num_messages_to, NULL, self, NULL));
-
   add_binding (self, g_object_bind_property_full (item, "labels", self->labels, "visible", G_BINDING_SYNC_CREATE, transfer_labels_to_box, NULL, self, NULL));
 }
 

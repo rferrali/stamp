@@ -97,6 +97,9 @@ stamp_conversation_item_get_hidden (StampConversationItem *self);
 const gchar *
 stamp_conversation_item_get_uid (StampConversationItem *self);
 
+gint64
+stamp_conversation_item_get_uid_number (StampConversationItem *self);
+
 void
 stamp_conversation_item_update (StampConversationItem *self,
                                 CamelMessageInfo      *info);
