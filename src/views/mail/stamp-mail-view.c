@@ -54,6 +54,8 @@ struct _StampMailView {
 
 G_DEFINE_FINAL_TYPE (StampMailView, stamp_mail_view, ADW_TYPE_BREAKPOINT_BIN);
 
+#define SIDEBAR_CLOSE_ANIMATION_MS 300
+
 typedef enum {
   PROP_STACK = 1,
 } StampMailViewProps;
@@ -99,16 +101,18 @@ on_sidebar_visibility_changed (StampMailView *self)
     gtk_toggle_button_set_active (toggle_button, shown);
 }
 
-static void
+static gboolean
 close_overlay_sidebar (StampMailView *self)
 {
   AdwOverlaySplitView *osv = get_current_osv (self);
 
   if (!osv || !adw_overlay_split_view_get_show_sidebar (osv))
-    return;
+    return FALSE;
 
   adw_overlay_split_view_set_show_sidebar (osv, FALSE);
   gtk_toggle_button_set_active (stamp_conversation_list_get_sidebar_button (self->conversation_list), FALSE);
+
+  return TRUE;
 }
 
 typedef struct {
@@ -133,8 +137,6 @@ load_folder_idle (gpointer user_data)
   LoadFolderData *data = user_data;
   StampMailView *self = data->self;
 
-  close_overlay_sidebar (self);
-
   g_set_object (&self->account, data->account);
   stamp_conversation_list_load_folder (self->conversation_list, data->account, data->full_name);
 
@@ -157,8 +159,39 @@ on_folder_selected (GtkWidget    *object,
   data->full_name = g_strdup (full_name);
 
   g_clear_handle_id (&self->load_folder_handler, g_source_remove);
-  self->load_folder_handler = g_idle_add_full (G_PRIORITY_DEFAULT, load_folder_idle, data, load_folder_data_free);
+
+  if (close_overlay_sidebar (self))
+    self->load_folder_handler = g_timeout_add_full (G_PRIORITY_DEFAULT, SIDEBAR_CLOSE_ANIMATION_MS, load_folder_idle, data, load_folder_data_free);
+  else
+    self->load_folder_handler = g_idle_add_full (G_PRIORITY_DEFAULT, load_folder_idle, data, load_folder_data_free);
+
   stamp_message_list_set_conversation (self->message_list, self->account, NULL);
+}
+
+typedef struct {
+  StampMailView *self;
+  StampCollectionItem *collection;
+} LoadCollectionData;
+
+static void
+load_collection_data_free (gpointer user_data)
+{
+  LoadCollectionData *data = user_data;
+
+  g_object_unref (data->collection);
+  g_free (data);
+}
+
+static gboolean
+load_collection_idle (gpointer user_data)
+{
+  LoadCollectionData *data = user_data;
+  StampMailView *self = data->self;
+
+  stamp_conversation_list_load_collection (self->conversation_list, data->collection);
+
+  self->load_folder_handler = 0;
+  return G_SOURCE_REMOVE;
 }
 
 static void
@@ -167,13 +200,20 @@ on_collection_selected (GtkWidget           *object,
                         gpointer             user_data)
 {
   StampMailView *self = STAMP_MAIL_VIEW (user_data);
+  LoadCollectionData *data;
 
   g_clear_handle_id (&self->load_folder_handler, g_source_remove);
 
-  close_overlay_sidebar (self);
+  data = g_new0 (LoadCollectionData, 1);
+  data->self = self;
+  data->collection = g_object_ref (collection);
+
+  if (close_overlay_sidebar (self))
+    self->load_folder_handler = g_timeout_add_full (G_PRIORITY_DEFAULT, SIDEBAR_CLOSE_ANIMATION_MS, load_collection_idle, data, load_collection_data_free);
+  else
+    self->load_folder_handler = g_idle_add_full (G_PRIORITY_DEFAULT, load_collection_idle, data, load_collection_data_free);
 
   g_set_object (&self->account, NULL);
-  stamp_conversation_list_load_collection (self->conversation_list, collection);
   stamp_message_list_set_conversation (self->message_list, NULL, NULL);
 }
 
