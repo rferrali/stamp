@@ -234,6 +234,12 @@ stamp_message_list_size_allocate (GtkWidget *widget,
   }
 }
 
+gboolean
+stamp_message_list_get_mobile_mode (StampMessageList *self)
+{
+  return self->mobile_mode;
+}
+
 void
 stamp_message_list_set_mobile_mode (StampMessageList *self,
                                     gboolean          mobile)

@@ -832,12 +832,17 @@ on_size_request (GtkWidget  *web_view,
   gint width;
   gint height;
   gint my_width;
+  GtkWidget *list;
+  gboolean mobile;
 
   stamp_web_view_get_size (self->web_view, &width, &height);
 
   my_width = gtk_widget_get_width (GTK_WIDGET (self));
 
-  if (width > my_width) {
+  list = gtk_widget_get_ancestor (GTK_WIDGET (self), STAMP_TYPE_MESSAGE_LIST);
+  mobile = list && stamp_message_list_get_mobile_mode (STAMP_MESSAGE_LIST (list));
+
+  if (mobile && width > my_width) {
     gdouble zoom_level = (double)my_width / (double)width;
 
     webkit_web_view_set_zoom_level (WEBKIT_WEB_VIEW (self->web_view), zoom_level);
