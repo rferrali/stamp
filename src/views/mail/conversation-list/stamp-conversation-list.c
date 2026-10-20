@@ -410,6 +410,12 @@ filter_func (gpointer object,
 }
 
 static void
+on_single_selection_changed (GtkSelectionModel *model,
+                             guint              position,
+                             guint              n_items,
+                             gpointer           user_data);
+
+static void
 on_category_toggled (GSimpleAction *action,
                      GVariant      *parameter,
                      gpointer       user_data)
@@ -1241,23 +1247,15 @@ on_row_pressed (GtkGestureClick *gesture,
     return;
 
   if (!self->selection_mode) {
-    StampConversationItem *item = STAMP_CONVERSATION_ITEM (gtk_list_item_get_item (list_item));
-
     if (n_press == 2) {
       GtkWidget *window = adw_window_new ();
       GtkWidget *message_list = stamp_message_list_new ();
+      StampConversationItem *item = STAMP_CONVERSATION_ITEM (gtk_list_item_get_item (list_item));
 
       stamp_message_list_set_conversation (STAMP_MESSAGE_LIST (message_list), self->account, stamp_conversation_item_get_node (item));
       adw_window_set_content (ADW_WINDOW (window), message_list);
       gtk_window_set_default_size (GTK_WINDOW (window), 800, 600);
       gtk_window_present (GTK_WINDOW (window));
-      return;
-    }
-
-    if (item) {
-      g_signal_emit (self, signals[CONVERSATION_SELECTED], 0, stamp_conversation_item_get_node (item));
-    } else {
-      g_signal_emit (self, signals[CONVERSATION_SELECTED], 0, 0);
     }
     return;
   }
@@ -1566,6 +1564,25 @@ on_unbind_list_item (GtkListItemFactory *factory,
   stamp_conversation_row_unbind_mail (STAMP_CONVERSATION_ROW (row), model);
   check_button = stamp_conversation_row_get_check_button (STAMP_CONVERSATION_ROW (row));
   g_signal_handlers_disconnect_by_func (list_item, on_selection_changed, check_button);
+}
+
+static void
+on_single_selection_changed (GtkSelectionModel *model,
+                             guint              position,
+                             guint              n_items,
+                             gpointer           user_data)
+{
+  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+  StampConversationItem *conversation_item = STAMP_CONVERSATION_ITEM (gtk_single_selection_get_selected_item (GTK_SINGLE_SELECTION (model)));
+
+  if (self->selection_mode)
+    return;
+
+  if (conversation_item) {
+    g_signal_emit (self, signals[CONVERSATION_SELECTED], 0, stamp_conversation_item_get_node (conversation_item));
+  } else {
+    g_signal_emit (self, signals[CONVERSATION_SELECTED], 0, 0);
+  }
 }
 
 static void
@@ -2373,6 +2390,7 @@ stamp_conversation_list_init (StampConversationList *self)
   rebuild_category_actions (self);
 
   self->single_selection = gtk_single_selection_new (G_LIST_MODEL (sort_model));
+  g_signal_connect_object (self->single_selection, "selection-changed", G_CALLBACK (on_single_selection_changed), self, G_CONNECT_DEFAULT);
   gtk_list_view_set_model (GTK_LIST_VIEW (self->listview), GTK_SELECTION_MODEL (self->single_selection));
 
   gtk_single_selection_set_autoselect (self->single_selection, FALSE);
