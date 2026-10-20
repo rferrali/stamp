@@ -2296,6 +2296,8 @@ stamp_composer_init (StampComposer *self)
   build_signature_menu (self);
 
   controller = gtk_shortcut_controller_new ();
+  /* The focused WebView consumes key events, so catch shortcuts before it */
+  gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
   gtk_widget_add_controller (GTK_WIDGET (self), controller);
 
   shortcut = gtk_shortcut_new (gtk_shortcut_trigger_parse_string ("<primary>Return"), gtk_named_action_new ("composer.send"));
