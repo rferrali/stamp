@@ -900,7 +900,6 @@ stamp_preferences_account_editor_new (StampAccount *account,
   gtk_editable_set_text (GTK_EDITABLE (self->name_row), name ? name : "");
 
   gtk_widget_set_visible (GTK_WIDGET (self->remove), email != NULL);
-  gtk_widget_set_visible (GTK_WIDGET (self->save), !email && !name);
 
   return GTK_WIDGET (self);
 }
