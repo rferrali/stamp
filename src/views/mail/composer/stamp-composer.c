@@ -50,6 +50,7 @@ struct _StampComposer {
 
   GtkWidget *webview_bin;
   StampWebView *webview;
+  GtkWidget *emoji_chooser;
   GtkWidget *from;
   GtkWidget *to;
   GtkWidget *cc;
@@ -2223,6 +2224,82 @@ on_security_toggle_toggled (GtkWidget *toggle,
 }
 
 static void
+on_emoji_picked (GtkWidget     *chooser,
+                 const gchar   *text,
+                 StampComposer *self)
+{
+  stamp_web_view_execute_editor_command (self->webview, "insertText", text);
+  gtk_widget_grab_focus (GTK_WIDGET (self->webview));
+}
+
+static void
+popup_emoji_chooser (StampComposer *self,
+                     GdkRectangle  *rect)
+{
+  if (!self->emoji_chooser) {
+    self->emoji_chooser = gtk_emoji_chooser_new ();
+    gtk_widget_set_parent (self->emoji_chooser, GTK_WIDGET (self->webview));
+    g_signal_connect (self->emoji_chooser, "emoji-picked", G_CALLBACK (on_emoji_picked), self);
+  }
+
+  gtk_popover_set_pointing_to (GTK_POPOVER (self->emoji_chooser), rect);
+  gtk_popover_popup (GTK_POPOVER (self->emoji_chooser));
+}
+
+static void
+on_caret_rect_finished (GObject      *source,
+                        GAsyncResult *res,
+                        gpointer      user_data)
+{
+  g_autoptr (StampComposer) self = user_data;
+  g_autoptr (JSCValue) value = NULL;
+  GdkRectangle rect = { 0, 0, 1, 1 };
+
+  value = webkit_web_view_evaluate_javascript_finish (WEBKIT_WEB_VIEW (source), res, NULL);
+
+  if (value && jsc_value_is_string (value)) {
+    g_autofree gchar *str = jsc_value_to_string (value);
+    g_auto (GStrv) parts = g_strsplit (str, ",", 4);
+
+    if (g_strv_length (parts) == 4) {
+      rect.x = (gint)g_ascii_strtod (parts[0], NULL);
+      rect.y = (gint)g_ascii_strtod (parts[1], NULL);
+      rect.width = MAX (1, (gint)g_ascii_strtod (parts[2], NULL));
+      rect.height = MAX (1, (gint)g_ascii_strtod (parts[3], NULL));
+    }
+  }
+
+  popup_emoji_chooser (self, &rect);
+}
+
+static gboolean
+show_emoji_chooser (GtkWidget *widget,
+                    GVariant  *args,
+                    gpointer   user_data)
+{
+  StampComposer *self = STAMP_COMPOSER (widget);
+
+  /* Point the popover at the caret, falling back to the view's origin */
+  webkit_web_view_evaluate_javascript (WEBKIT_WEB_VIEW (self->webview),
+                                       "(() => {"
+                                       "  const s = window.getSelection();"
+                                       "  if (!s || !s.rangeCount) return '0,0,1,1';"
+                                       "  const r = s.getRangeAt(0).cloneRange();"
+                                       "  r.collapse(false);"
+                                       "  let b = r.getBoundingClientRect();"
+                                       "  if (!b.height) {"
+                                       "    const n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentNode;"
+                                       "    b = n.getBoundingClientRect();"
+                                       "    return [b.left, b.top, 1, b.height].join(',');"
+                                       "  }"
+                                       "  return [b.left, b.top, 1, b.height].join(',');"
+                                       "})()",
+                                       -1, NULL, NULL, NULL, on_caret_rect_finished, g_object_ref (self));
+
+  return TRUE;
+}
+
+static void
 stamp_composer_init (StampComposer *self)
 {
   GBytes *template;
@@ -2304,6 +2381,9 @@ stamp_composer_init (StampComposer *self)
   gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
 
   shortcut = gtk_shortcut_new (gtk_shortcut_trigger_parse_string ("<primary><shift>Return"), gtk_named_action_new ("composer.schedule"));
+  gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
+
+  shortcut = gtk_shortcut_new (gtk_shortcut_trigger_parse_string ("<primary>period"), gtk_callback_action_new (show_emoji_chooser, NULL, NULL));
   gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
 
   shortcut = gtk_shortcut_new (gtk_shortcut_trigger_parse_string ("Escape"), gtk_named_action_new ("window.close"));
@@ -2454,6 +2534,8 @@ stamp_composer_dispose (GObject *object)
     g_signal_handlers_disconnect_by_func (iter->data, on_attachment_destroy, self);
 
   g_clear_pointer (&self->attachments, g_list_free);
+
+  g_clear_pointer (&self->emoji_chooser, gtk_widget_unparent);
 
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
