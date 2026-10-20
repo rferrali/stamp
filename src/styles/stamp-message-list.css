@@ -7,11 +7,15 @@
   transition: margin 300ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
+.message-list > row:not(.expanded) {
+  box-shadow: 0 2px 6px 3px rgba(0,0,0, 0.15);
+}
+
 @media (prefers-color-scheme: dark) {
   .message-list > row {
     background-color: oklab(from white 0.3 a b);
   }
-  .message-list > row:not(:first-child) {
+  .message-list > row:not(.expanded) {
     box-shadow: 0 2px 6px 3px rgba(0,0,0, 0.35);
   }
 }
