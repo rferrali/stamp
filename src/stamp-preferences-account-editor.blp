@@ -12,41 +12,54 @@ template $StampPreferencesAccountEditor: Adw.NavigationPage {
       };
     }
 
-    content: Adw.PreferencesPage editor_page {
-      Adw.PreferencesGroup {
-        title: _("Alias");
+    content: Adw.Clamp {
+      maximum-size: 600;
 
-        Adw.EntryRow mail_row {
-          title: _("Email");
-          changed => $on_entry_changed();
+      child: Box {
+        orientation: vertical;
+        spacing: 12;
+        margin-top: 12;
+        margin-bottom: 12;
+        margin-start: 12;
+        margin-end: 12;
+
+        Adw.PreferencesGroup {
+          title: _("Alias");
+
+          Adw.EntryRow mail_row {
+            title: _("Email");
+            changed => $on_entry_changed();
+          }
+
+          Adw.EntryRow name_row {
+            title: _("Name");
+          }
         }
 
-        Adw.EntryRow name_row {
-          title: _("Name");
-        }
-      }
+        Adw.PreferencesGroup {
+          Adw.ButtonRow save {
+            title: _("Save");
+            sensitive: false;
+            activated => $on_save_clicked();
 
-      Adw.PreferencesGroup {
-        Adw.ButtonRow save {
-          title: _("Save");
-          sensitive: false;
-          activated => $on_save_clicked();
-
-          styles [
-            "suggested-action",
-          ]
+            styles [
+              "suggested-action",
+            ]
+          }
         }
 
-        Adw.ButtonRow remove {
-          title: _("Remove");
-          visible: false;
-          activated => $on_remove_clicked();
+        Adw.PreferencesGroup {
+          Adw.ButtonRow remove {
+            title: _("Remove");
+            visible: false;
+            activated => $on_remove_clicked();
 
-          styles [
-            "destructive-action",
-          ]
+            styles [
+              "destructive-action",
+            ]
+          }
         }
-      }
+      };
     };
   };
 }
