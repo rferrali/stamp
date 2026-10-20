@@ -67,9 +67,15 @@ stamp_message_list_item_get_uid (StampMessageListItem *self);
 void
 stamp_message_list_item_view_source (StampMessageListItem *self);
 
+typedef void (*StampMessageListItemSearchDone) (StampMessageListItem *item,
+                                                gboolean               found,
+                                                gpointer               user_data);
+
 void
-stamp_message_list_item_search (StampMessageListItem *self,
-                                const gchar           *search_text);
+stamp_message_list_item_search (StampMessageListItem           *self,
+                                const gchar                    *search_text,
+                                StampMessageListItemSearchDone  done,
+                                gpointer                        user_data);
 
 StampWebView *
 stamp_message_list_item_get_web_view (StampMessageListItem *self);

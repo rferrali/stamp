@@ -55,6 +55,7 @@ struct _StampMessageListItem {
   GtkWidget *save_all_button;
   GtkWidget *disposition_banner;
 
+  GtkBox *web_view_box;
   StampWebView *web_view;
   StampAccount *account;
 
@@ -68,6 +69,11 @@ struct _StampMessageListItem {
   gboolean message_is_html;
   gboolean expanded;
   gboolean message_loaded;
+  gboolean web_view_loaded;
+  gboolean find_connected;
+  gchar *pending_search;
+  StampMessageListItemSearchDone search_done;
+  gpointer search_done_data;
   GCancellable *cancellable;
   CamelMimeMessage *message;
   ICalComponent *calendar;
@@ -111,6 +117,9 @@ update_actions (StampMessageListItem *self)
 }
 
 static void
+ensure_web_view (StampMessageListItem *self);
+
+static void
 open_message (StampMessageListItem *self,
               CamelMimeMessage     *message)
 {
@@ -128,6 +137,8 @@ open_message (StampMessageListItem *self,
   if (!message_list)
     return;
 
+  ensure_web_view (self);
+  self->web_view_loaded = FALSE;
   g_clear_object (&self->parser);
 
   if (!address)
@@ -297,6 +308,8 @@ on_get_message (GObject      *source,
   self = STAMP_MESSAGE_LIST_ITEM (user_data);
   if (!self->message_loaded)
     return;
+
+  ensure_web_view (self);
 
   if ((camel_folder_get_flags (folder) & CAMEL_FOLDER_IS_JUNK) == 0 &&
       (camel_folder_get_flags (folder) & CAMEL_FOLDER_IS_TRASH) == 0 &&
@@ -486,7 +499,7 @@ on_row_clicked (GObject  *object,
 {
   StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
 
-  if (self->expanded) {
+  if (self->expanded && self->web_view) {
     GtkGestureClick *gesture = GTK_GESTURE_CLICK (object);
     GtkWidget *gesture_widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
     graphene_rect_t web_view_bounds;
@@ -529,7 +542,8 @@ on_show_images (AdwBanner *banner,
 {
   StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
 
-  stamp_web_view_load_images (self->web_view);
+  if (self->web_view)
+    stamp_web_view_load_images (self->web_view);
   adw_banner_set_revealed (banner, FALSE);
 }
 
@@ -679,6 +693,7 @@ stamp_message_list_item_dispose (GObject *object)
     g_clear_object (&self->cancellable);
   }
 
+  g_clear_pointer (&self->pending_search, g_free);
   g_clear_pointer (&self->message_content, g_free);
   g_clear_pointer (&self->signature_details, g_free);
   g_clear_pointer (&self->disposition_notification_to, g_free);
@@ -767,7 +782,7 @@ stamp_message_list_item_class_init (StampMessageListItemClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, signature_banner);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, encryption_banner);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, vcard_banner);
-  gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, web_view);
+  gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, web_view_box);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, secondary_revealer);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, attachment_flow_box);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, attachment_info_label);
@@ -1182,14 +1197,10 @@ stamp_message_list_item_init (StampMessageListItem *self)
 
   self->cancellable = g_cancellable_new ();
 
-  g_signal_connect_object (self->web_view, "notify::size-request", G_CALLBACK (on_size_request), self, G_CONNECT_DEFAULT);
-
   self->actions = g_simple_action_group_new ();
   g_action_map_add_action_entries (G_ACTION_MAP (self->actions), actions, G_N_ELEMENTS (actions), self);
   gtk_widget_insert_action_group (GTK_WIDGET (self), "message-list-item", G_ACTION_GROUP (self->actions));
 
-  stamp_webview_set_cid_handler (self->web_view, on_cid_request, self);
-  g_signal_connect (self->web_view, "context-menu", G_CALLBACK (on_context_menu), self);
   g_signal_connect (self->save_all_button, "clicked", G_CALLBACK (on_save_all), self);
 }
 
@@ -1221,6 +1232,7 @@ stamp_message_list_item_get_message_body_html (StampMessageListItem *self,
                                                GAsyncReadyCallback   callback,
                                                gpointer              user_data)
 {
+  ensure_web_view (self);
   stamp_webview_get_body_html (self->web_view, cancellable, callback, user_data);
 }
 
@@ -1271,6 +1283,9 @@ stamp_message_list_item_print (StampMessageListItem *self)
   }
 
   gtk_print_settings_set (settings, GTK_PRINT_SETTINGS_OUTPUT_BASENAME, filename);
+  if (!self->web_view)
+    return;
+
   operation = webkit_print_operation_new (WEBKIT_WEB_VIEW (self->web_view));
 
   webkit_print_operation_set_print_settings (operation, settings);
@@ -1351,23 +1366,108 @@ stamp_message_list_item_view_source (StampMessageListItem *self)
 }
 
 static void
+finish_search (StampMessageListItem *self,
+               gboolean              found)
+{
+  StampMessageListItemSearchDone done = self->search_done;
+  gpointer user_data = self->search_done_data;
+
+  self->search_done = NULL;
+  self->search_done_data = NULL;
+
+  if (found)
+    stamp_message_list_item_set_expanded (self, TRUE);
+
+  if (done)
+    done (self, found, user_data);
+}
+
+static void
 on_found_text (WebKitFindController *controller,
                guint                 match_count,
                gpointer              user_data)
 {
+  finish_search (STAMP_MESSAGE_LIST_ITEM (user_data), match_count > 0);
+}
+
+static void
+on_failed_to_find_text (WebKitFindController *controller,
+                        gpointer              user_data)
+{
+  finish_search (STAMP_MESSAGE_LIST_ITEM (user_data), FALSE);
+}
+
+static void
+run_pending_search (StampMessageListItem *self)
+{
+  WebKitFindController *controller;
+
+  if (!self->pending_search || !self->web_view || !self->web_view_loaded)
+    return;
+
+  controller = webkit_web_view_get_find_controller (WEBKIT_WEB_VIEW (self->web_view));
+
+  if (!self->find_connected) {
+    self->find_connected = TRUE;
+    g_signal_connect (controller, "found-text", G_CALLBACK (on_found_text), self);
+    g_signal_connect (controller, "failed-to-find-text", G_CALLBACK (on_failed_to_find_text), self);
+  }
+
+  webkit_find_controller_search (controller, self->pending_search, WEBKIT_FIND_OPTIONS_CASE_INSENSITIVE, G_MAXUINT);
+  g_clear_pointer (&self->pending_search, g_free);
+}
+
+static void
+on_web_view_loaded (StampWebView *web_view,
+                    gboolean      finished,
+                    gpointer      user_data)
+{
   StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
 
-  stamp_message_list_item_set_expanded (self, TRUE);
+  if (!finished)
+    return;
+
+  self->web_view_loaded = TRUE;
+  run_pending_search (self);
+}
+
+static void
+ensure_web_view (StampMessageListItem *self)
+{
+  if (self->web_view)
+    return;
+
+  self->web_view = stamp_webview_new ();
+  gtk_widget_set_margin_bottom (GTK_WIDGET (self->web_view), 2);
+  gtk_widget_set_size_request (GTK_WIDGET (self->web_view), 1, 1);
+
+  g_signal_connect (self->web_view, "image-load-blocked", G_CALLBACK (on_image_load_blocked), self);
+  g_signal_connect (self->web_view, "mouse-target-changed", G_CALLBACK (on_mouse_target_changed), self);
+  g_signal_connect_object (self->web_view, "notify::size-request", G_CALLBACK (on_size_request), self, G_CONNECT_DEFAULT);
+  g_signal_connect (self->web_view, "loaded", G_CALLBACK (on_web_view_loaded), self);
+  stamp_webview_set_cid_handler (self->web_view, on_cid_request, self);
+  g_signal_connect (self->web_view, "context-menu", G_CALLBACK (on_context_menu), self);
+
+  gtk_box_append (self->web_view_box, GTK_WIDGET (self->web_view));
 }
 
 void
-stamp_message_list_item_search (StampMessageListItem *self,
-                                const gchar          *search_text)
+stamp_message_list_item_search (StampMessageListItem           *self,
+                                const gchar                    *search_text,
+                                StampMessageListItemSearchDone  done,
+                                gpointer                        user_data)
 {
-  WebKitFindController *controller = webkit_web_view_get_find_controller (WEBKIT_WEB_VIEW (self->web_view));
+  g_free (self->pending_search);
+  self->pending_search = g_strdup (search_text);
+  self->search_done = done;
+  self->search_done_data = user_data;
 
-  g_signal_connect (controller, "found-text", G_CALLBACK (on_found_text), self);
-  webkit_find_controller_search (controller, search_text, WEBKIT_FIND_OPTIONS_CASE_INSENSITIVE, G_MAXUINT);
+  if (!self->message_loaded) {
+    start_get_message (self, NULL, NULL);
+    self->message_loaded = TRUE;
+  }
+
+  run_pending_search (self);
 }
 
 StampWebView *

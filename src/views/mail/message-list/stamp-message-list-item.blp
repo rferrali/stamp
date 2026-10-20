@@ -113,12 +113,8 @@ template $StampMessageListItem: ListBoxRow {
           }
         }
 
-        $StampWebView web_view {
-          margin-bottom: 2;
-          width-request: 1;
-          height-request: 1;
-          image-load-blocked => $on_image_load_blocked();
-          mouse-target-changed => $on_mouse_target_changed();
+        Box web_view_box {
+          orientation: vertical;
         }
       };
     }
