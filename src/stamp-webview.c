@@ -54,6 +54,7 @@ enum {
 };
 
 static gint signals[LAST_SIGNAL] = { 0 };
+static WebKitWebView *shared_process_anchor;
 
 static void
 stamp_webview_get_property (GObject    *object,
@@ -253,7 +254,7 @@ on_decide_policy (WebKitWebView            *web_view,
 
 static void
 initialize_web_process_extensions (WebKitWebContext *web_context,
-                                   StampWebView     *self)
+                                   gpointer          user_data)
 {
   webkit_web_context_set_web_process_extensions_directory (web_context, STAMP_WEB_PROCESS_EXTENSIONS_DIR);
   webkit_web_context_set_web_process_extensions_initialization_user_data (web_context, g_variant_new_int32 (0));
@@ -264,7 +265,6 @@ static WebKitSettings *settings;
 static gpointer
 stamp_prefs_init (gpointer user_data)
 {
-  StampWebView *self = STAMP_WEB_VIEW (user_data);
   WebKitWebContext *web_context;
   g_autoptr (GStrvBuilder) builder = NULL;
   g_auto (GStrv) languages = NULL;
@@ -290,11 +290,9 @@ stamp_prefs_init (gpointer user_data)
     web_context,
     (const char * const *)languages
     );
-  g_signal_connect_object (web_context, "initialize-web-process-extensions",
-                           G_CALLBACK (initialize_web_process_extensions),
-                           self, G_CONNECT_DEFAULT);
 
-  webkit_web_context_register_uri_scheme (web_context, "cid", on_cid_request, g_object_ref (self), g_object_unref);
+  g_signal_connect (web_context, "initialize-web-process-extensions", G_CALLBACK (initialize_web_process_extensions), NULL);
+  webkit_web_context_register_uri_scheme (web_context, "cid", on_cid_request, NULL, NULL);
 
   return settings;
 }
@@ -304,7 +302,7 @@ stamp_get_webkit_settings (StampWebView *self)
 {
   static GOnce once_init = G_ONCE_INIT;
 
-  return g_once (&once_init, stamp_prefs_init, self);
+  return g_once (&once_init, stamp_prefs_init, NULL);
 }
 
 static
@@ -445,7 +443,12 @@ stamp_webview_init (StampWebView *self)
 StampWebView *
 stamp_webview_new (void)
 {
-  return g_object_new (STAMP_TYPE_WEBVIEW, NULL);
+  if (!shared_process_anchor) {
+    stamp_get_webkit_settings (NULL);
+    shared_process_anchor = g_object_ref_sink (g_object_new (WEBKIT_TYPE_WEB_VIEW, "settings", settings, NULL));
+  }
+
+  return g_object_new (STAMP_TYPE_WEBVIEW, "related-view", shared_process_anchor, NULL);
 }
 
 void
