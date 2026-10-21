@@ -337,6 +337,8 @@ camel_init_thread (GTask        *task,
                    GCancellable *cancellable)
 {
   camel_init (task_data, TRUE);
+  g_application_unmark_busy (g_application_get_default ());
+
   g_task_return_boolean (task, TRUE);
 }
 
@@ -346,6 +348,7 @@ stamp_session_init (StampSession *self)
   g_autoptr (GTask) task = NULL;
   g_autofree char *nssdb = g_build_filename (g_get_home_dir (), ".pki", "nssdb", NULL);
 
+  g_application_mark_busy (g_application_get_default ());
   self->cancellable = g_cancellable_new ();
 
   g_signal_connect_object (G_OBJECT (self), "user-alert", G_CALLBACK (on_user_alert), self, G_CONNECT_DEFAULT);

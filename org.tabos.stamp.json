@@ -218,6 +218,56 @@
       ]
     },
     {
+      "name": "pcsc-lite",
+      "buildsystem": "meson",
+      "config-opts": [
+        "-Dlibudev=false",
+        "-Dlibsystemd=false",
+        "-Dlibusb=false",
+        "-Dpolkit=false",
+        "-Dusb=false",
+        "-Dserial=false"
+      ],
+      "cleanup": [
+        "/bin",
+        "/include",
+        "/lib/libpcscspy*",
+        "/lib/pkg-config",
+        "/sbin",
+        "/share/doc",
+        "/share/man"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://pcsclite.apdu.fr/files/pcsc-lite-2.5.3.tar.xz",
+          "sha256": "fe2bb733ecf95e52768907eb00da9f9f3daf180960283e514a05dcc090afa3bd"
+        }
+      ]
+    },
+    {
+      "name": "opensc",
+      "config-opts": [
+        "--disable-doc",
+        "--disable-man",
+        "--with-completiondir=/app/lib/share/bash-completion/completions",
+        "--disable-tests",
+        "--disable-strict"
+      ],
+      "cleanup": [
+        "/bin",
+        "/share/opensc",
+        "/lib/share/bash-completion/completions"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://github.com/OpenSC/OpenSC/releases/download/0.26.1/opensc-0.26.1.tar.gz",
+          "sha256": "f16291a031d86e570394762e9f35eaf2fcbc2337a49910f3feae42d54e1688cb"
+        }
+      ]
+    },
+    {
       "name": "stamp",
       "builddir": true,
       "buildsystem": "meson",
