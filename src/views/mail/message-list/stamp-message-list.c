@@ -555,6 +555,7 @@ create_carousel_page_view (StampAccount          *account,
   GtkWidget *toolbar_view;
   GtkWidget *header_bar;
   GtkWidget *scrolled;
+  GtkWidget *viewport;
   GtkWidget *list_box;
   GtkWidget *subject_label;
   GtkWidget *content_box;
@@ -588,16 +589,21 @@ create_carousel_page_view (StampAccount          *account,
   gtk_box_append (GTK_BOX (header_box), subject_label);
   gtk_box_append (GTK_BOX (content_box), header_box);
 
-  scrolled = gtk_scrolled_window_new ();
-  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-  gtk_widget_set_hexpand (scrolled, TRUE);
-  gtk_widget_set_vexpand (scrolled, TRUE);
-
   list_box = gtk_list_box_new ();
   gtk_list_box_set_selection_mode (GTK_LIST_BOX (list_box), GTK_SELECTION_NONE);
   gtk_widget_add_css_class (list_box, "message-list");
   gtk_widget_add_css_class (list_box, "background");
-  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled), list_box);
+
+  viewport = gtk_viewport_new (NULL, NULL);
+  gtk_viewport_set_scroll_to_focus (GTK_VIEWPORT (viewport), FALSE);
+  gtk_viewport_set_child (GTK_VIEWPORT (viewport), list_box);
+
+  scrolled = gtk_scrolled_window_new ();
+  gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+  gtk_widget_set_hexpand (scrolled, TRUE);
+  gtk_widget_set_vexpand (scrolled, TRUE);
+  gtk_widget_set_focusable (scrolled, FALSE);
+  gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled), viewport);
 
   root_msg = camel_folder_thread_node_get_item (node);
   item = stamp_message_list_item_new (account, node);

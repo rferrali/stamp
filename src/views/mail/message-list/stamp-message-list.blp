@@ -150,8 +150,10 @@ template $StampMessageList: Adw.BreakpointBin {
                   hscrollbar-policy: never;
                   focusable: false;
 
-                  child: Adw.Bin {
-                    Adw.Clamp {
+                  child: Viewport viewport {
+                    scroll-to-focus: false;
+
+                    child: Adw.Clamp {
                       maximum-size: 9999;
 
                       child: Box {
@@ -199,7 +201,7 @@ template $StampMessageList: Adw.BreakpointBin {
                           ]
                         }
                       };
-                    }
+                    };
                   };
                 };
               };
