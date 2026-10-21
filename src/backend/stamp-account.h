@@ -238,6 +238,10 @@ stamp_account_save_draft_async_finish (StampAccount  *self,
                                        GAsyncResult  *result,
                                        GError       **error);
 
+gboolean
+stamp_account_save_template (StampAccount     *self,
+                             CamelMimeMessage *message);
+
 void
 stamp_account_remove_draft (StampAccount *self,
                             const gchar   *uid);

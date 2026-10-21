@@ -1652,6 +1652,29 @@ stamp_account_save_draft (StampAccount         *self,
   return uid;
 }
 
+gboolean
+stamp_account_save_template (StampAccount     *self,
+                             CamelMimeMessage *message)
+{
+  g_autoptr (GError) error = NULL;
+  g_autoptr (CamelMessageInfo) info = camel_message_info_new (NULL);
+
+  if (!self->mail->templates_folder) {
+    g_warning ("%s: No templates folder", G_STRFUNC);
+    return FALSE;
+  }
+
+  camel_message_info_set_flags (info, CAMEL_MESSAGE_DRAFT | CAMEL_MESSAGE_SEEN, CAMEL_MESSAGE_DRAFT | CAMEL_MESSAGE_SEEN);
+  if (!camel_folder_append_message_sync (self->mail->templates_folder, message, info, NULL, self->cancellable, &error)) {
+    if (error)
+      g_warning ("%s: Could not append message to templates folder: %s", G_STRFUNC, error->message);
+
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
 void
 stamp_account_remove_draft (StampAccount *self,
                             const gchar  *uid)

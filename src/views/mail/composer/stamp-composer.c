@@ -229,6 +229,20 @@ set_send_action_enabled (StampComposer *self,
 }
 
 static void
+update_save_template_action (StampComposer *self)
+{
+  StampAccount *account;
+  GAction *action;
+
+  if (!self->actions || !self->composer_from)
+    return;
+
+  account = stamp_composer_from_get_account (self->composer_from);
+  action = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "save-template");
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), stamp_account_get_mail_templates_folder (account) != NULL);
+}
+
+static void
 on_edit_activate (GSimpleAction *action,
                   GVariant      *parameter,
                   gpointer       user_data)
@@ -794,6 +808,7 @@ stamp_composer_set_composer_from (StampComposer     *self,
 
       gtk_drop_down_set_selected (GTK_DROP_DOWN (self->from), idx);
       self->composer_from = from;
+      update_save_template_action (self);
 
       stamp_contact_completion_set_account (STAMP_CONTACT_COMPLETION (self->to), account);
       stamp_contact_completion_set_account (STAMP_CONTACT_COMPLETION (self->cc), account);
@@ -819,6 +834,7 @@ stamp_composer_set_composer_from_by_account (StampComposer *self,
     if (account == cur_account) {
       gtk_drop_down_set_selected (GTK_DROP_DOWN (self->from), idx);
       self->composer_from = cur_from;
+      update_save_template_action (self);
 
       stamp_contact_completion_set_account (STAMP_CONTACT_COMPLETION (self->to), account);
       stamp_contact_completion_set_account (STAMP_CONTACT_COMPLETION (self->cc), account);
@@ -1277,6 +1293,48 @@ on_send_activated (GSimpleAction *action,
   } else {
     stamp_webview_get_body_html (self->webview, NULL, on_get_body_html, self);
   }
+}
+
+static void
+on_save_template_get_body_html (GObject      *source_object,
+                                GAsyncResult *res,
+                                gpointer      user_data)
+{
+  StampComposer *self = user_data;
+  StampWebView *web_view = STAMP_WEB_VIEW (source_object);
+  g_autoptr (GError) error = NULL;
+  g_autofree char *body_plain = NULL;
+  g_autofree char *body = stamp_webview_get_body_html_finish (web_view, res, &body_plain, &error);
+  g_autoptr (CamelMimeMessage) mime_message = NULL;
+  const gchar *name;
+  const gchar *mail;
+
+  if (!body) {
+    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      g_warning ("Failed to get HTML content for mail: %s", error->message);
+    return;
+  }
+
+  mime_message = build_message (self, body, body_plain);
+
+  name = stamp_composer_from_get_name (self->composer_from);
+  mail = stamp_composer_from_get_mail (self->composer_from);
+
+  g_object_unref (build_sender (mime_message, name, mail));
+  g_object_unref (build_recipients (self, mime_message));
+
+  if (stamp_account_save_template (stamp_composer_from_get_account (self->composer_from), mime_message))
+    adw_toast_overlay_add_toast (self->toast_overlay, adw_toast_new (_("Template saved")));
+}
+
+static void
+on_save_template_activated (GSimpleAction *action,
+                            GVariant      *parameter,
+                            gpointer       user_data)
+{
+  StampComposer *self = STAMP_COMPOSER (user_data);
+
+  stamp_webview_get_body_html (self->webview, self->cancellable, on_save_template_get_body_html, self);
 }
 
 static void
@@ -2122,6 +2180,7 @@ static const GActionEntry stamp_composer_action_entries[] = {
   { "insert-link", on_insert_link_activated },
   { "send", on_send_activated },
   { "schedule", on_schedule_activated },
+  { "save-template", on_save_template_activated },
   { "remove-format", on_remove_format_activated },
   { "add-attachment", on_add_attachment_activated },
 };
@@ -2369,6 +2428,8 @@ stamp_composer_init (StampComposer *self)
   action = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "schedule");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), FALSE);
   g_object_bind_property (self->to, "has-entries", action, "enabled", G_BINDING_SYNC_CREATE);
+
+  update_save_template_action (self);
 
   build_signature_menu (self);
 
