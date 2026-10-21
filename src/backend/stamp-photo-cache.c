@@ -50,6 +50,7 @@ typedef struct {
   GSList *waiters;
   GCancellable *cancellable;
   gint pending_books;
+  gboolean contact_found;
   gint ref_count;
 } StampPendingLookup;
 
@@ -399,6 +400,8 @@ stamp_on_contacts_received (GObject      *source,
     EContact *contact = E_CONTACT (contacts->data);
     EContactPhoto *photo = e_contact_get (contact, E_CONTACT_PHOTO);
 
+    pending->contact_found = TRUE;
+
     if (!photo) {
       g_debug ("%s: Contact found for '%s' but no photo field", G_STRFUNC, pending->email);
     } else if (photo->type == E_CONTACT_PHOTO_TYPE_INLINED) {
@@ -445,21 +448,23 @@ stamp_on_contacts_received (GObject      *source,
 
 book_done:
 
-  texture = check_bimi (cache, pending->email, pending->cancellable);
-  if (texture) {
-    pending->pending_books = 0;
-    g_hash_table_insert (cache->positive_cache,
-                         g_strdup (pending->email), g_object_ref (texture));
-    g_hash_table_remove (cache->pending, pending->email);
-    stamp_notify_waiters (pending, texture);
-    stamp_pending_lookup_unref (pending);
-    return;
-  }
-
   pending->pending_books--;
   if (pending->pending_books > 0) {
     stamp_pending_lookup_unref (pending);
     return;
+  }
+
+  /* BIMI is only used for senders which are not part of any address book */
+  if (!pending->contact_found) {
+    texture = check_bimi (cache, pending->email, pending->cancellable);
+    if (texture) {
+      g_hash_table_insert (cache->positive_cache,
+                           g_strdup (pending->email), g_object_ref (texture));
+      g_hash_table_remove (cache->pending, pending->email);
+      stamp_notify_waiters (pending, texture);
+      stamp_pending_lookup_unref (pending);
+      return;
+    }
   }
 
   g_debug ("%s: All books exhausted, creating NEGATIVE cache for '%s'", G_STRFUNC, pending->email);
