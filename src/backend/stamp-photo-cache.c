@@ -375,6 +375,58 @@ stamp_notify_waiters (StampPendingLookup *pending,
 }
 
 static void
+on_bimi (GObject      *source,
+         GAsyncResult *res,
+         gpointer      user_data)
+{
+  GTask *task = G_TASK (res);
+  StampPendingLookup *pending = g_task_get_task_data (task);
+  g_autoptr (GdkTexture) texture = NULL;
+  g_autoptr (GError) error = NULL;
+
+  texture = g_task_propagate_pointer (task, &error);
+  if (error)
+    return;
+
+  if (texture) {
+    pending->pending_books = 0;
+    g_hash_table_insert (pending->cache->positive_cache, g_strdup (pending->email), g_object_ref (texture));
+  } else {
+    g_hash_table_insert (pending->cache->negative_cache,
+                         g_strdup (pending->email), GINT_TO_POINTER (TRUE));
+    stamp_disk_cache_store_negative (pending->cache, pending->email);
+  }
+
+  g_hash_table_remove (pending->cache->pending, pending->email);
+  stamp_notify_waiters (pending, texture);
+}
+
+static void
+load_bimi (GTask        *task,
+           gpointer      source_object,
+           gpointer      task_data,
+           GCancellable *cancellable)
+{
+  StampPendingLookup *pending = task_data;
+  GdkTexture *texture;
+
+  texture = check_bimi (pending->cache, pending->email, pending->cancellable);
+
+  g_task_return_pointer (task, texture, texture ? g_object_unref : NULL);
+}
+
+static void
+start_bimi_lookup (StampPendingLookup *pending)
+{
+  g_autoptr (GTask) task = g_task_new (NULL, pending->cancellable, on_bimi, NULL);
+
+  g_task_set_source_tag (task, start_bimi_lookup);
+  stamp_pending_lookup_ref (pending);
+  g_task_set_task_data (task, pending, (GDestroyNotify)stamp_pending_lookup_unref);
+  g_task_run_in_thread (task, load_bimi);
+}
+
+static void
 stamp_on_contacts_received (GObject      *source,
                             GAsyncResult *res,
                             gpointer      user_data)
@@ -456,15 +508,9 @@ book_done:
 
   /* BIMI is only used for senders which are not part of any address book */
   if (!pending->contact_found) {
-    texture = check_bimi (cache, pending->email, pending->cancellable);
-    if (texture) {
-      g_hash_table_insert (cache->positive_cache,
-                           g_strdup (pending->email), g_object_ref (texture));
-      g_hash_table_remove (cache->pending, pending->email);
-      stamp_notify_waiters (pending, texture);
-      stamp_pending_lookup_unref (pending);
-      return;
-    }
+    start_bimi_lookup (pending);
+    stamp_pending_lookup_unref (pending);
+    return;
   }
 
   g_debug ("%s: All books exhausted, creating NEGATIVE cache for '%s'", G_STRFUNC, pending->email);
@@ -474,54 +520,6 @@ book_done:
   g_hash_table_remove (cache->pending, pending->email);
   stamp_notify_waiters (pending, NULL);
   stamp_pending_lookup_unref (pending);
-}
-
-static void
-on_bimi (GObject      *source,
-         GAsyncResult *res,
-         gpointer      user_data)
-{
-  GTask *task = G_TASK (res);
-  StampPendingLookup *pending = g_task_get_task_data (task);
-  GdkTexture *texture;
-  g_autoptr (GError) error = NULL;
-
-  texture = g_task_propagate_pointer (task, &error);
-  if (error)
-    return;
-
-  if (texture) {
-    pending->pending_books = 0;
-    g_hash_table_insert (pending->cache->positive_cache, g_strdup (pending->email), g_object_ref (texture));
-    g_hash_table_remove (pending->cache->pending, pending->email);
-    stamp_notify_waiters (pending, texture);
-    g_object_unref (texture);
-    return;
-  }
-
-  g_hash_table_insert (pending->cache->negative_cache,
-                       g_strdup (pending->email), GINT_TO_POINTER (TRUE));
-  stamp_disk_cache_store_negative (pending->cache, pending->email);
-  g_hash_table_remove (pending->cache->pending, pending->email);
-  stamp_notify_waiters (pending, NULL);
-  stamp_pending_lookup_unref (pending);
-}
-
-static void
-load_bimi (GTask        *task,
-           gpointer      source_object,
-           gpointer      task_data,
-           GCancellable *cancellable)
-{
-  StampPendingLookup *pending = task_data;
-  GdkTexture *texture;
-
-  texture = check_bimi (pending->cache, pending->email, pending->cancellable);
-
-  if (texture)
-    g_task_return_pointer (task, texture, g_object_unref);
-  else
-    g_task_return_pointer (task, NULL, NULL);
 }
 
 /**
@@ -626,8 +624,6 @@ stamp_photo_cache_lookup_async (StampPhotoCache *self,
   }
 
   if (!books) {
-    g_autoptr (GTask) task = NULL;
-
     g_debug ("%s: No enabled books for '%s', trying BIMI only", G_STRFUNC, search_string);
 
     pending = g_new0 (StampPendingLookup, 1);
@@ -643,11 +639,7 @@ stamp_photo_cache_lookup_async (StampPhotoCache *self,
     if (cancellable)
       g_cancellable_connect (cancellable, G_CALLBACK (stamp_on_waiter_cancelled), stamp_cancel_data_new (self, search_string, waiter->id), (GDestroyNotify)stamp_cancel_data_free);
 
-    task = g_task_new (NULL, pending->cancellable, on_bimi, NULL);
-    g_task_set_source_tag (task, stamp_photo_cache_lookup_async);
-    stamp_pending_lookup_ref (pending);
-    g_task_set_task_data (task, pending, NULL);
-    g_task_run_in_thread (task, load_bimi);
+    start_bimi_lookup (pending);
     return;
   }
 
