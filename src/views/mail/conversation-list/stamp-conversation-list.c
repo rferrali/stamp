@@ -3073,7 +3073,8 @@ stamp_conversation_list_trash (StampConversationList *self,
 }
 
 void
-stamp_conversation_list_finalize_trash (StampConversationList *self)
+stamp_conversation_list_finalize_trash (StampConversationList *self,
+                                        gboolean               select_next)
 {
   if (!self->trash_array || !self->trash_entries)
     return;
@@ -3104,7 +3105,7 @@ stamp_conversation_list_finalize_trash (StampConversationList *self)
                                        on_transfer_messages_to, self);
   }
 
-  if (self->selection_mode)
+  if (self->selection_mode || !select_next)
     stamp_conversation_list_unselect (self);
   else
     stamp_conversation_list_select_relative (self, 1);

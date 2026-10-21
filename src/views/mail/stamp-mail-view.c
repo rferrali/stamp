@@ -241,6 +241,9 @@ on_conversation_selected (GtkWidget *object,
                                        (CamelFolderThreadNode *)thread_node);
 }
 
+static gboolean
+is_mobile_view (StampMailView *self);
+
 static void
 on_trash_undo (AdwToast *toast,
                gpointer  user_data)
@@ -257,7 +260,7 @@ on_trash_dismissed (AdwToast *toast,
 {
   StampMailView *self = STAMP_MAIL_VIEW (user_data);
 
-  stamp_conversation_list_finalize_trash (self->conversation_list);
+  stamp_conversation_list_finalize_trash (self->conversation_list, !is_mobile_view (self));
   g_clear_object (&self->trash_toast);
 }
 
@@ -278,6 +281,9 @@ trash (StampMailView         *self,
   }
 
   stamp_message_list_set_conversation (self->message_list, NULL, NULL);
+
+  if (is_mobile_view (self))
+    adw_navigation_view_pop_to_tag (self->mobile_nav, "main");
 }
 
 static void

@@ -84,7 +84,8 @@ void
 stamp_conversation_list_undo_trash (StampConversationList *self);
 
 void
-stamp_conversation_list_finalize_trash (StampConversationList *self);
+stamp_conversation_list_finalize_trash (StampConversationList *self,
+                                        gboolean               select_next);
 
 void
 stamp_mail_conversation_list_search_contact (StampConversationList *self,
