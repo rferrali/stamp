@@ -29,7 +29,9 @@ template $StampMessageList: Adw.BreakpointBin {
 
             [start]
             Button reply_btn {
-              icon-name: 'mail-reply-sender-symbolic';
+              child: Adw.ButtonContent reply_content {
+                icon-name: 'mail-reply-sender-symbolic';
+              };
               tooltip-text: _("Reply");
               action-name: 'mail.reply-current';
 
@@ -40,7 +42,9 @@ template $StampMessageList: Adw.BreakpointBin {
 
             [start]
             Button reply_all_btn {
-              icon-name: 'mail-reply-all-symbolic';
+              child: Adw.ButtonContent reply_all_content {
+                icon-name: 'mail-reply-all-symbolic';
+              };
               tooltip-text: _("Reply All");
               action-name: 'mail.reply-all-current';
 
@@ -51,7 +55,9 @@ template $StampMessageList: Adw.BreakpointBin {
 
             [start]
             Button forward_btn {
-              icon-name: 'mail-forward-symbolic';
+              child: Adw.ButtonContent forward_content {
+                icon-name: 'mail-forward-symbolic';
+              };
               tooltip-text: _("Forward");
               action-name: 'mail.forward-current';
 
@@ -298,20 +304,13 @@ template $StampMessageList: Adw.BreakpointBin {
     }
   };
 
-  // Adw.Breakpoint breakpoint_tablet {
-  //   condition ("max-width: 799sp")
-  //   setters {
-  //     reply_btn.icon-name: 'mail-reply-sender-symbolic';
-  //     reply_all_btn.icon-name: 'mail-reply-all-symbolic';
-  //     forward_btn.icon-name: 'mail-forward-symbolic';
-  //   }
-  // }
-  // Adw.Breakpoint breakpoint_desktop {
-  //   condition ("min-width: 800sp")
-  //   setters {
-  //     reply_btn.label: _("Reply");
-  //     reply_all_btn.label: _("Reply All");
-  //     forward_btn.label: _("Forward");
-  //   }
-  // }
+  Adw.Breakpoint {
+    condition ("min-width: 600sp")
+
+    setters {
+      reply_content.label: _("Reply");
+      reply_all_content.label: _("Reply All");
+      forward_content.label: _("Forward");
+    }
+  }
 }
