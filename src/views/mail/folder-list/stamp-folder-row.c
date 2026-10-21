@@ -74,7 +74,10 @@ transform_unread_to (GBinding     *binding,
   gtk_widget_set_visible (GTK_WIDGET (self->unread), unread > 0);
   if (unread) {
     g_autofree char *label = g_strdup_printf ("%u", unread);
+    g_autofree char *description = g_strdup_printf (g_dngettext (NULL, "%u Unread Message", "%u Unread Messages", unread), unread);
 
+    gtk_accessible_update_property (GTK_ACCESSIBLE (self->unread), GTK_ACCESSIBLE_PROPERTY_LABEL, description, -1);
+    gtk_widget_set_tooltip_text (GTK_WIDGET (self->unread), description);
     g_value_set_string (to_value, label);
   }
 
