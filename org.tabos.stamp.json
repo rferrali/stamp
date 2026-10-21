@@ -27,6 +27,7 @@
     "--filesystem=xdg-config/pki:rw",
     "--filesystem=~/.gnupg:rw",
     "--filesystem=xdg-config/gnupg:rw",
+    "--filesystem=xdg-run/gnupg",
     "--filesystem=xdg-run/p11-kit/pkcs11"
   ],
   "cleanup": [

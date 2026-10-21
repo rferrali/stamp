@@ -23,6 +23,7 @@
 #include <cert.h>
 #include <glib/gi18n.h>
 #include <gpgme.h>
+#include <locale.h>
 #include <nss.h>
 #include <pk11pub.h>
 
@@ -576,6 +577,33 @@ enumerate_smime_certs (GPtrArray *nicknames)
   return list;
 }
 
+static gboolean
+init_gpgme (void)
+{
+  static gsize initialized = 0;
+  static gboolean available = FALSE;
+
+  if (g_once_init_enter (&initialized)) {
+    gpgme_error_t err;
+
+    gpgme_check_version (NULL);
+    gpgme_set_locale (NULL, LC_CTYPE, setlocale (LC_CTYPE, NULL));
+#ifdef LC_MESSAGES
+    gpgme_set_locale (NULL, LC_MESSAGES, setlocale (LC_MESSAGES, NULL));
+#endif
+
+    err = gpgme_engine_check_version (GPGME_PROTOCOL_OpenPGP);
+    if (err != GPG_ERR_NO_ERROR)
+      g_warning ("OpenPGP engine not available: %s", gpgme_strerror (err));
+    else
+      available = TRUE;
+
+    g_once_init_leave (&initialized, 1);
+  }
+
+  return available;
+}
+
 static GtkStringList *
 enumerate_pgp_keys (GPtrArray *key_ids)
 {
@@ -591,15 +619,21 @@ enumerate_pgp_keys (GPtrArray *key_ids)
   if (key_ids)
     g_ptr_array_add (key_ids, NULL);
 
-  err = gpgme_new (&ctx);
-  if (err != GPG_ERR_NO_ERROR)
+  if (!init_gpgme ())
     return list;
+
+  err = gpgme_new (&ctx);
+  if (err != GPG_ERR_NO_ERROR) {
+    g_warning ("Failed to create gpgme context: %s", gpgme_strerror (err));
+    return list;
+  }
 
   gpgme_set_protocol (ctx, GPGME_PROTOCOL_OpenPGP);
   gpgme_set_keylist_mode (ctx, GPGME_KEYLIST_MODE_LOCAL);
 
   err = gpgme_op_keylist_start (ctx, NULL, 0);
   if (err != GPG_ERR_NO_ERROR) {
+    g_warning ("Failed to list PGP keys: %s", gpgme_strerror (err));
     gpgme_release (ctx);
     return list;
   }
