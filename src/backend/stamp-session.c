@@ -311,16 +311,13 @@ on_registry_ready_for_load (GObject      *src,
 }
 
 static void
-stamp_session_init (StampSession *self)
+on_camel_ready (GObject      *src,
+                GAsyncResult *res,
+                gpointer      user_data)
 {
+  StampSession *self = STAMP_SESSION (src);
   GNetworkMonitor *network_monitor = e_network_monitor_get_default ();
   GTask *task;
-  g_autofree char *nssdb = g_build_filename (g_get_home_dir (), ".pki", "nssdb", NULL);
-
-  self->cancellable = g_cancellable_new ();
-
-  camel_init (nssdb, TRUE);
-  g_signal_connect_object (G_OBJECT (self), "user-alert", G_CALLBACK (on_user_alert), self, G_CONNECT_DEFAULT);
 
   PK11_SetPasswordFunc (stamp_session_pk11_password);
 
@@ -331,6 +328,32 @@ stamp_session_init (StampSession *self)
   task = g_task_new (self, self->cancellable, on_accounts_loaded, self);
   g_task_set_source_tag (task, stamp_session_init);
   e_source_registry_new (self->cancellable, on_registry_ready_for_load, task);
+}
+
+static void
+camel_init_thread (GTask        *task,
+                   gpointer      source_object,
+                   gpointer      task_data,
+                   GCancellable *cancellable)
+{
+  camel_init (task_data, TRUE);
+  g_task_return_boolean (task, TRUE);
+}
+
+static void
+stamp_session_init (StampSession *self)
+{
+  g_autoptr (GTask) task = NULL;
+  g_autofree char *nssdb = g_build_filename (g_get_home_dir (), ".pki", "nssdb", NULL);
+
+  self->cancellable = g_cancellable_new ();
+
+  g_signal_connect_object (G_OBJECT (self), "user-alert", G_CALLBACK (on_user_alert), self, G_CONNECT_DEFAULT);
+
+  task = g_task_new (self, NULL, on_camel_ready, NULL);
+  g_task_set_source_tag (task, stamp_session_init);
+  g_task_set_task_data (task, g_steal_pointer (&nssdb), g_free);
+  g_task_run_in_thread (task, camel_init_thread);
 }
 
 static gboolean
