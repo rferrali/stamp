@@ -434,6 +434,22 @@ stamp_conversation_item_get_node (StampConversationItem *self)
   return self->thread_node;
 }
 
+static gchar *
+dup_from (const CamelMessageInfo *message)
+{
+  CamelNameValueArray *headers = camel_message_info_dup_headers (message);
+  const gchar *from = NULL;
+  gchar *result;
+
+  if (headers)
+    from = camel_name_value_array_get_named (headers, CAMEL_COMPARE_CASE_INSENSITIVE, "From");
+
+  result = g_strdup (from && *from ? from : camel_message_info_get_from (message));
+  camel_name_value_array_free (headers);
+
+  return result;
+}
+
 const gchar *
 stamp_conversation_item_get_from (StampConversationItem *self)
 {
@@ -452,8 +468,9 @@ stamp_conversation_item_get_from (StampConversationItem *self)
 
     if (message) {
       g_autoptr (CamelInternetAddress) address = camel_internet_address_new ();
+      g_autofree gchar *from = dup_from (message);
 
-      if (camel_address_decode (CAMEL_ADDRESS (address), camel_message_info_get_from (message)) > 0) {
+      if (camel_address_decode (CAMEL_ADDRESS (address), from) > 0) {
         const gchar *sender = NULL;
         gchar *tmp = NULL;
 
@@ -614,8 +631,9 @@ stamp_conversation_item_get_mail (StampConversationItem *self)
 
     if (message) {
       g_autoptr (CamelInternetAddress) address = camel_internet_address_new ();
+      g_autofree gchar *from = dup_from (message);
 
-      if (camel_address_decode (CAMEL_ADDRESS (address), camel_message_info_get_from (message)) > 0) {
+      if (camel_address_decode (CAMEL_ADDRESS (address), from) > 0) {
         const gchar *ia_name;
         const gchar *ia_address;
         const gchar *sender;
