@@ -28,8 +28,9 @@ G_BEGIN_DECLS
 G_DECLARE_FINAL_TYPE (StampConversationItem, stamp_conversation_item, STAMP, CONVERSATION_ITEM, GObject);
 
 StampConversationItem *
-stamp_conversation_item_new (CamelFolderThreadNode *thread_node,
-                             const gchar            *service_uid);
+stamp_conversation_item_new (CamelFolderThread     *thread,
+                             CamelFolderThreadNode *thread_node,
+                             const gchar           *service_uid);
 
 const gchar *
 stamp_conversation_item_get_subject (StampConversationItem *self);

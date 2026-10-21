@@ -628,7 +628,7 @@ build_items (CamelFolderThread *thread,
     CamelFolderThreadNode *child = camel_folder_thread_get_tree (thread);
 
     while (child) {
-      StampConversationItem *item = stamp_conversation_item_new (child, service_uid);
+      StampConversationItem *item = stamp_conversation_item_new (thread, child, service_uid);
 
       if (!node_has_message_from_folder (child, folder))
         stamp_conversation_item_set_hidden (item, TRUE);

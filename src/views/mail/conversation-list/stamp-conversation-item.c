@@ -24,6 +24,7 @@
 struct _StampConversationItem {
   GObject parent_instance;
 
+  CamelFolderThread *thread;
   CamelFolderThreadNode *thread_node;
   guint timestamp;
   gchar *senders;
@@ -42,7 +43,8 @@ struct _StampConversationItem {
 G_DEFINE_FINAL_TYPE (StampConversationItem, stamp_conversation_item, G_TYPE_OBJECT);
 
 typedef enum {
-  PROP_THREAD_NODE = 1,
+  PROP_THREAD = 1,
+  PROP_THREAD_NODE,
   PROP_UNREAD,
   PROP_FLAGGED,
   PROP_SERVICE_UID,
@@ -141,6 +143,9 @@ stamp_conversation_item_get_property (GObject    *object,
   StampConversationItem *self = STAMP_CONVERSATION_ITEM (object);
 
   switch ((StampConversationItemProps)property_id) {
+    case PROP_THREAD:
+      g_value_set_object (value, self->thread);
+      break;
     case PROP_THREAD_NODE:
       g_value_set_pointer (value, stamp_conversation_item_get_node (self));
       break;
@@ -247,6 +252,9 @@ stamp_conversation_item_set_property (GObject      *object,
   StampConversationItem *self = STAMP_CONVERSATION_ITEM (object);
 
   switch ((StampConversationItemProps)property_id) {
+    case PROP_THREAD:
+      g_set_object (&self->thread, g_value_get_object (value));
+      break;
     case PROP_THREAD_NODE:
       self->thread_node = g_value_get_pointer (value);
       self->timestamp = get_newest_timestamp (self->thread_node, -1);
@@ -288,6 +296,7 @@ stamp_conversation_item_dispose (GObject *object)
 {
   StampConversationItem *self = STAMP_CONVERSATION_ITEM (object);
 
+  g_clear_object (&self->thread);
   g_clear_pointer (&self->senders, g_free);
   g_clear_pointer (&self->subject, g_free);
   g_clear_pointer (&self->sender, g_free);
@@ -314,6 +323,11 @@ stamp_conversation_item_class_init (StampConversationItemClass *klass)
   object_class->dispose = stamp_conversation_item_dispose;
   object_class->constructed = stamp_conversation_item_constructed;
 
+  properties[PROP_THREAD] = g_param_spec_object ("thread",
+                                                 NULL,
+                                                 NULL,
+                                                 CAMEL_TYPE_FOLDER_THREAD,
+                                                 G_PARAM_CONSTRUCT_ONLY | G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
   properties[PROP_THREAD_NODE] = g_param_spec_pointer ("thread-node",
                                                        NULL,
                                                        NULL,
@@ -403,10 +417,12 @@ stamp_conversation_item_init (StampConversationItem *self)
 }
 
 StampConversationItem *
-stamp_conversation_item_new (CamelFolderThreadNode *thread_node,
+stamp_conversation_item_new (CamelFolderThread     *thread,
+                             CamelFolderThreadNode *thread_node,
                              const gchar           *service_uid)
 {
   return g_object_new (STAMP_TYPE_CONVERSATION_ITEM,
+                       "thread", thread,
                        "thread-node", thread_node,
                        "service-uid", service_uid,
                        NULL);
