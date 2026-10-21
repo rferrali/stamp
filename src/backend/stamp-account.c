@@ -1294,9 +1294,9 @@ stamp_account_contacts_changed (StampAccount *self,
   if (!enabled && cal->client) {
     g_debug ("%s: Address book '%s' from '%s' disabled", G_STRFUNC, e_source_get_display_name (source), self->display_name);
     g_signal_emit (self, signals[BOOK_REMOVED], 0, self, cal);
-    g_ptr_array_remove (self->address_books, cal);
     e_client_cancel_all (E_CLIENT (cal->client));
     g_clear_object (&cal->client);
+    cal->enabled = FALSE;
   } else if (enabled && !cal->client) {
     g_debug ("%s: Address book '%s' from '%s' enabled", G_STRFUNC, e_source_get_display_name (source), self->display_name);
 
