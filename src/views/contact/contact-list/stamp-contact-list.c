@@ -198,20 +198,75 @@ filter_func (gpointer object,
   StampContactList *self = STAMP_CONTACT_LIST (user_data);
   StampContactItem *item = STAMP_CONTACT_ITEM (object);
   const gchar *search_text = gtk_editable_get_text (GTK_EDITABLE (self->search_entry));
-  const gchar *contact_name = stamp_contact_item_get_name (item);
   g_autofree char *search = NULL;
-  g_autofree char *name = NULL;
+  g_autofree char *haystack = NULL;
+  g_auto (GStrv) tokens = NULL;
+  g_autoptr (GString) text = NULL;
+  EContact *contact;
+  static const EContactField address_fields[] = {
+    E_CONTACT_ADDRESS_HOME, E_CONTACT_ADDRESS_WORK, E_CONTACT_ADDRESS_OTHER,
+  };
+  static const EContactField fields[] = {
+    E_CONTACT_FULL_NAME, E_CONTACT_GIVEN_NAME, E_CONTACT_FAMILY_NAME,
+    E_CONTACT_NICKNAME, E_CONTACT_ORG, E_CONTACT_ORG_UNIT, E_CONTACT_OFFICE,
+    E_CONTACT_TITLE, E_CONTACT_ROLE, E_CONTACT_HOMEPAGE_URL, E_CONTACT_BLOG_URL,
+    E_CONTACT_NOTE,
+    E_CONTACT_ADDRESS_LABEL_HOME, E_CONTACT_ADDRESS_LABEL_WORK, E_CONTACT_ADDRESS_LABEL_OTHER,
+  };
 
   if (!search_text || strlen (search_text) == 0)
     return TRUE;
 
-  if (!contact_name || strlen (contact_name) == 0)
-    return FALSE;
+  text = g_string_new (stamp_contact_item_get_name (item));
+  contact = stamp_contact_item_get_contact (item);
 
+  /* So the idea is quiet simple: Collect all contact data in a large string
+   * and then do word matching anywhere…
+   */
+  if (contact) {
+    GList *list;
+
+    for (guint i = 0; i < G_N_ELEMENTS (fields); i++) {
+      const gchar *value = e_contact_get_const (contact, fields[i]);
+
+      if (value && *value)
+        g_string_append_printf (text, "\n%s", value);
+    }
+
+    list = e_contact_get (contact, E_CONTACT_EMAIL);
+    for (GList *l = list; l; l = l->next)
+      g_string_append_printf (text, "\n%s", (const gchar *)l->data);
+    g_list_free_full (list, g_free);
+
+    list = e_contact_get (contact, E_CONTACT_TEL);
+    for (GList *l = list; l; l = l->next)
+      g_string_append_printf (text, "\n%s", (const gchar *)l->data);
+    g_list_free_full (list, g_free);
+
+    for (guint i = 0; i < G_N_ELEMENTS (address_fields); i++) {
+      EContactAddress *addr = e_contact_get (contact, address_fields[i]);
+
+      if (!addr)
+        continue;
+
+      g_string_append_printf (text, "\n%s\n%s\n%s\n%s\n%s\n%s",
+                              addr->street ? addr->street : "", addr->locality ? addr->locality : "",
+                              addr->region ? addr->region : "", addr->code ? addr->code : "",
+                              addr->country ? addr->country : "", addr->ext ? addr->ext : "");
+      e_contact_address_free (addr);
+    }
+  }
+
+  haystack = g_utf8_strdown (text->str, -1);
   search = g_utf8_strdown (search_text, -1);
-  name = g_utf8_strdown (contact_name, -1);
+  tokens = g_strsplit_set (search, " \t", -1);
 
-  return g_strrstr (name, search) != NULL;
+  for (guint i = 0; tokens[i]; i++) {
+    if (*tokens[i] && !g_strrstr (haystack, tokens[i]))
+      return FALSE;
+  }
+
+  return TRUE;
 }
 
 static void
