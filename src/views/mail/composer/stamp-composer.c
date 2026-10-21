@@ -983,7 +983,7 @@ on_time_value_changed (GtkSpinButton *spin G_GNUC_UNUSED,
   }
 
   dt = g_date_time_new_local (2000, 1, 1, hour, minute, 0);
-  time_str = g_date_time_format (dt, g_object_get_data (G_OBJECT (time_row), "twelve-hour") ? "%l:%M %p" : "%H:%M");
+  time_str = g_date_time_format (dt, g_object_get_data (G_OBJECT (time_row), "twelve-hour") ? "%-l:%M %p" : "%H:%M");
 
   gtk_editable_set_text (GTK_EDITABLE (time_row), time_str);
 }
@@ -1221,7 +1221,7 @@ on_schedule_activated (GSimpleAction *action,
   {
     g_autoptr (GDateTime) dt = g_date_time_new_local (2000, 1, 1, hour24, 0, 0);
 
-    time_str = g_date_time_format (dt, use_twelve_hour ? "%l:%M %p" : "%H:%M");
+    time_str = g_date_time_format (dt, use_twelve_hour ? "%-l:%M %p" : "%H:%M");
   }
   gtk_editable_set_text (GTK_EDITABLE (time_row), time_str);
   g_signal_connect (hour_spin, "value-changed", G_CALLBACK (on_time_value_changed), time_row);
