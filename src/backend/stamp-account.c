@@ -1071,9 +1071,13 @@ stamp_account_enable_mail_async (StampAccount *self,
                                                    e_source_get_uid (self->mail->source),
                                                    e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension)),
                                                    CAMEL_PROVIDER_STORE,
-                                                   NULL);
+                                                   &error);
   if (!self->mail->service) {
-    g_warning ("%s: Failed to add mail service", G_STRFUNC);
+    g_warning ("%s: Failed to add mail service of type '%s' (is the matching Camel provider, e.g. evolution-ews for 'microsoft365', installed and visible via CAMEL_PROVIDERDIR?): %s",
+               G_STRFUNC,
+               e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension)),
+               error ? error->message : "unknown error");
+    g_clear_error (&error);
     if (ctx)
       init_context_finish_one (ctx);
     return;
