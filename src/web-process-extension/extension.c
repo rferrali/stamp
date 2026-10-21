@@ -24,7 +24,7 @@
 
 void webkit_web_process_extension_initialize (WebKitWebProcessExtension *extension);
 
-static gboolean show_images = FALSE;
+#define SHOW_IMAGES_KEY "stamp-show-images"
 
 static gboolean
 on_user_message_received (WebKitWebPage     *page,
@@ -92,7 +92,7 @@ on_user_message_received (WebKitWebPage     *page,
     g_autoptr (JSCValue) value = NULL;
     gboolean enabled = g_variant_get_boolean (parameters);
 
-    show_images = enabled;
+    g_object_set_data (G_OBJECT (page), SHOW_IMAGES_KEY, GINT_TO_POINTER (enabled));
     if (enabled) {
       JSCException *exception;
 
@@ -176,7 +176,7 @@ on_send_request (WebKitWebPage     *web_page,
     return GDK_EVENT_PROPAGATE;
   }
 
-  if (show_images)
+  if (GPOINTER_TO_INT (g_object_get_data (G_OBJECT (web_page), SHOW_IMAGES_KEY)))
     return GDK_EVENT_PROPAGATE;
 
   message = webkit_user_message_new ("image-load-blocked", NULL);
