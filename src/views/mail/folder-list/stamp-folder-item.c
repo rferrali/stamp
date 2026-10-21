@@ -191,6 +191,46 @@ static gchar *pending_first_uid = NULL;
 static gchar *pending_first_subject = NULL;
 static gchar *pending_first_sender = NULL;
 static guint pending_debounce_id = 0;
+static GHashTable *pending_keys = NULL;
+static GHashTable *active_keys = NULL;
+
+static char *
+make_notification_key (CamelFolder *folder,
+                       const char  *uid)
+{
+  return g_strdup_printf ("%p:%s", folder, uid);
+}
+
+static void
+withdraw_notification_if_all_read (CamelFolder *folder)
+{
+  g_autofree char *prefix = NULL;
+  CamelFolderSummary *summary;
+  GHashTableIter iter;
+  gpointer key;
+
+  if (!active_keys || g_hash_table_size (active_keys) == 0)
+    return;
+
+  prefix = g_strdup_printf ("%p:", folder);
+  summary = camel_folder_get_folder_summary (folder);
+
+  g_hash_table_iter_init (&iter, active_keys);
+  while (g_hash_table_iter_next (&iter, &key, NULL)) {
+    const char *key_str = key;
+    g_autoptr (CamelMessageInfo) info = NULL;
+
+    if (!g_str_has_prefix (key_str, prefix))
+      continue;
+
+    info = camel_folder_summary_get (summary, key_str + strlen (prefix));
+    if (!info || (camel_message_info_get_flags (info) & (CAMEL_MESSAGE_SEEN | CAMEL_MESSAGE_DELETED)))
+      g_hash_table_iter_remove (&iter);
+  }
+
+  if (g_hash_table_size (active_keys) == 0)
+    g_application_withdraw_notification (g_application_get_default (), "new-mail");
+}
 
 static void
 play_incoming_sound (void)
@@ -232,6 +272,9 @@ send_pending_notification (gpointer user_data)
 
   g_application_send_notification (g_application_get_default (), "new-mail", notification);
 
+  g_clear_pointer (&active_keys, g_hash_table_unref);
+  active_keys = g_steal_pointer (&pending_keys);
+
   if (g_settings_get_boolean (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_PLAY_INCOMING_SOUND))
     play_incoming_sound ();
 
@@ -259,6 +302,8 @@ on_folder_item_folder_changed (CamelFolder           *folder,
   summary = camel_folder_get_folder_summary (folder);
   self->unread = camel_folder_summary_get_unread_count (summary);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_UNREAD]);
+
+  withdraw_notification_if_all_read (folder);
 
   if (!changes->uid_added || folder == trash_folder || folder == draft_folder)
     return;
@@ -291,6 +336,10 @@ on_folder_item_folder_changed (CamelFolder           *folder,
       continue;
 
     pending_new_mail_count++;
+
+    if (!pending_keys)
+      pending_keys = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+    g_hash_table_add (pending_keys, make_notification_key (folder, camel_message_info_get_uid (message_info)));
 
     if (pending_new_mail_count == 1) {
       g_autoptr (CamelInternetAddress) address = camel_internet_address_new ();
