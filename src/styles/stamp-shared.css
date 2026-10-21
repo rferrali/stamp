@@ -147,3 +147,8 @@
 .accent-button.color12 { --accent-bg-color: #b08952; }
 .accent-button.color13 { --accent-bg-color: #785336; }
 .accent-button.color14 { --accent-bg-color: #6e6d71; }
+
+flowbox.badge-color-box flowboxchild {
+  padding: 0;
+  background: none;
+}

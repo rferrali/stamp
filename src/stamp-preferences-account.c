@@ -38,7 +38,7 @@ struct _StampPreferencesAccount {
   AdwWindowTitle *window_title;
   AdwPreferencesPage *page;
   AdwComboRow *default_signature;
-  GtkBox *badge_color_box;
+  GtkFlowBox *badge_color_box;
   GtkButton *reset_badge_color_button;
   gboolean updating_badge_colors;
   AdwPreferencesGroup *alias_group;
@@ -375,10 +375,11 @@ reload_badge_color_toggles (StampPreferencesAccount *self)
   for (child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box));
        child;
        child = gtk_widget_get_next_sibling (child)) {
-    const gchar *color_name = g_object_get_data (G_OBJECT (child), "color-class");
+    GtkWidget *button = gtk_flow_box_child_get_child (GTK_FLOW_BOX_CHILD (child));
+    const gchar *color_name = g_object_get_data (G_OBJECT (button), "color-class");
     gboolean active = (!is_auto && g_strcmp0 (current_color, color_name) == 0);
 
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (child), active);
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (button), active);
   }
 
   self->updating_badge_colors = FALSE;
@@ -400,8 +401,9 @@ on_badge_color_toggled (StampPreferencesAccount *self,
     for (child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box));
          child;
          child = gtk_widget_get_next_sibling (child)) {
-      if (child != GTK_WIDGET (toggle))
-        gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (child), FALSE);
+      GtkWidget *button = gtk_flow_box_child_get_child (GTK_FLOW_BOX_CHILD (child));
+      if (button != GTK_WIDGET (toggle))
+        gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (button), FALSE);
     }
     self->updating_badge_colors = FALSE;
 
@@ -412,7 +414,8 @@ on_badge_color_toggled (StampPreferencesAccount *self,
     for (child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box));
          child;
          child = gtk_widget_get_next_sibling (child)) {
-      if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (child))) {
+      GtkWidget *button = gtk_flow_box_child_get_child (GTK_FLOW_BOX_CHILD (child));
+      if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (button))) {
         any_active = TRUE;
         break;
       }
@@ -434,7 +437,8 @@ on_reset_badge_color_clicked (StampPreferencesAccount *self)
   for (child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box));
        child;
        child = gtk_widget_get_next_sibling (child)) {
-    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (child), FALSE);
+    GtkWidget *button = gtk_flow_box_child_get_child (GTK_FLOW_BOX_CHILD (child));
+    gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (button), FALSE);
   }
   self->updating_badge_colors = FALSE;
 
@@ -445,14 +449,13 @@ on_reset_badge_color_clicked (StampPreferencesAccount *self)
 static void
 setup_badge_color (StampPreferencesAccount *self)
 {
-  GtkWidget *child;
   guint i;
 
-  while ((child = gtk_widget_get_first_child (GTK_WIDGET (self->badge_color_box))))
-    gtk_box_remove (self->badge_color_box, child);
+  gtk_flow_box_remove_all (self->badge_color_box);
 
   for (i = 0; i < NUMBER_OF_COLORS; i++) {
     GtkWidget *button = gtk_toggle_button_new ();
+    GtkWidget *flow_child;
 
     gtk_widget_set_tooltip_text (button, _(ACCOUNT_COLORS[i].title));
     gtk_widget_add_css_class (button, "accent-button");
@@ -464,7 +467,11 @@ setup_badge_color (StampPreferencesAccount *self)
                              G_CALLBACK (on_badge_color_toggled), self,
                              G_CONNECT_SWAPPED);
 
-    gtk_box_append (self->badge_color_box, button);
+    gtk_flow_box_append (self->badge_color_box, button);
+
+    flow_child = gtk_widget_get_parent (button);
+    if (flow_child && GTK_IS_FLOW_BOX_CHILD (flow_child))
+      gtk_widget_set_focusable (flow_child, FALSE);
   }
 
   g_signal_handlers_disconnect_by_func (self->reset_badge_color_button, on_reset_badge_color_clicked, self);

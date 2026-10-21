@@ -29,6 +29,7 @@ template $StampPreferencesAccount: Adw.NavigationPage {
           label: _("Reset to Automatic");
           valign: center;
           tooltip-text: _("Reset to automatically generated color");
+
           styles [
             "flat",
           ]
@@ -39,11 +40,19 @@ template $StampPreferencesAccount: Adw.NavigationPage {
           activatable: false;
           focusable: false;
 
-          Box badge_color_box {
-            spacing: 8;
+          FlowBox badge_color_box {
+            selection-mode: none;
+            homogeneous: true;
+            max-children-per-line: 7;
+            column-spacing: 8;
+            row-spacing: 8;
             margin-top: 12;
             margin-bottom: 12;
             halign: center;
+
+            styles [
+              "badge-color-box",
+            ]
           }
         }
       }
