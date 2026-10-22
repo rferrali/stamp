@@ -36,6 +36,7 @@ typedef enum {
   STAMP_COMPOSER_REPLY_ALL,
   STAMP_COMPOSER_FORWARD,
   STAMP_COMPOSER_DRAFT,
+  STAMP_COMPOSER_TEMPLATE,
 } StampComposerType;
 
 GtkWidget *stamp_composer_new (StampAccount *account);

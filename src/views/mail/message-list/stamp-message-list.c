@@ -40,6 +40,7 @@ struct _StampMessageList {
   GtkWidget *search_bar;
   GtkWidget *search_entry;
   GtkWidget *edit_button;
+  GtkWidget *use_template_button;
   GtkWidget *external;
 
   GtkWidget *reply_btn;
@@ -287,6 +288,7 @@ stamp_message_list_class_init (StampMessageListClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, search_bar);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, search_entry);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, edit_button);
+  gtk_widget_class_bind_template_child (widget_class, StampMessageList, use_template_button);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, external);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, reply_btn);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, reply_all_btn);
@@ -707,6 +709,7 @@ stamp_message_list_set_conversation (StampMessageList      *self,
   CamelFolder *folder;
   const gchar *fname;
   gboolean draft_folder = FALSE;
+  gboolean templates_folder;
 
   self->account = account;
 
@@ -775,6 +778,11 @@ stamp_message_list_set_conversation (StampMessageList      *self,
   }
 
   gtk_widget_set_visible (self->edit_button, draft_folder);
+
+  templates_folder = folder == stamp_account_get_mail_templates_folder (self->account);
+  action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "use-template");
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), templates_folder);
+  gtk_widget_set_visible (self->use_template_button, templates_folder);
 
   gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "content");
 

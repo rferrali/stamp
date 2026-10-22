@@ -77,6 +77,14 @@ template $StampMessageList: Adw.BreakpointBin {
               visible: false;
             }
 
+            [start]
+            Button use_template_button {
+              icon-name: 'mail-message-new-symbolic';
+              tooltip-text: _("Use Template");
+              action-name: 'mail.use-template';
+              visible: false;
+            }
+
             [end]
             ToggleButton {
               icon-name: 'edit-find-symbolic';

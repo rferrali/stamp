@@ -491,6 +491,16 @@ on_edit (GSimpleAction *action,
 }
 
 static void
+on_use_template (GSimpleAction *action,
+                 GVariant      *parameter,
+                 gpointer       user_data)
+{
+  StampMailView *self = STAMP_MAIL_VIEW (user_data);
+
+  stamp_message_list_compose (self->message_list, STAMP_COMPOSER_TEMPLATE, parameter);
+}
+
+static void
 junk (StampMailView         *self,
       StampConversationItem *item)
 {
@@ -553,6 +563,7 @@ on_toggle_collapsed (GSimpleAction *action,
 static const GActionEntry stamp_mail_view_action_entries[] = {
   { .name = "composer-new", .activate = on_composer_new },
   { .name = "edit", .activate = on_edit },
+  { .name = "use-template", .activate = on_use_template },
   { .name = "forward", .activate = on_forward, .parameter_type = "s" },
   { .name = "forward-current", .activate = on_forward },
   { .name = "reply", .activate = on_reply, .parameter_type = "s" },

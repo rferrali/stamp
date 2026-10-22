@@ -2767,12 +2767,13 @@ stamp_composer_set_quote_content (StampComposer          *self,
   if (content_to_quote) {
     g_autoptr (GString) message_content = g_string_new ("");
 
-    if (type == STAMP_COMPOSER_DRAFT) {
+    if (type == STAMP_COMPOSER_DRAFT || type == STAMP_COMPOSER_TEMPLATE) {
       CamelInternetAddress *to = camel_mime_message_get_recipients (message, CAMEL_RECIPIENT_TYPE_TO);
       CamelInternetAddress *cc = camel_mime_message_get_recipients (message, CAMEL_RECIPIENT_TYPE_CC);
       CamelInternetAddress *bcc = camel_mime_message_get_recipients (message, CAMEL_RECIPIENT_TYPE_BCC);
 
-      self->draft_uid = g_strdup (uid);
+      if (type == STAMP_COMPOSER_DRAFT)
+        self->draft_uid = g_strdup (uid);
 
       if (to)
         stamp_add_addresses_to_completion (self, self->to, to);
