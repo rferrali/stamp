@@ -376,37 +376,37 @@ build_sender (CamelMimeMessage *message,
 }
 
 static CamelInternetAddress *
+build_completion_recipients (GtkWidget *completion)
+{
+  CamelInternetAddress *recipients = camel_internet_address_new ();
+  GList *tags = stamp_contact_completion_get_tags (STAMP_CONTACT_COMPLETION (completion));
+
+  for (GList *iter = tags; iter && iter->data; iter = g_list_next (iter)) {
+    StampTag *tag = STAMP_TAG (iter->data);
+
+    camel_internet_address_add (recipients, stamp_tag_get_label (tag), stamp_tag_get_mail (tag));
+  }
+
+  return recipients;
+}
+
+static CamelInternetAddress *
 build_recipients (StampComposer    *self,
                   CamelMimeMessage *message)
 {
   CamelInternetAddress *recipients = camel_internet_address_new ();
-  CamelInternetAddress *cc_recipients;
-  GList *tags;
+  g_autoptr (CamelInternetAddress) to = build_completion_recipients (self->to);
+  g_autoptr (CamelInternetAddress) cc = build_completion_recipients (self->cc);
+  g_autoptr (CamelInternetAddress) bcc = build_completion_recipients (self->bcc);
 
-  tags = stamp_contact_completion_get_tags (STAMP_CONTACT_COMPLETION (self->to));
-  for (GList *iter = tags; iter && iter->data; iter = g_list_next (iter)) {
-    StampTag *tag = STAMP_TAG (iter->data);
-    CamelInternetAddress *to_addresses = camel_internet_address_new ();
+  camel_mime_message_set_recipients (message, CAMEL_RECIPIENT_TYPE_TO, to);
+  if (camel_address_length (CAMEL_ADDRESS (cc)) > 0)
+    camel_mime_message_set_recipients (message, CAMEL_RECIPIENT_TYPE_CC, cc);
 
-    camel_internet_address_add (to_addresses, stamp_tag_get_label (tag), stamp_tag_get_mail (tag));
-    camel_address_cat (CAMEL_ADDRESS (recipients), CAMEL_ADDRESS (to_addresses));
-  }
-
-  camel_mime_message_set_recipients (message, CAMEL_RECIPIENT_TYPE_TO, recipients);
-
-  cc_recipients = camel_internet_address_new ();
-  tags = stamp_contact_completion_get_tags (STAMP_CONTACT_COMPLETION (self->cc));
-  for (GList *iter = tags; iter && iter->data; iter = g_list_next (iter)) {
-    StampTag *tag = STAMP_TAG (iter->data);
-    CamelInternetAddress *to_addresses = camel_internet_address_new ();
-
-    camel_internet_address_add (to_addresses, stamp_tag_get_label (tag), stamp_tag_get_mail (tag));
-    camel_address_cat (CAMEL_ADDRESS (cc_recipients), CAMEL_ADDRESS (to_addresses));
-  }
-
-  if (camel_address_length (CAMEL_ADDRESS (cc_recipients)) > 0) {
-    camel_mime_message_set_recipients (message, CAMEL_RECIPIENT_TYPE_CC, cc_recipients);
-  }
+  /* BCC belongs in the delivery and encryption lists, but not in sent headers. */
+  camel_address_cat (CAMEL_ADDRESS (recipients), CAMEL_ADDRESS (to));
+  camel_address_cat (CAMEL_ADDRESS (recipients), CAMEL_ADDRESS (cc));
+  camel_address_cat (CAMEL_ADDRESS (recipients), CAMEL_ADDRESS (bcc));
 
   return recipients;
 }
@@ -857,7 +857,6 @@ on_schedule_get_body_html (GObject      *source_object,
   CamelMimeMessage *mime_message;
   g_autoptr (CamelInternetAddress) sender = NULL;
   CamelInternetAddress *recipient;
-  CamelInternetAddress *all_recipients;
   const gchar *name;
   const gchar *mail;
   StampAccount *account;
@@ -867,7 +866,6 @@ on_schedule_get_body_html (GObject      *source_object,
   gboolean do_smime_encrypt;
   gint64 *send_at_ptr;
   gint64 send_at;
-  GList *tags;
 
   if (!body) {
     if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
@@ -936,23 +934,11 @@ on_schedule_get_body_html (GObject      *source_object,
     }
   }
 
-  all_recipients = camel_internet_address_new ();
-  camel_address_cat (CAMEL_ADDRESS (all_recipients), CAMEL_ADDRESS (recipient));
-
-  tags = stamp_contact_completion_get_tags (STAMP_CONTACT_COMPLETION (self->bcc));
-  for (GList *iter = tags; iter && iter->data; iter = g_list_next (iter)) {
-    StampTag *tag = STAMP_TAG (iter->data);
-    g_autoptr (CamelInternetAddress) bcc_addr = camel_internet_address_new ();
-
-    camel_internet_address_add (bcc_addr, stamp_tag_get_label (tag), stamp_tag_get_mail (tag));
-    camel_address_cat (CAMEL_ADDRESS (all_recipients), CAMEL_ADDRESS (bcc_addr));
-  }
-
   camel_medium_set_header (CAMEL_MEDIUM (mime_message), "User-Agent", USER_AGENT);
 
   if (stamp_scheduler_schedule (account, mime_message,
                                 name, mail,
-                                all_recipients,
+                                recipient,
                                 do_pgp_sign, do_pgp_encrypt,
                                 do_smime_sign, do_smime_encrypt,
                                 self->draft_uid,
