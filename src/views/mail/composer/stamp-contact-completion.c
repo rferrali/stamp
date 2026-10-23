@@ -298,6 +298,14 @@ on_entry_activate (GtkWidget *widget,
   gtk_popover_popdown (GTK_POPOVER (self->popover));
 }
 
+static void
+cancel_search (StampContactCompletion *self)
+{
+  g_clear_handle_id (&self->search_timeout_id, g_source_remove);
+  g_cancellable_cancel (self->cancellable);
+  g_clear_object (&self->cancellable);
+}
+
 typedef struct {
   GWeakRef owner;
   GCancellable *cancellable;
@@ -460,19 +468,17 @@ on_changed (GtkEditable *ed,
 {
   StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
   g_autofree char *text = NULL;
+
   if (self->block)
     return;
 
   text = g_strdup (gtk_editable_get_text (GTK_EDITABLE (self->entry)));
   self->block = TRUE;
-  g_clear_handle_id (&self->search_timeout_id, g_source_remove);
-
-  g_cancellable_cancel (self->cancellable);
-  g_clear_object (&self->cancellable);
+  cancel_search (self);
 
   if (text) {
     g_auto (GStrv) split = g_strsplit (g_strstrip (text), ",", -1);
-    GString *new_string = g_string_new (NULL);
+    g_autoptr (GString) new_string = g_string_new (NULL);
     gint n_parts = g_strv_length (split);
     gboolean converted = FALSE;
 
@@ -501,8 +507,6 @@ on_changed (GtkEditable *ed,
 
     if (new_string->len > 0 && self->account)
       self->search_timeout_id = g_timeout_add (300, start_completion_search, self);
-
-    g_string_free (new_string, TRUE);
   }
 
   self->block = FALSE;
@@ -547,9 +551,7 @@ stamp_contact_completion_dispose (GObject *object)
 
   self->block = TRUE;
 
-  g_clear_handle_id (&self->search_timeout_id, g_source_remove);
-  g_cancellable_cancel (self->cancellable);
-  g_clear_object (&self->cancellable);
+  cancel_search (self);
 
   if (self->popover) {
     gtk_widget_unparent (self->popover);
@@ -811,9 +813,10 @@ void
 stamp_contact_completion_set_account (StampContactCompletion *self,
                                       StampAccount           *account)
 {
-  g_clear_handle_id (&self->search_timeout_id, g_source_remove);
-  g_cancellable_cancel (self->cancellable);
-  g_clear_object (&self->cancellable);
+  if (self->account == account)
+    return;
+
+  cancel_search (self);
   g_set_object (&self->account, account);
   g_list_store_remove_all (self->store);
 

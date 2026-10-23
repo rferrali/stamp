@@ -668,7 +668,7 @@ scan_folder_for_contacts (CamelFolder  *folder,
   for (guint i = 0; i < uids->len; i++) {
     const gchar *uid;
     const gchar *from;
-    CamelMessageInfo *info;
+    g_autoptr (CamelMessageInfo) info = NULL;
 
     if (g_cancellable_is_cancelled (cancellable))
       break;
@@ -722,7 +722,7 @@ search_conversations_thread (GTask        *task,
 {
   StampAccount *self = STAMP_ACCOUNT (source_object);
   const gchar *search_text = task_data;
-  GHashTable *unique;
+  g_autoptr (GHashTable) unique = NULL;
   g_autoslist (EContact) results = NULL;
   GHashTableIter iter;
   gpointer value;
@@ -741,7 +741,7 @@ search_conversations_thread (GTask        *task,
                                            "INBOX", CAMEL_STORE_FOLDER_NONE,
                                            cancellable, &error);
       if (inbox) {
-        scan_folder_for_contacts (inbox, search_text, unique, NULL);
+        scan_folder_for_contacts (inbox, search_text, unique, cancellable);
         g_object_unref (inbox);
       }
     }
@@ -753,8 +753,6 @@ search_conversations_thread (GTask        *task,
 
     results = g_slist_prepend (results, g_object_ref (contact));
   }
-
-  g_hash_table_remove_all (unique);
 
   if (g_cancellable_is_cancelled (cancellable)) {
     g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_CANCELLED, "Search cancelled");
@@ -772,9 +770,6 @@ stamp_account_search_conversations (StampAccount        *self,
 {
   g_autoptr (GTask) task = NULL;
   gchar *lower_search;
-
-  if (!self->mail)
-    return;
 
   lower_search = g_ascii_strdown (search_text, -1);
 
