@@ -1135,8 +1135,9 @@ handle_smime_signed_opaque (StampMimeParser  *self,
 
   ok = dispatch_part (self, out, cancellable, error);
 
-  signature->status = ok ? STAMP_MIME_SIGNATURE_GOOD : STAMP_MIME_SIGNATURE_UNKNOWN;
-  signature->description = g_strdup (ok ? "S/MIME opaque signature unpacked" : "S/MIME opaque signature: Parser error");
+  signature->status = map_validity_status (cv->sign.status);
+  signature->description = g_strdup (cv->sign.description);
+  signature->signers = build_signer_list (cv);
 
   self->signatures = g_list_append (self->signatures, signature);
 
