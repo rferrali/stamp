@@ -98,7 +98,7 @@ on_get_folder (GObject      *source,
                GAsyncResult *res,
                gpointer      user_data)
 {
-  StampCollectionItem *self = STAMP_COLLECTION_ITEM (user_data);
+  g_autoptr (StampCollectionItem) self = STAMP_COLLECTION_ITEM (user_data);
   CamelStore *store = CAMEL_STORE (source);
   g_autoptr (CamelFolder) folder = NULL;
   g_autoptr (GError) error = NULL;
@@ -110,13 +110,18 @@ on_get_folder (GObject      *source,
     return;
   }
 
-  g_signal_connect_object (folder, "changed", G_CALLBACK (on_source_folder_changed), self, G_CONNECT_DEFAULT);
-
   for (GList *iter = self->sources; iter; iter = iter->next) {
     StampCollectionSource *cur_source = iter->data;
+    StampMailService *mail_service = stamp_account_get_mail_service (cur_source->account);
 
-    if (g_strcmp0 (cur_source->full_name, camel_folder_get_full_name (folder)) == 0) {
-      cur_source->folder = g_object_ref (folder);
+    if (mail_service && stamp_mail_service_get_service (mail_service) == CAMEL_SERVICE (store) &&
+        g_strcmp0 (cur_source->full_name, camel_folder_get_full_name (folder)) == 0) {
+      if (cur_source->folder != folder) {
+        if (cur_source->folder)
+          g_signal_handlers_disconnect_by_func (cur_source->folder, on_source_folder_changed, self);
+        g_set_object (&cur_source->folder, folder);
+        g_signal_connect_object (folder, "changed", G_CALLBACK (on_source_folder_changed), self, G_CONNECT_DEFAULT);
+      }
 
       {
         CamelFolderSummary *summary = camel_folder_get_folder_summary (folder);
@@ -153,7 +158,7 @@ stamp_collection_item_load_folders (StampCollectionItem *self)
                             G_PRIORITY_DEFAULT,
                             self->cancellable,
                             on_get_folder,
-                            self);
+                            g_object_ref (self));
   }
 }
 
