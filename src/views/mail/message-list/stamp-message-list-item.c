@@ -187,7 +187,9 @@ open_message (StampMessageListItem *self,
       if (signature->description) {
         g_autoptr (GString) str = g_string_new ("");
 
-        adw_banner_set_title (ADW_BANNER (self->signature_banner), signature->description);
+        tmp = g_strdup (signature->description);
+        g_strdelimit (tmp, "\r\n", ' ');
+        adw_banner_set_title (ADW_BANNER (self->signature_banner), g_strstrip (tmp));
         adw_banner_set_revealed (ADW_BANNER (self->signature_banner), TRUE);
 
         for (GList *iter = signature->signers; iter && iter->data; iter = g_list_next (iter)) {
