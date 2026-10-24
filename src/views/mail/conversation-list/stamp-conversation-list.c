@@ -1600,6 +1600,18 @@ on_touch_released (GtkGestureClick *gesture,
 
   position = gtk_list_item_get_position (list_item);
 
+  if (self->selection_mode) {
+    if (gtk_bitset_contains (self->selected, position))
+      gtk_bitset_remove (self->selected, position);
+    else
+      gtk_bitset_add (self->selected, position);
+
+    self->anchor_position = position;
+    refresh_checkboxes (self);
+    update_selection_title (self);
+    return;
+  }
+
   if (gtk_bitset_contains (self->selected, position))
     gtk_bitset_remove (self->selected, position);
   else
