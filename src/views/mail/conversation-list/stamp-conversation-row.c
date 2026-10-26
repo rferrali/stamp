@@ -25,7 +25,14 @@
 #include "stamp-category.h"
 #include "stamp-helper.h"
 #include "stamp-session.h"
+#include "stamp-settings.h"
 #include "stamp-time-helpers.h"
+
+typedef enum {
+  SWIPE_ACTION_NONE,
+  SWIPE_ACTION_TOGGLE_READ,
+  SWIPE_ACTION_TRASH,
+} SwipeAction;
 
 struct _StampConversationRow {
   GtkBox parent_instance;
@@ -43,6 +50,8 @@ struct _StampConversationRow {
   GtkLabel *left_action_label;
   GtkImage *left_action_image;
   GtkBox *right_action;
+  GtkLabel *right_action_label;
+  GtkImage *right_action_image;
   GtkGrid *row;
   GtkImage *attachment_icon;
   GtkImage *reply_icon;
@@ -60,6 +69,8 @@ struct _StampConversationRow {
   guint instance_id;
   guint generation;
   gboolean unread;
+  SwipeAction swipe_right;
+  SwipeAction swipe_left;
 
   StampAccount *account;
 };
@@ -122,6 +133,79 @@ stamp_conversation_row_get_property (GObject    *object,
   }
 }
 
+static SwipeAction
+get_swipe_action (const gchar *key)
+{
+  g_autofree gchar *name = g_settings_get_string (STAMP_SETTINGS_MAIL, key);
+
+  if (g_strcmp0 (name, "toggle-read") == 0)
+    return SWIPE_ACTION_TOGGLE_READ;
+  if (g_strcmp0 (name, "trash") == 0)
+    return SWIPE_ACTION_TRASH;
+
+  return SWIPE_ACTION_NONE;
+}
+
+static void
+update_action_widget (StampConversationRow *self,
+                      GtkWidget            *box,
+                      GtkLabel             *label,
+                      GtkImage             *image,
+                      SwipeAction           action)
+{
+  gtk_widget_remove_css_class (box, "accent");
+  gtk_widget_remove_css_class (box, "error");
+
+  switch (action) {
+    case SWIPE_ACTION_TOGGLE_READ:
+      gtk_widget_add_css_class (box, "accent");
+      gtk_label_set_text (label, self->unread ? _("Mark Read") : _("Mark Unread"));
+      gtk_image_set_from_icon_name (image, self->unread ? "mark-read-symbolic" : "mail-unread-symbolic");
+      break;
+    case SWIPE_ACTION_TRASH:
+      gtk_widget_add_css_class (box, "error");
+      gtk_label_set_text (label, _("Trash"));
+      gtk_image_set_from_icon_name (image, "user-trash-symbolic");
+      break;
+    case SWIPE_ACTION_NONE:
+      break;
+  }
+}
+
+static void
+update_swipe_actions (StampConversationRow *self)
+{
+  self->swipe_right = get_swipe_action (STAMP_PREFS_MAIL_SWIPE_RIGHT_ACTION);
+  self->swipe_left = get_swipe_action (STAMP_PREFS_MAIL_SWIPE_LEFT_ACTION);
+
+  update_action_widget (self, GTK_WIDGET (self->left_action), self->left_action_label, self->left_action_image, self->swipe_right);
+  update_action_widget (self, GTK_WIDGET (self->right_action), self->right_action_label, self->right_action_image, self->swipe_left);
+}
+
+static void
+on_swipe_settings_changed (GSettings *settings,
+                           gchar     *key,
+                           gpointer   user_data)
+{
+  update_swipe_actions (STAMP_CONVERSATION_ROW (user_data));
+}
+
+static void
+trigger_swipe_action (StampConversationRow *self,
+                      SwipeAction           action)
+{
+  switch (action) {
+    case SWIPE_ACTION_TOGGLE_READ:
+      g_signal_emit (self, self->unread ? signals[MARK_READ] : signals[MARK_UNREAD], 0);
+      break;
+    case SWIPE_ACTION_TRASH:
+      g_signal_emit (self, signals[TRASH], 0);
+      break;
+    case SWIPE_ACTION_NONE:
+      break;
+  }
+}
+
 static void
 set_unread_status (StampConversationRow *self,
                    gboolean              unread)
@@ -134,19 +218,15 @@ set_unread_status (StampConversationRow *self,
     gtk_widget_add_css_class (GTK_WIDGET (self->topic), "caption");
     gtk_widget_remove_css_class (GTK_WIDGET (self->participants), "heading");
     gtk_widget_remove_css_class (GTK_WIDGET (self->topic), "accent");
-
-    gtk_label_set_text (self->left_action_label, _("Mark Unread"));
-    gtk_image_set_from_icon_name (self->left_action_image, "mail-unread-symbolic");
   } else {
     gtk_widget_remove_css_class (GTK_WIDGET (self->topic), "caption");
     gtk_widget_remove_css_class (GTK_WIDGET (self->body), "dim-label");
     gtk_widget_add_css_class (GTK_WIDGET (self->topic), "caption-heading");
     gtk_widget_add_css_class (GTK_WIDGET (self->participants), "heading");
     gtk_widget_add_css_class (GTK_WIDGET (self->topic), "accent");
-
-    gtk_label_set_text (self->left_action_label, _("Mark Read"));
-    gtk_image_set_from_icon_name (self->left_action_image, "mark-read-symbolic");
   }
+
+  update_swipe_actions (self);
 }
 
 static void
@@ -200,7 +280,7 @@ on_drag_update (GtkGestureDrag *gesture,
     self->claimed = TRUE;
   }
 
-  pos = CLAMP (dx, -96, 96);
+  pos = CLAMP (dx, self->swipe_left == SWIPE_ACTION_NONE ? 0 : -96, self->swipe_right == SWIPE_ACTION_NONE ? 0 : 96);
 
   if (pos > 0) {
     gtk_widget_set_opacity (GTK_WIDGET (self->left_action), MIN (pos / 80.0, 1.0));
@@ -231,17 +311,14 @@ on_drag_end (GtkGestureDrag *gesture,
   StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
   gdouble pos;
 
-  pos = CLAMP (dx, -96, 96);
+  pos = CLAMP (dx, self->swipe_left == SWIPE_ACTION_NONE ? 0 : -96, self->swipe_right == SWIPE_ACTION_NONE ? 0 : 96);
 
   self->claimed = FALSE;
 
   if (pos > 90)
-    if (self->unread)
-      g_signal_emit (self, signals[MARK_READ], 0);
-    else
-      g_signal_emit (self, signals[MARK_UNREAD], 0);
+    trigger_swipe_action (self, self->swipe_right);
   else if (pos < -90)
-    g_signal_emit (self, signals[TRASH], 0);
+    trigger_swipe_action (self, self->swipe_left);
 
   animate_to_zero (self, pos);
   gtk_widget_set_opacity (GTK_WIDGET (self->row), 1);
@@ -283,6 +360,8 @@ stamp_conversation_row_class_init (StampConversationRowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, left_action_label);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, left_action_image);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, right_action);
+  gtk_widget_class_bind_template_child (widget_class, StampConversationRow, right_action_label);
+  gtk_widget_class_bind_template_child (widget_class, StampConversationRow, right_action_image);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, row);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, attachment_icon);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, reply_icon);
@@ -339,6 +418,10 @@ stamp_conversation_row_init (StampConversationRow *self)
 
   self->bindings = g_ptr_array_new_with_free_func ((GDestroyNotify)g_binding_unbind);
   self->instance_id = next_instance_id++;
+
+  update_swipe_actions (self);
+  g_signal_connect_object (STAMP_SETTINGS_MAIL, "changed::" STAMP_PREFS_MAIL_SWIPE_RIGHT_ACTION, G_CALLBACK (on_swipe_settings_changed), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (STAMP_SETTINGS_MAIL, "changed::" STAMP_PREFS_MAIL_SWIPE_LEFT_ACTION, G_CALLBACK (on_swipe_settings_changed), self, G_CONNECT_DEFAULT);
 }
 
 GtkWidget *

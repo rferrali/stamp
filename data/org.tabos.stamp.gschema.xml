@@ -89,6 +89,26 @@
         <summary>Show important mails first</summary>
         <description>Whether to move important mails on top.</description>
     </key>
+    <key type="s" name="swipe-right-action">
+      <choices>
+        <choice value="none"/>
+        <choice value="toggle-read"/>
+        <choice value="trash"/>
+      </choices>
+      <default>'toggle-read'</default>
+      <summary>Swipe right action</summary>
+      <description>Action performed when swiping a conversation to the right: 'none', 'toggle-read' or 'trash'.</description>
+    </key>
+    <key type="s" name="swipe-left-action">
+      <choices>
+        <choice value="none"/>
+        <choice value="toggle-read"/>
+        <choice value="trash"/>
+      </choices>
+      <default>'trash'</default>
+      <summary>Swipe left action</summary>
+      <description>Action performed when swiping a conversation to the left: 'none', 'toggle-read' or 'trash'.</description>
+    </key>
     <key type="u" name="refresh-interval">
         <default>60</default>
         <summary>Refresh interval in seconds</summary>

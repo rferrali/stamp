@@ -90,6 +90,24 @@ template $StampPreferences: Adw.PreferencesDialog {
     }
 
     Adw.PreferencesGroup {
+      title: _("Swipe Gestures");
+
+      Adw.ComboRow swipe_right_action {
+        title: _("Swipe Right");
+        model: StringList {
+          strings [_("None"), _("Toggle Read"), _("Move to Trash")]
+        };
+      }
+
+      Adw.ComboRow swipe_left_action {
+        title: _("Swipe Left");
+        model: StringList {
+          strings [_("None"), _("Toggle Read"), _("Move to Trash")]
+        };
+      }
+    }
+
+    Adw.PreferencesGroup {
       title: _("Audio");
 
       Adw.SwitchRow play_incoming_sound {
