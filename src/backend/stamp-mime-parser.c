@@ -134,11 +134,35 @@ stamp_mime_calendar_new (void)
 }
 
 static void
+stamp_mime_encryption_free (StampMimeEncryption *encryption)
+{
+  g_free (encryption->error_message);
+  g_free (encryption);
+}
+
+static void
+stamp_mime_signature_free (StampMimeSignature *signature)
+{
+  for (GList *iter = signature->signers; iter; iter = iter->next) {
+    StampMimeSignerInfo *info = iter->data;
+
+    g_free (info->name);
+    g_free (info->email);
+    g_free (info);
+  }
+  g_list_free (signature->signers);
+  g_free (signature->description);
+  g_free (signature);
+}
+
+static void
 stamp_mime_parser_clear (StampMimeParser *self)
 {
   g_clear_pointer (&self->html_body, stamp_mime_body_free);
   g_clear_pointer (&self->plain_body, stamp_mime_body_free);
 
+  g_clear_list (&self->signatures, (GDestroyNotify)stamp_mime_signature_free);
+  g_clear_list (&self->encryption, (GDestroyNotify)stamp_mime_encryption_free);
   g_clear_list (&self->attachments, (GDestroyNotify)stamp_mime_attachment_free);
   g_clear_list (&self->list_unsubscribe, (GDestroyNotify)stamp_mime_list_unsubscribe_free);
 
@@ -595,7 +619,7 @@ handle_pgp_inline (StampMimeParser         *self,
     StampMimeEncryption *encryption;
     g_autoptr (GError) dec_err = NULL;
     g_autoptr (CamelMimePart) out = camel_mime_part_new ();
-    CamelCipherValidity *cv;
+    g_autoptr (CamelCipherValidity) cv = NULL;
 
     self->found_encrypted = TRUE;
 
@@ -606,10 +630,12 @@ handle_pgp_inline (StampMimeParser         *self,
     cv = camel_cipher_context_decrypt_sync (cipher, CAMEL_MIME_PART (part), out, cancellable, &dec_err);
     if (!cv || dec_err) {
       encryption->success = FALSE;
+      encryption->status = STAMP_MIME_ENCRYPTION_INVALID;
       encryption->error_message = dec_err ? g_strdup (dec_err->message) : g_strdup ("Inline PGP decryption failed");
     } else {
       g_autoptr (GError) child_err = NULL;
       encryption->success = TRUE;
+      encryption->status = STAMP_MIME_ENCRYPTION_VALID;
 
       dispatch_part (self, out, cancellable, &child_err);
     }
@@ -1036,6 +1062,7 @@ handle_pgp_encrypted_mime (StampMimeParser  *self,
 
   if (!CAMEL_IS_MULTIPART_ENCRYPTED (data_wrapper)) {
     encryption->success = FALSE;
+    encryption->status = STAMP_MIME_ENCRYPTION_INVALID;
     encryption->error_message = g_strdup ("No CamelMultipartEncrypted found");
   } else {
     g_autoptr (GError) err = NULL;
@@ -1044,9 +1071,11 @@ handle_pgp_encrypted_mime (StampMimeParser  *self,
 
     if (!cv || err) {
       encryption->success = FALSE;
+      encryption->status = STAMP_MIME_ENCRYPTION_INVALID;
       encryption->error_message = err ? g_strdup (err->message) : g_strdup ("PGP MIME Decryption failed");
     } else {
       encryption->success = TRUE;
+      encryption->status = STAMP_MIME_ENCRYPTION_VALID;
       decrypted = g_steal_pointer (&out);
     }
   }
@@ -1095,9 +1124,11 @@ handle_smime_encrypted (StampMimeParser  *self,
   cv = camel_cipher_context_decrypt_sync (cipher, part, out, cancellable, &err);
   if (!cv || err) {
     encrypt->success = FALSE;
+    encrypt->status = STAMP_MIME_ENCRYPTION_INVALID;
     encrypt->error_message = err ? g_strdup (err->message) : g_strdup ("S/MIME decryption failed");
   } else {
     encrypt->success = TRUE;
+    encrypt->status = STAMP_MIME_ENCRYPTION_VALID;
     decrypted = g_steal_pointer (&out);
   }
 

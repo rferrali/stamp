@@ -120,6 +120,32 @@ static void
 ensure_web_view (StampMessageListItem *self);
 
 static void
+update_encryption_banner (StampMessageListItem *self,
+                          const GList          *encryptions)
+{
+  AdwBanner *banner = ADW_BANNER (self->encryption_banner);
+
+  adw_banner_set_revealed (banner, FALSE);
+  gtk_widget_set_tooltip_text (self->encryption_banner, NULL);
+  if (!encryptions)
+    return;
+
+  for (const GList *iter = encryptions; iter; iter = iter->next) {
+    const StampMimeEncryption *encryption = iter->data;
+
+    if (!encryption->success || encryption->status != STAMP_MIME_ENCRYPTION_VALID) {
+      adw_banner_set_title (banner, _("Message could not be decrypted"));
+      gtk_widget_set_tooltip_text (self->encryption_banner, encryption->error_message);
+      adw_banner_set_revealed (banner, TRUE);
+      return;
+    }
+  }
+
+  adw_banner_set_title (banner, _("Message decrypted"));
+  adw_banner_set_revealed (banner, TRUE);
+}
+
+static void
 open_message (StampMessageListItem *self,
               CamelMimeMessage     *message)
 {
@@ -203,14 +229,7 @@ open_message (StampMessageListItem *self,
     }
   }
 
-  if (encryptions) {
-    StampMimeEncryption *encryption = encryptions->data;
-
-    if (encryption->status != STAMP_MIME_ENCRYPTION_VALID) {
-      adw_banner_set_title (ADW_BANNER (self->encryption_banner), _("Valid Encryption"));
-      adw_banner_set_revealed (ADW_BANNER (self->encryption_banner), TRUE);
-    }
-  }
+  update_encryption_banner (self, encryptions);
 
   calendar = stamp_mime_parser_get_invitations (self->parser);
   if (calendar) {
