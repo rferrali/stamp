@@ -100,6 +100,13 @@ typedef enum {
 
 static GParamSpec *props[PROP_ACCOUNT + 1] = { NULL, };
 
+enum {
+  CLOSE_CANCELLED,
+  LAST_SIGNAL,
+};
+
+static guint signals[LAST_SIGNAL];
+
 typedef struct {
   StampMailView *mail_view;
   StampAccount *account;
@@ -2460,7 +2467,7 @@ on_draft_get_body_html (GObject      *source_object,
                         GAsyncResult *res,
                         gpointer      user_data)
 {
-  StampComposer *self = user_data;
+  g_autoptr (StampComposer) self = user_data;
   StampWebView *web_view = STAMP_WEB_VIEW (source_object);
   g_autoptr (GError) error = NULL;
   g_autofree char *body_plain = NULL;
@@ -2474,6 +2481,7 @@ on_draft_get_body_html (GObject      *source_object,
   if (!body) {
     if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
       g_warning ("Failed to get HTML content for mail: %s", error->message);
+    g_signal_emit (self, signals[CLOSE_CANCELLED], 0);
     return;
   }
 
@@ -2487,6 +2495,8 @@ on_draft_get_body_html (GObject      *source_object,
 
   if (stamp_account_save_draft (stamp_composer_from_get_account (self->composer_from), self->draft_uid, mime_message, sender, recipient)) {
     gtk_window_destroy (GTK_WINDOW (self));
+  } else {
+    g_signal_emit (self, signals[CLOSE_CANCELLED], 0);
   }
 }
 
@@ -2499,12 +2509,15 @@ on_draft_response (AdwAlertDialog *dialog,
 
   if (g_strcmp0 (response, "save-draft") == 0) {
     if (self->is_dirty)
-      stamp_webview_get_body_html (self->webview, self->cancellable, on_draft_get_body_html, self);
+      stamp_webview_get_body_html (self->webview, self->cancellable, on_draft_get_body_html, g_object_ref (self));
     else
       gtk_window_destroy (GTK_WINDOW (self));
   } else if (g_strcmp0 (response, "close") == 0) {
-    stamp_account_remove_draft (stamp_composer_from_get_account (self->composer_from), self->draft_uid);
+    if (self->draft_uid)
+      stamp_account_remove_draft (stamp_composer_from_get_account (self->composer_from), self->draft_uid);
     gtk_window_destroy (GTK_WINDOW (self));
+  } else {
+    g_signal_emit (self, signals[CLOSE_CANCELLED], 0);
   }
 }
 
@@ -2601,6 +2614,10 @@ stamp_composer_class_init (StampComposerClass *klass)
   object_class->get_property = stamp_composer_get_property;
   object_class->set_property = stamp_composer_set_property;
   object_class->dispose = stamp_composer_dispose;
+
+  signals[CLOSE_CANCELLED] = g_signal_new ("close-cancelled", G_TYPE_FROM_CLASS (klass),
+                                           G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
+                                           G_TYPE_NONE, 0);
 
   gtk_widget_class_bind_template_child (widget_class, StampComposer, from);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, to);

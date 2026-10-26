@@ -39,6 +39,10 @@ struct _StampApplication {
   GQueue *pending_mailto;
   StampSession *session;
   gchar *password;
+  gboolean quit_requested;
+  gboolean quit_pending_confirmed;
+  StampComposer *quit_composer;
+  guint quit_source_id;
 };
 
 G_DEFINE_FINAL_TYPE (StampApplication, stamp_application, ADW_TYPE_APPLICATION);
@@ -309,6 +313,8 @@ stamp_application_dispose (GObject *object)
 {
   StampApplication *self = STAMP_APPLICATION (object);
 
+  g_clear_handle_id (&self->quit_source_id, g_source_remove);
+  g_clear_object (&self->quit_composer);
   g_clear_object (&self->session);
   g_clear_pointer (&self->password, g_free);
 
@@ -358,7 +364,56 @@ stamp_application_about_action (GSimpleAction *action,
   adw_dialog_present (dialog, GTK_WIDGET (window));
 }
 
-static gboolean quit_pending_confirmed = FALSE;
+static void cancel_quit (StampApplication *self);
+static void continue_quit (gpointer user_data);
+
+static void
+on_composer_close_cancelled (StampComposer *composer,
+                             gpointer       user_data)
+{
+  cancel_quit (STAMP_APPLICATION (user_data));
+}
+
+static void
+clear_quit_composer (StampApplication *self)
+{
+  if (self->quit_composer)
+    g_signal_handlers_disconnect_by_func (self->quit_composer, on_composer_close_cancelled, self);
+  g_clear_object (&self->quit_composer);
+}
+
+static void
+cancel_quit (StampApplication *self)
+{
+  g_clear_handle_id (&self->quit_source_id, g_source_remove);
+  clear_quit_composer (self);
+  self->quit_pending_confirmed = FALSE;
+
+  if (self->quit_requested) {
+    self->quit_requested = FALSE;
+    g_application_release (G_APPLICATION (self));
+  }
+}
+
+static void
+queue_continue_quit (StampApplication *self)
+{
+  if (!self->quit_source_id)
+    self->quit_source_id = g_idle_add_once (continue_quit, self);
+}
+
+static void
+on_quit_window_removed (GtkApplication *application,
+                        GtkWindow      *window,
+                        gpointer        user_data)
+{
+  StampApplication *self = STAMP_APPLICATION (application);
+
+  if (self->quit_requested && GTK_WINDOW (self->quit_composer) == window) {
+    clear_quit_composer (self);
+    queue_continue_quit (self);
+  }
+}
 
 static void
 stamp_application_quit_action (GSimpleAction *action,
@@ -373,8 +428,13 @@ on_quit_response (AdwAlertDialog *dialog,
   StampApplication *self = STAMP_APPLICATION (user_data);
 
   if (g_strcmp0 (response, "quit") == 0) {
-    quit_pending_confirmed = TRUE;
-    stamp_application_quit_action (NULL, NULL, self);
+    self->quit_pending_confirmed = TRUE;
+    if (self->quit_requested)
+      queue_continue_quit (self);
+    else
+      stamp_application_quit_action (NULL, NULL, self);
+  } else {
+    cancel_quit (self);
   }
 }
 
@@ -387,7 +447,7 @@ stamp_application_confirm_quit (void)
   g_autofree char *body = NULL;
   guint pending;
 
-  if (quit_pending_confirmed)
+  if (self->quit_pending_confirmed)
     return TRUE;
 
   pending = stamp_scheduler_get_pending_count ();
@@ -407,21 +467,34 @@ stamp_application_confirm_quit (void)
   adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
 
   parent = gtk_application_get_active_window (GTK_APPLICATION (self));
-  g_signal_connect (dialog, "response", G_CALLBACK (on_quit_response), self);
+  g_signal_connect_object (dialog, "response", G_CALLBACK (on_quit_response), self, G_CONNECT_DEFAULT);
   adw_dialog_present (dialog, GTK_WIDGET (parent));
 
   return FALSE;
 }
 
 static void
-stamp_application_quit_action (GSimpleAction *action,
-                               GVariant      *parameter,
-                               gpointer       user_data)
+continue_quit (gpointer user_data)
 {
   StampApplication *self = STAMP_APPLICATION (user_data);
   GList *windows = NULL;
 
-  g_assert (STAMP_IS_APPLICATION (self));
+  self->quit_source_id = 0;
+  if (!self->quit_requested || self->quit_composer)
+    return;
+
+  /* Wait for each composer to finish saving or to cancel its close request. */
+  windows = gtk_application_get_windows (GTK_APPLICATION (self));
+  for (GList *iter = windows; iter; iter = iter->next) {
+    if (STAMP_IS_COMPOSER (iter->data)) {
+      self->quit_composer = g_object_ref (iter->data);
+      g_signal_connect_object (self->quit_composer, "close-cancelled",
+                               G_CALLBACK (on_composer_close_cancelled), self, G_CONNECT_DEFAULT);
+      gtk_window_present (GTK_WINDOW (self->quit_composer));
+      gtk_window_close (GTK_WINDOW (self->quit_composer));
+      return;
+    }
+  }
 
   if (!stamp_application_confirm_quit ())
     return;
@@ -435,7 +508,23 @@ stamp_application_quit_action (GSimpleAction *action,
     gtk_window_destroy (GTK_WINDOW (window));
   }
 
+  cancel_quit (self);
   g_application_quit (G_APPLICATION (self));
+}
+
+static void
+stamp_application_quit_action (GSimpleAction *action,
+                               GVariant      *parameter,
+                               gpointer       user_data)
+{
+  StampApplication *self = STAMP_APPLICATION (user_data);
+
+  if (self->quit_requested)
+    return;
+
+  self->quit_requested = TRUE;
+  g_application_hold (G_APPLICATION (self));
+  continue_quit (self);
 }
 
 static void
@@ -482,6 +571,7 @@ static void
 stamp_application_init (StampApplication *self)
 {
   self->pending_mailto = g_queue_new ();
+  g_signal_connect (self, "window-removed", G_CALLBACK (on_quit_window_removed), NULL);
 
   g_action_map_add_action_entries (G_ACTION_MAP (self),
                                    app_actions,
