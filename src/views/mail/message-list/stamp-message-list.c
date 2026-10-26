@@ -212,6 +212,21 @@ on_drag_update (GtkGestureDrag *gesture,
 }
 
 static void
+update_mobile_toolbar (StampMessageList *self,
+                       gint              width)
+{
+  gboolean narrow = width < 500;
+
+  gtk_widget_set_visible (self->reply_btn, !narrow);
+  gtk_widget_set_visible (self->reply_all_btn, !narrow);
+  gtk_widget_set_visible (self->forward_btn, !narrow);
+  gtk_widget_set_visible (self->delete_btn, !narrow);
+  gtk_widget_set_visible (self->spam_btn, !narrow);
+  gtk_widget_set_visible (self->archive_btn, !narrow);
+  gtk_widget_set_visible (self->toolbar, narrow);
+}
+
+static void
 stamp_message_list_size_allocate (GtkWidget *widget,
                                   gint       width,
                                   gint       height,
@@ -221,17 +236,8 @@ stamp_message_list_size_allocate (GtkWidget *widget,
 
   GTK_WIDGET_CLASS (stamp_message_list_parent_class)->size_allocate (widget, width, height, baseline);
 
-  if (self->mobile_mode) {
-    gboolean narrow = width < 500;
-
-    gtk_widget_set_visible (self->reply_btn, !narrow);
-    gtk_widget_set_visible (self->reply_all_btn, !narrow);
-    gtk_widget_set_visible (self->forward_btn, !narrow);
-    gtk_widget_set_visible (self->delete_btn, !narrow);
-    gtk_widget_set_visible (self->spam_btn, !narrow);
-    gtk_widget_set_visible (self->archive_btn, !narrow);
-    gtk_widget_set_visible (self->toolbar, narrow);
-  }
+  if (self->mobile_mode)
+    update_mobile_toolbar (self, width);
 }
 
 gboolean
@@ -246,7 +252,9 @@ stamp_message_list_set_mobile_mode (StampMessageList *self,
 {
   self->mobile_mode = mobile;
 
-  if (!mobile) {
+  if (mobile) {
+    update_mobile_toolbar (self, gtk_widget_get_width (GTK_WIDGET (self)));
+  } else {
     gtk_widget_set_visible (self->reply_btn, TRUE);
     gtk_widget_set_visible (self->reply_all_btn, TRUE);
     gtk_widget_set_visible (self->forward_btn, TRUE);
