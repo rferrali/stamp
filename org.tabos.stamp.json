@@ -254,6 +254,9 @@
         "--disable-tests",
         "--disable-strict"
       ],
+      "post-install": [
+        "install -Dm644 opensc-stamp.conf /app/etc/opensc.conf"
+      ],
       "cleanup": [
         "/bin",
         "/share/opensc",
@@ -264,6 +267,11 @@
           "type": "archive",
           "url": "https://github.com/OpenSC/OpenSC/releases/download/0.26.1/opensc-0.26.1.tar.gz",
           "sha256": "f16291a031d86e570394762e9f35eaf2fcbc2337a49910f3feae42d54e1688cb"
+        },
+        {
+          "type": "file",
+          "path": "data/opensc.conf",
+          "dest-filename": "opensc-stamp.conf"
         }
       ]
     },
