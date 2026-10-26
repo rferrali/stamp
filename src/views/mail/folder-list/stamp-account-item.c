@@ -26,13 +26,15 @@
 #include "stamp-folder-item.h"
 #include "stamp-item.h"
 #include "stamp-session.h"
+#include "stamp-settings.h"
 
 struct _StampAccountItem {
   StampItem parent_instance;
 
   GCancellable *cancellable;
   CamelOfflineStore *offline_store;
-  GThread *refresh_thread;
+  GSettings *refresh_settings;
+  guint refresh_timer_id;
 
   GQueue *refresh_queue;
   gboolean refresh_queue_running;
@@ -662,29 +664,32 @@ refresh_folder_main (gpointer user_data)
   return G_SOURCE_REMOVE;
 }
 
-static gpointer
-refresh_folder (gpointer user_data)
+static gboolean
+refresh_timeout (gpointer user_data)
 {
   StampAccountItem *self = STAMP_ACCOUNT_ITEM (user_data);
-  g_autoptr (GSettings) settings = g_settings_new ("org.tabos.stamp.mail");
 
-  while (!g_cancellable_is_cancelled (self->cancellable)) {
-    gint64 end;
-    guint refresh_interval = g_settings_get_uint (settings, "refresh-interval");
-
-    g_main_context_invoke (NULL, refresh_folder_main, self);
-
-    end = g_get_monotonic_time () + refresh_interval * G_USEC_PER_SEC;
-    while (!g_cancellable_is_cancelled (self->cancellable)) {
-      gint64 now = g_get_monotonic_time ();
-      if (now >= end)
-        break;
-
-      g_usleep (100 * 1000);
-    }
+  if (g_cancellable_is_cancelled (self->cancellable)) {
+    self->refresh_timer_id = 0;
+    return G_SOURCE_REMOVE;
   }
 
-  return NULL;
+  g_clear_handle_id (&self->refresh_folder_handler, g_source_remove);
+  refresh_folder_main (self);
+
+  return G_SOURCE_CONTINUE;
+}
+
+static void
+on_refresh_interval_changed (GSettings *settings,
+                             gchar     *key,
+                             gpointer   user_data)
+{
+  StampAccountItem *self = STAMP_ACCOUNT_ITEM (user_data);
+  guint interval = MAX (1u, g_settings_get_uint (settings, STAMP_PREFS_MAIL_REFRESH_INTERVAL));
+
+  g_clear_handle_id (&self->refresh_timer_id, g_source_remove);
+  self->refresh_timer_id = g_timeout_add_seconds (interval, refresh_timeout, self);
 }
 
 static void
@@ -720,14 +725,22 @@ stamp_account_item_constructed (GObject *object)
 
   self->refresh_queue = g_queue_new ();
 
-  /* We need to serialize refresh requests per store as it tend to lock up */
-  self->refresh_thread = g_thread_new ("Refresh Folder", refresh_folder, self);
+  self->refresh_settings = g_object_ref (STAMP_SETTINGS_MAIL);
+  g_signal_connect_object (self->refresh_settings, "changed::" STAMP_PREFS_MAIL_REFRESH_INTERVAL,
+                           G_CALLBACK (on_refresh_interval_changed), self, G_CONNECT_DEFAULT);
+  on_refresh_interval_changed (self->refresh_settings, NULL, self);
+  self->refresh_folder_handler = g_idle_add (refresh_folder_main, self);
 }
 
 static void
 stamp_account_item_dispose (GObject *object)
 {
   StampAccountItem *self = STAMP_ACCOUNT_ITEM (object);
+
+  g_clear_handle_id (&self->refresh_timer_id, g_source_remove);
+  if (self->refresh_settings)
+    g_signal_handlers_disconnect_by_data (self->refresh_settings, self);
+  g_clear_object (&self->refresh_settings);
 
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
