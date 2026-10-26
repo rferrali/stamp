@@ -141,6 +141,8 @@ stamp_message_list_dispose (GObject *object)
   g_clear_handle_id (&self->scroll_to_bottom_handler, g_source_remove);
   g_clear_handle_id (&self->adjacent_pages_handler, g_source_remove);
   g_clear_handle_id (&self->navigate_back_handler, g_source_remove);
+  g_clear_object (&self->prev_page);
+  g_clear_object (&self->next_page);
 
   G_OBJECT_CLASS (stamp_message_list_parent_class)->dispose (object);
 }
@@ -158,15 +160,17 @@ on_carousel_page_changed (AdwCarousel *carousel,
                           gpointer     user_data)
 {
   StampMessageList *self = STAMP_MESSAGE_LIST (user_data);
+  GtkWidget *page;
 
   if (self->rebuilding)
     return;
 
-  if (index == 0) {
+  page = adw_carousel_get_nth_page (carousel, index);
+
+  if (page == self->prev_page)
     g_signal_emit (self, switch_signals[SWITCH_CONVERSATION], 0, -1);
-  } else if (index == 2) {
+  else if (page == self->next_page)
     g_signal_emit (self, switch_signals[SWITCH_CONVERSATION], 0, 1);
-  }
 }
 
 static void
@@ -636,11 +640,21 @@ populate_adjacent_pages (gpointer user_data)
   StampWindow *window = STAMP_WINDOW (stamp_get_main_window ());
   StampConversationList *conv_list = stamp_mail_view_get_conversation_list (stamp_window_get_mail_view (window));
   StampConversationItem *adjacent;
+  GtkWidget *prev_child;
+  GtkWidget *next_child;
+
   self->adjacent_pages_handler = 0;
 
+  self->rebuilding = TRUE;
+
   adjacent = stamp_conversation_list_get_adjacent_item (conv_list, -1);
+  if (!adjacent && gtk_widget_get_parent (self->prev_page))
+    adw_carousel_remove (ADW_CAROUSEL (self->carousel), self->prev_page);
   if (adjacent) {
-    GtkWidget *prev_child = gtk_widget_get_first_child (self->prev_page);
+    if (!gtk_widget_get_parent (self->prev_page))
+      adw_carousel_prepend (ADW_CAROUSEL (self->carousel), self->prev_page);
+
+    prev_child = gtk_widget_get_first_child (self->prev_page);
 
     while (prev_child) {
       GtkWidget *next = gtk_widget_get_next_sibling (prev_child);
@@ -653,8 +667,13 @@ populate_adjacent_pages (gpointer user_data)
   }
 
   adjacent = stamp_conversation_list_get_adjacent_item (conv_list, 1);
+  if (!adjacent && gtk_widget_get_parent (self->next_page))
+    adw_carousel_remove (ADW_CAROUSEL (self->carousel), self->next_page);
   if (adjacent) {
-    GtkWidget *next_child = gtk_widget_get_first_child (self->next_page);
+    if (!gtk_widget_get_parent (self->next_page))
+      adw_carousel_append (ADW_CAROUSEL (self->carousel), self->next_page);
+
+    next_child = gtk_widget_get_first_child (self->next_page);
 
     while (next_child) {
       GtkWidget *next = gtk_widget_get_next_sibling (next_child);
@@ -665,6 +684,9 @@ populate_adjacent_pages (gpointer user_data)
     gtk_box_append (GTK_BOX (self->next_page), create_carousel_page_view (self->account, stamp_conversation_item_get_node (adjacent)));
     g_object_unref (adjacent);
   }
+
+  adw_carousel_scroll_to (ADW_CAROUSEL (self->carousel), self->message_stack, FALSE);
+  self->rebuilding = FALSE;
 
   return G_SOURCE_REMOVE;
 }
@@ -693,21 +715,20 @@ stamp_message_list_set_conversation (StampMessageList      *self,
   self->rebuilding = TRUE;
 
   if (!self->prev_page) {
-    self->prev_page = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    self->prev_page = g_object_ref_sink (gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
     gtk_widget_set_hexpand (self->prev_page, TRUE);
     gtk_widget_set_vexpand (self->prev_page, TRUE);
-    adw_carousel_prepend (ADW_CAROUSEL (self->carousel), self->prev_page);
   }
   if (!self->next_page) {
-    self->next_page = gtk_box_new (GTK_ORIENTATION_VERTICAL, 0);
+    self->next_page = g_object_ref_sink (gtk_box_new (GTK_ORIENTATION_VERTICAL, 0));
     gtk_widget_set_hexpand (self->next_page, TRUE);
     gtk_widget_set_vexpand (self->next_page, TRUE);
-    adw_carousel_append (ADW_CAROUSEL (self->carousel), self->next_page);
   }
 
-  adw_carousel_reorder (ADW_CAROUSEL (self->carousel), self->prev_page, 0);
-  adw_carousel_reorder (ADW_CAROUSEL (self->carousel), self->message_stack, 1);
-  adw_carousel_reorder (ADW_CAROUSEL (self->carousel), self->next_page, 2);
+  if (gtk_widget_get_parent (self->prev_page))
+    adw_carousel_remove (ADW_CAROUSEL (self->carousel), self->prev_page);
+  if (gtk_widget_get_parent (self->next_page))
+    adw_carousel_remove (ADW_CAROUSEL (self->carousel), self->next_page);
 
   g_clear_handle_id (&self->adjacent_pages_handler, g_source_remove);
   self->adjacent_pages_handler = g_idle_add_full (G_PRIORITY_LOW, populate_adjacent_pages, self, NULL);
