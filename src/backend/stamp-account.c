@@ -56,6 +56,7 @@ struct _StampAccount {
 
   ESource *collection;
   StampMailService *mail;
+  GCancellable *mail_cancellable;
   GPtrArray *address_books;
 
   GCancellable *cancellable;
@@ -162,6 +163,8 @@ stamp_account_dispose (GObject *object)
 
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
+  g_cancellable_cancel (self->mail_cancellable);
+  g_clear_object (&self->mail_cancellable);
 
   g_clear_pointer (&self->uid, g_free);
   g_clear_pointer (&self->display_name, g_free);
@@ -775,6 +778,10 @@ on_book_client_ready (GObject      *src,
 typedef struct {
   StampAccount *account;
   InitContext *ctx;
+  CamelStore *store;
+  GCancellable *cancellable;
+  GCancellable *parent_cancellable;
+  gulong cancelled_id;
   gint pending;
   guint have_sent : 1;
   guint have_drafts : 1;
@@ -784,18 +791,38 @@ typedef struct {
   guint have_templates : 1;
 } MailEnableData;
 
+static gboolean
+mail_enable_is_current (MailEnableData *data)
+{
+  return !g_cancellable_is_cancelled (data->cancellable) &&
+         data->account->mail && data->account->mail->enabled &&
+         data->account->mail->service == CAMEL_SERVICE (data->store);
+}
+
+static void
+on_mail_enable_cancelled (GCancellable *cancellable,
+                          gpointer      user_data)
+{
+  g_cancellable_cancel (G_CANCELLABLE (user_data));
+}
+
 static void
 mail_enable_one_done (MailEnableData *data)
 {
   if (--data->pending > 0)
     return;
 
-  if (data->account->mail && data->account->mail->service)
+  if (mail_enable_is_current (data))
     g_signal_emit (data->account, signals[MAIL_ADDED], 0, data->account, data->account->mail->service);
 
   if (data->ctx)
     init_context_finish_one (data->ctx);
 
+  g_cancellable_disconnect (data->parent_cancellable, data->cancelled_id);
+  g_clear_object (&data->parent_cancellable);
+  g_clear_object (&data->account);
+  g_clear_object (&data->store);
+  g_clear_object (&data->cancellable);
   g_free (data);
 }
 
@@ -806,11 +833,11 @@ on_junk_folder_ready (GObject      *src,
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
-  CamelFolder *folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
+  g_autoptr (CamelFolder) folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
 
-  if (folder)
-    data->account->mail->junk_folder = folder;
-  else
+  if (folder && mail_enable_is_current (data))
+    data->account->mail->junk_folder = g_steal_pointer (&folder);
+  else if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     g_warning ("%s: %s", G_STRFUNC, error ? error->message : "");
 
   mail_enable_one_done (data);
@@ -823,11 +850,11 @@ on_trash_folder_ready (GObject      *src,
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
-  CamelFolder *folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
+  g_autoptr (CamelFolder) folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
 
-  if (folder)
-    data->account->mail->trash_folder = folder;
-  else
+  if (folder && mail_enable_is_current (data))
+    data->account->mail->trash_folder = g_steal_pointer (&folder);
+  else if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     g_warning ("%s: %s", G_STRFUNC, error ? error->message : "");
 
   mail_enable_one_done (data);
@@ -840,11 +867,11 @@ on_sent_folder_ready (GObject      *src,
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
-  CamelFolder *folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
+  g_autoptr (CamelFolder) folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
 
-  if (folder)
-    data->account->mail->sent_folder = folder;
-  else
+  if (folder && mail_enable_is_current (data))
+    data->account->mail->sent_folder = g_steal_pointer (&folder);
+  else if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     g_warning ("%s: %s", G_STRFUNC, error ? error->message : "");
 
   mail_enable_one_done (data);
@@ -857,11 +884,11 @@ on_drafts_folder_ready (GObject      *src,
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
-  CamelFolder *folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
+  g_autoptr (CamelFolder) folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
 
-  if (folder)
-    data->account->mail->drafts_folder = folder;
-  else
+  if (folder && mail_enable_is_current (data))
+    data->account->mail->drafts_folder = g_steal_pointer (&folder);
+  else if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     g_warning ("%s: %s", G_STRFUNC, error ? error->message : "");
 
   mail_enable_one_done (data);
@@ -874,11 +901,11 @@ on_archives_folder_ready (GObject      *src,
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
-  CamelFolder *folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
+  g_autoptr (CamelFolder) folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
 
-  if (folder)
-    data->account->mail->archives_folder = folder;
-  else
+  if (folder && mail_enable_is_current (data))
+    data->account->mail->archives_folder = g_steal_pointer (&folder);
+  else if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     g_warning ("%s: %s", G_STRFUNC, error ? error->message : "");
 
   mail_enable_one_done (data);
@@ -891,11 +918,11 @@ on_templates_folder_ready (GObject      *src,
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
-  CamelFolder *folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
+  g_autoptr (CamelFolder) folder = camel_store_get_folder_finish (CAMEL_STORE (src), res, &error);
 
-  if (folder)
-    data->account->mail->templates_folder = folder;
-  else
+  if (folder && mail_enable_is_current (data))
+    data->account->mail->templates_folder = g_steal_pointer (&folder);
+  else if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     g_warning ("%s: %s", G_STRFUNC, error ? error->message : "");
 
   mail_enable_one_done (data);
@@ -917,8 +944,9 @@ on_folder_info_for_special_folders (GObject      *src,
   g_autofree gchar *possible_junk = NULL;
   g_autofree gchar *possible_templates = NULL;
 
-  if (error) {
-    g_warning ("%s: get_folder_info: %s", G_STRFUNC, error->message);
+  if (error || !mail_enable_is_current (data)) {
+    if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      g_warning ("%s: get_folder_info: %s", G_STRFUNC, error->message);
     mail_enable_one_done (data);
     return;
   }
@@ -930,27 +958,27 @@ on_folder_info_for_special_folders (GObject      *src,
     if (!data->have_sent && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_SENT)) {
       data->have_sent = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_sent_folder_ready, data);
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, data->cancellable, on_sent_folder_ready, data);
     } else if (!data->have_drafts && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_DRAFTS)) {
       data->have_drafts = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_drafts_folder_ready, data);
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, data->cancellable, on_drafts_folder_ready, data);
     } else if (!data->have_trash && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_TRASH)) {
       data->have_trash = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_trash_folder_ready, data);
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, data->cancellable, on_trash_folder_ready, data);
     } else if (!data->have_junk && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_JUNK)) {
       data->have_junk = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_junk_folder_ready, data);
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, data->cancellable, on_junk_folder_ready, data);
     } else if (!data->have_archives && ((fi->flags & CAMEL_FOLDER_TYPE_MASK) == CAMEL_FOLDER_TYPE_ARCHIVE)) {
       data->have_archives = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_archives_folder_ready, data);
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, data->cancellable, on_archives_folder_ready, data);
     } else if (!data->have_templates && g_strcmp0 (fi->display_name, "Templates") == 0) {
       data->have_templates = TRUE;
       data->pending += 1;
-      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, NULL, on_templates_folder_ready, data);
+      camel_store_get_folder (CAMEL_STORE (src), fi->full_name, 0, G_PRIORITY_DEFAULT, data->cancellable, on_templates_folder_ready, data);
     } else {
       /* Ugly part, let's try to guess based on it's name */
 
@@ -1001,7 +1029,7 @@ on_folder_info_for_special_folders (GObject      *src,
     data->pending += 1;
 
     g_debug ("%s: Trying to load fallback sent folder", G_STRFUNC);
-    camel_store_get_folder (CAMEL_STORE (src), possible_sent, 0, G_PRIORITY_DEFAULT, NULL, on_sent_folder_ready, data);
+    camel_store_get_folder (CAMEL_STORE (src), possible_sent, 0, G_PRIORITY_DEFAULT, data->cancellable, on_sent_folder_ready, data);
   }
 
   if (!data->have_archives && possible_archives) {
@@ -1009,7 +1037,7 @@ on_folder_info_for_special_folders (GObject      *src,
     data->pending += 1;
 
     g_debug ("%s: Trying to load fallback archives folder", G_STRFUNC);
-    camel_store_get_folder (CAMEL_STORE (src), possible_archives, 0, G_PRIORITY_DEFAULT, NULL, on_archives_folder_ready, data);
+    camel_store_get_folder (CAMEL_STORE (src), possible_archives, 0, G_PRIORITY_DEFAULT, data->cancellable, on_archives_folder_ready, data);
   }
 
   if (!data->have_drafts && possible_drafts) {
@@ -1017,7 +1045,7 @@ on_folder_info_for_special_folders (GObject      *src,
     data->pending += 1;
 
     g_debug ("%s: Trying to load fallback drafts folder", G_STRFUNC);
-    camel_store_get_folder (CAMEL_STORE (src), possible_drafts, 0, G_PRIORITY_DEFAULT, NULL, on_drafts_folder_ready, data);
+    camel_store_get_folder (CAMEL_STORE (src), possible_drafts, 0, G_PRIORITY_DEFAULT, data->cancellable, on_drafts_folder_ready, data);
   }
 
   if (!data->have_trash && possible_trash) {
@@ -1025,7 +1053,7 @@ on_folder_info_for_special_folders (GObject      *src,
     data->pending += 1;
 
     g_debug ("%s: Trying to load fallback trash folder", G_STRFUNC);
-    camel_store_get_folder (CAMEL_STORE (src), possible_trash, 0, G_PRIORITY_DEFAULT, NULL, on_trash_folder_ready, data);
+    camel_store_get_folder (CAMEL_STORE (src), possible_trash, 0, G_PRIORITY_DEFAULT, data->cancellable, on_trash_folder_ready, data);
   }
 
   if (!data->have_junk && possible_junk) {
@@ -1033,7 +1061,7 @@ on_folder_info_for_special_folders (GObject      *src,
     data->pending += 1;
 
     g_debug ("%s: Trying to load fallback junk folder", G_STRFUNC);
-    camel_store_get_folder (CAMEL_STORE (src), possible_junk, 0, G_PRIORITY_DEFAULT, NULL, on_junk_folder_ready, data);
+    camel_store_get_folder (CAMEL_STORE (src), possible_junk, 0, G_PRIORITY_DEFAULT, data->cancellable, on_junk_folder_ready, data);
   }
 
   if (!data->have_templates && possible_templates) {
@@ -1041,22 +1069,22 @@ on_folder_info_for_special_folders (GObject      *src,
     data->pending += 1;
 
     g_debug ("%s: Trying to load fallback templates folder", G_STRFUNC);
-    camel_store_get_folder (CAMEL_STORE (src), possible_templates, 0, G_PRIORITY_DEFAULT, NULL, on_templates_folder_ready, data);
+    camel_store_get_folder (CAMEL_STORE (src), possible_templates, 0, G_PRIORITY_DEFAULT, data->cancellable, on_templates_folder_ready, data);
   }
 
   mail_enable_one_done (data);
 }
 
 static void
-stamp_account_enable_mail_async (StampAccount *self,
-                                 InitContext  *ctx)
+on_initial_setup_ready (GObject      *src,
+                        GAsyncResult *res,
+                        gpointer      user_data)
 {
-  MailEnableData *data;
-  g_autoptr (GError) error = NULL;
-  ESourceMailAccount *extension;
-  ESourceMailTransport *transport_extension;
+  MailEnableData *data = user_data;
+  StampAccount *self = data->account;
   g_autoptr (GHashTable) setup = NULL;
   g_autoptr (GError) setup_error = NULL;
+  gboolean setup_success;
   const gchar *archives_path = NULL;
   const gchar *templates_path = NULL;
   const gchar *spam_path = NULL;
@@ -1064,40 +1092,13 @@ stamp_account_enable_mail_async (StampAccount *self,
   const gchar *drafts_path = NULL;
   const gchar *trash_path = NULL;
 
-  self->mail->enabled = TRUE;
-  extension = e_source_get_extension (self->mail->source, E_SOURCE_EXTENSION_MAIL_ACCOUNT);
-
-  self->mail->service = camel_session_add_service (CAMEL_SESSION (stamp_session_get_default ()),
-                                                   e_source_get_uid (self->mail->source),
-                                                   e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension)),
-                                                   CAMEL_PROVIDER_STORE,
-                                                   &error);
-  if (!self->mail->service) {
-    g_warning ("%s: Failed to add mail service of type '%s' (is the matching Camel provider, e.g. evolution-ews for 'microsoft365', installed and visible via CAMEL_PROVIDERDIR?): %s",
-               G_STRFUNC,
-               e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension)),
-               error ? error->message : "unknown error");
-    g_clear_error (&error);
-    if (ctx)
-      init_context_finish_one (ctx);
+  setup_success = camel_store_initial_setup_finish (CAMEL_STORE (src), res, &setup, &setup_error);
+  if (!mail_enable_is_current (data)) {
+    mail_enable_one_done (data);
     return;
   }
 
-  transport_extension = e_source_get_extension (self->mail->transport_source, E_SOURCE_EXTENSION_MAIL_TRANSPORT);
-  self->mail->transport = CAMEL_TRANSPORT (camel_session_add_service (CAMEL_SESSION (stamp_session_get_default ()),
-                                                                      e_source_get_uid (self->mail->transport_source),
-                                                                      e_source_backend_get_backend_name (E_SOURCE_BACKEND (transport_extension)),
-                                                                      CAMEL_PROVIDER_TRANSPORT, &error));
-  if (!self->mail->transport)
-    g_warning ("%s: Failed to add transport: %s", G_STRFUNC, error ? error->message : "");
-
-  data = g_new0 (MailEnableData, 1);
-  data->account = self;
-  data->ctx = ctx;
-  data->pending = 0;
-
-  g_debug ("%s: Query '%s' store…", G_STRFUNC, stamp_account_get_name (self));
-  if (camel_store_initial_setup_sync (CAMEL_STORE (self->mail->service), &setup, NULL, &setup_error)) {
+  if (setup_success) {
     if (setup) {
       archives_path = g_hash_table_lookup (setup, CAMEL_STORE_SETUP_ARCHIVE_FOLDER);
       drafts_path = g_hash_table_lookup (setup, CAMEL_STORE_SETUP_DRAFTS_FOLDER);
@@ -1135,47 +1136,125 @@ stamp_account_enable_mail_async (StampAccount *self,
    */
   if (sent_path) {
     data->pending += 1;
-    camel_store_get_folder (CAMEL_STORE (self->mail->service), sent_path, 0, G_PRIORITY_DEFAULT, NULL, on_sent_folder_ready, data);
+    camel_store_get_folder (data->store, sent_path, 0, G_PRIORITY_DEFAULT, data->cancellable, on_sent_folder_ready, data);
   }
 
   if (drafts_path) {
     data->pending += 1;
-    camel_store_get_folder (CAMEL_STORE (self->mail->service), drafts_path, 0, G_PRIORITY_DEFAULT, NULL, on_drafts_folder_ready, data);
+    camel_store_get_folder (data->store, drafts_path, 0, G_PRIORITY_DEFAULT, data->cancellable, on_drafts_folder_ready, data);
   }
 
   if (trash_path) {
     data->pending += 1;
-    camel_store_get_folder (CAMEL_STORE (self->mail->service), trash_path, 0, G_PRIORITY_DEFAULT, NULL, on_trash_folder_ready, data);
+    camel_store_get_folder (data->store, trash_path, 0, G_PRIORITY_DEFAULT, data->cancellable, on_trash_folder_ready, data);
   }
 
   if (spam_path) {
     data->pending += 1;
-    camel_store_get_folder (CAMEL_STORE (self->mail->service), spam_path, 0, G_PRIORITY_DEFAULT, NULL, on_junk_folder_ready, data);
+    camel_store_get_folder (data->store, spam_path, 0, G_PRIORITY_DEFAULT, data->cancellable, on_junk_folder_ready, data);
   }
 
   if (archives_path) {
     data->pending += 1;
-    camel_store_get_folder (CAMEL_STORE (self->mail->service), archives_path, 0, G_PRIORITY_DEFAULT, NULL, on_archives_folder_ready, data);
+    camel_store_get_folder (data->store, archives_path, 0, G_PRIORITY_DEFAULT, data->cancellable, on_archives_folder_ready, data);
   }
 
   if (templates_path) {
     data->pending += 1;
-    camel_store_get_folder (CAMEL_STORE (self->mail->service), templates_path, 0, G_PRIORITY_DEFAULT, NULL, on_templates_folder_ready, data);
+    camel_store_get_folder (data->store, templates_path, 0, G_PRIORITY_DEFAULT, data->cancellable, on_templates_folder_ready, data);
   }
 
   if (!sent_path || !drafts_path || !trash_path || !spam_path || !archives_path || !templates_path) {
     data->pending += 1;
 
     /* We do not have all path we want, let's do it the hard way and traverse folder info */
-    camel_store_get_folder_info (CAMEL_STORE (self->mail->service), NULL, CAMEL_STORE_FOLDER_INFO_RECURSIVE | CAMEL_STORE_FOLDER_INFO_NO_VIRTUAL, G_PRIORITY_DEFAULT, NULL, on_folder_info_for_special_folders, data);
+    camel_store_get_folder_info (data->store, NULL, CAMEL_STORE_FOLDER_INFO_RECURSIVE | CAMEL_STORE_FOLDER_INFO_NO_VIRTUAL, G_PRIORITY_DEFAULT, data->cancellable, on_folder_info_for_special_folders, data);
   }
 
+  mail_enable_one_done (data);
+}
+
+static void
+on_categories_ready (GObject      *src,
+                     GAsyncResult *res,
+                     gpointer      user_data)
+{
+  MailEnableData *data = user_data;
+  g_autoptr (GError) error = NULL;
+  GList *categories = stamp_m365_get_categories_finish (E_SOURCE (src), res, &error);
+
+  if (mail_enable_is_current (data) && !error) {
+    g_list_free_full (data->account->categories, g_object_unref);
+    data->account->categories = g_steal_pointer (&categories);
+  } else if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+    g_warning ("%s: Categories: %s", G_STRFUNC, error->message);
+  }
+  g_list_free_full (categories, g_object_unref);
+  mail_enable_one_done (data);
+}
+
+static void
+stamp_account_enable_mail_async (StampAccount *self,
+                                 InitContext  *ctx)
+{
+  MailEnableData *data;
+  g_autoptr (GError) error = NULL;
+  ESourceMailAccount *extension;
+  ESourceMailTransport *transport_extension;
+  GCancellable *cancellable;
+
+  g_cancellable_cancel (self->mail_cancellable);
+  g_clear_object (&self->mail_cancellable);
+  self->mail_cancellable = g_cancellable_new ();
+  self->mail->enabled = TRUE;
+  extension = e_source_get_extension (self->mail->source, E_SOURCE_EXTENSION_MAIL_ACCOUNT);
+
+  self->mail->service = camel_session_add_service (CAMEL_SESSION (stamp_session_get_default ()),
+                                                   e_source_get_uid (self->mail->source),
+                                                   e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension)),
+                                                   CAMEL_PROVIDER_STORE,
+                                                   &error);
+  if (!self->mail->service) {
+    g_warning ("%s: Failed to add mail service of type '%s' (is the matching Camel provider, e.g. evolution-ews for 'microsoft365', installed and visible via CAMEL_PROVIDERDIR?): %s",
+               G_STRFUNC,
+               e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension)),
+               error ? error->message : "unknown error");
+    g_clear_error (&error);
+    if (ctx)
+      init_context_finish_one (ctx);
+    return;
+  }
+
+  transport_extension = e_source_get_extension (self->mail->transport_source, E_SOURCE_EXTENSION_MAIL_TRANSPORT);
+  self->mail->transport = CAMEL_TRANSPORT (camel_session_add_service (CAMEL_SESSION (stamp_session_get_default ()),
+                                                                      e_source_get_uid (self->mail->transport_source),
+                                                                      e_source_backend_get_backend_name (E_SOURCE_BACKEND (transport_extension)),
+                                                                      CAMEL_PROVIDER_TRANSPORT, &error));
+  if (!self->mail->transport)
+    g_warning ("%s: Failed to add transport: %s", G_STRFUNC, error ? error->message : "");
+
+  data = g_new0 (MailEnableData, 1);
+  data->account = g_object_ref (self);
+  data->ctx = ctx;
+  data->store = g_object_ref (CAMEL_STORE (self->mail->service));
+  data->cancellable = g_object_ref (self->mail_cancellable);
+  cancellable = ctx ? g_task_get_cancellable (ctx->parent_task) : self->cancellable;
+  if (cancellable) {
+    data->parent_cancellable = g_object_ref (cancellable);
+    data->cancelled_id = g_cancellable_connect (cancellable,
+                                                G_CALLBACK (on_mail_enable_cancelled),
+                                                g_object_ref (data->cancellable),
+                                                g_object_unref);
+  }
+  /* Keep setup counted until all dependent folder requests have been queued. */
+  data->pending = 1;
+
+  g_debug ("%s: Query '%s' store…", G_STRFUNC, stamp_account_get_name (self));
+  camel_store_initial_setup (data->store, G_PRIORITY_DEFAULT, data->cancellable, on_initial_setup_ready, data);
+
   if (g_strcmp0 (e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension)), "microsoft365") == 0) {
-    /* Microsoft 365 categories fetch via Graph API */
-    g_autoptr (GError) cat_error = NULL;
-    self->categories = stamp_m365_get_categories_sync (self->mail->source, self->cancellable, &cat_error);
-    if (cat_error)
-      g_warning ("%s: Categories: %s", G_STRFUNC, cat_error->message);
+    data->pending++;
+    stamp_m365_get_categories_async (self->mail->source, data->cancellable, on_categories_ready, data);
   }
 }
 
@@ -1316,6 +1395,9 @@ stamp_account_mail_changed (StampAccount *self,
 
   if (!enabled) {
     g_debug ("%s: Mail '%s' from '%s' disabled", G_STRFUNC, e_source_get_display_name (source), self->display_name);
+    g_cancellable_cancel (self->mail_cancellable);
+    g_clear_object (&self->mail_cancellable);
+    self->mail->enabled = FALSE;
     g_signal_emit (self, signals[MAIL_REMOVED], 0, self, self->mail);
     camel_service_disconnect_sync (self->mail->service, TRUE, NULL, NULL);
     g_clear_object (&self->mail->service);
