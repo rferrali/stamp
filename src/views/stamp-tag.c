@@ -23,6 +23,7 @@
 #include <glib/gi18n.h>
 
 #include "stamp-account.h"
+#include "stamp-composer.h"
 #include "stamp-helper.h"
 #include "stamp-session.h"
 #include "stamp-window.h"
@@ -123,6 +124,18 @@ on_released (GtkGesture *gesture,
 }
 
 static void
+on_compose_activate (GSimpleAction *action,
+                     GVariant      *param,
+                     gpointer       user_data)
+{
+  StampTag *self = STAMP_TAG (user_data);
+  GtkWidget *composer = stamp_composer_new (self->account);
+
+  stamp_composer_set_to (STAMP_COMPOSER (composer), self->mail);
+  gtk_window_present (GTK_WINDOW (composer));
+}
+
+static void
 on_copy_activate (GSimpleAction *action,
                   GVariant      *param,
                   gpointer       user_data)
@@ -165,9 +178,13 @@ static void
 stamp_tag_init (StampTag *self)
 {
   GSimpleActionGroup *group = g_simple_action_group_new ();
+  g_autoptr (GSimpleAction) compose_action = g_simple_action_new ("compose", NULL);
   GSimpleAction *action = g_simple_action_new ("copy", NULL);
   GSimpleAction *search_action = g_simple_action_new ("search", NULL);
   GSimpleAction *show_contact_action = g_simple_action_new ("show-contact", NULL);
+
+  g_signal_connect (compose_action, "activate", G_CALLBACK (on_compose_activate), self);
+  g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (compose_action));
 
   g_signal_connect (action, "activate", G_CALLBACK (on_copy_activate), self);
   g_action_map_add_action (G_ACTION_MAP (group), G_ACTION (action));

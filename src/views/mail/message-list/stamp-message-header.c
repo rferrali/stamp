@@ -23,6 +23,7 @@
 #include <libsoup/soup.h>
 
 #include "stamp-account.h"
+#include "stamp-composer.h"
 #include "stamp-helper.h"
 #include "stamp-session.h"
 #include "stamp-tag.h"
@@ -97,6 +98,19 @@ static void
 update_visibility (StampMessageHeader *self);
 
 static void
+on_compose_activate (GSimpleAction *action,
+                     GVariant      *param,
+                     gpointer       user_data)
+{
+  StampMessageHeader *self = STAMP_MESSAGE_HEADER (user_data);
+  g_autofree gchar *mail = g_strdup (gtk_label_get_text (GTK_LABEL (self->popover_email)));
+  GtkWidget *composer = stamp_composer_new (self->account);
+
+  stamp_composer_set_to (STAMP_COMPOSER (composer), mail);
+  gtk_window_present (GTK_WINDOW (composer));
+}
+
+static void
 on_copy_activate (GSimpleAction *action,
                   GVariant      *param,
                   gpointer       user_data)
@@ -138,11 +152,15 @@ on_show_contact_activate (GSimpleAction *action,
 static void
 stamp_message_header_init (StampMessageHeader *self)
 {
+  g_autoptr (GSimpleAction) compose_action = g_simple_action_new ("compose", NULL);
   GSimpleAction *action = g_simple_action_new ("copy", NULL);
   GSimpleAction *search_action = g_simple_action_new ("search", NULL);
   GSimpleAction *show_contact_action = g_simple_action_new ("show-contact", NULL);
 
   self->actions = g_simple_action_group_new ();
+  g_signal_connect (compose_action, "activate", G_CALLBACK (on_compose_activate), self);
+  g_action_map_add_action (G_ACTION_MAP (self->actions), G_ACTION (compose_action));
+
   g_signal_connect (action, "activate", G_CALLBACK (on_copy_activate), self);
   g_action_map_add_action (G_ACTION_MAP (self->actions), G_ACTION (action));
   g_signal_connect (search_action, "activate", G_CALLBACK (on_search_activate), self);
