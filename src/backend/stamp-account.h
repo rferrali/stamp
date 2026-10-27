@@ -284,6 +284,9 @@ stamp_account_get_mail_archives_folder (StampAccount *self);
 CamelFolder *
 stamp_account_get_mail_templates_folder (StampAccount *self);
 
+GPtrArray *
+stamp_account_get_mail_templates (StampAccount *self);
+
 GList *
 stamp_account_get_categories (StampAccount *self);
 

@@ -440,6 +440,16 @@ on_reply (GSimpleAction *action,
 }
 
 static void
+on_reply_with_template (GSimpleAction *action,
+                        GVariant      *parameter,
+                        gpointer       user_data)
+{
+  StampMailView *self = STAMP_MAIL_VIEW (user_data);
+
+  stamp_message_list_reply_with_template (self->message_list, g_variant_get_string (parameter, NULL));
+}
+
+static void
 on_reply_all (GSimpleAction *action,
               GVariant      *parameter,
               gpointer       user_data)
@@ -583,6 +593,7 @@ static const GActionEntry stamp_mail_view_action_entries[] = {
   { .name = "reply-all", .activate = on_reply_all, .parameter_type = "s" },
   { .name = "reply-all-current", .activate = on_reply_all },
   { .name = "reply-current", .activate = on_reply },
+  { .name = "reply-with-template", .activate = on_reply_with_template, .parameter_type = "s" },
   { .name = "trash", .activate = on_trash },
   { .name = "undo-trash", .activate = on_undo_trash },
   { .name = "junk", .activate = on_junk },

@@ -53,6 +53,10 @@ stamp_message_list_compose (StampMessageList  *self,
                             GVariant          *parameter);
 
 void
+stamp_message_list_reply_with_template (StampMessageList *self,
+                                        const gchar      *template_uid);
+
+void
 stamp_message_list_print (StampMessageList *self,
                           GVariant         *parameter);
 

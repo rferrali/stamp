@@ -766,6 +766,9 @@ stamp_message_list_set_conversation (StampMessageList      *self,
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "reply-all-current");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), node != NULL);
 
+  action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "reply-with-template");
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), node != NULL);
+
   action = g_action_map_lookup_action (G_ACTION_MAP (action_group), "forward-current");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), node != NULL);
 
@@ -882,12 +885,32 @@ on_message_body (GObject      *source,
                                             stamp_message_list_item_get_web_view (data->item),
                                             stamp_message_list_item_get_message_info (data->item),
                                             stamp_message_list_item_get_message (data->item),
-                                            body);
+                                            body,
+                                            NULL);
   gtk_window_present (GTK_WINDOW (composer));
 
   g_clear_object (&data->self);
   g_clear_object (&data->item);
   g_clear_pointer (&data, g_free);
+}
+
+static GtkWidget *
+find_message_item (StampMessageList *self,
+                   const gchar      *uid)
+{
+  GtkWidget *child;
+
+  if (uid && strlen (uid)) {
+    child = g_hash_table_lookup (self->messages, uid);
+  } else {
+    child = gtk_widget_get_last_child (self->list_box);
+  }
+
+  /* Ensure that last item is actually a message list item and not a header */
+  while (child && !STAMP_IS_MESSAGE_LIST_ITEM (child))
+    child = gtk_widget_get_prev_sibling (child);
+
+  return child;
 }
 
 void
@@ -910,16 +933,7 @@ stamp_message_list_compose (StampMessageList  *self,
   if (parameter)
     uid = g_variant_get_string (parameter, NULL);
 
-  if (uid && strlen (uid)) {
-    child = g_hash_table_lookup (self->messages, uid);
-  } else {
-    child = gtk_widget_get_last_child (self->list_box);
-  }
-
-  /* Ensure that last item is actually a message list item and not a header */
-  while (child && !STAMP_IS_MESSAGE_LIST_ITEM (child))
-    child = gtk_widget_get_prev_sibling (child);
-
+  child = find_message_item (self, uid);
   if (!child)
     return;
 
@@ -930,6 +944,18 @@ stamp_message_list_compose (StampMessageList  *self,
   data->type = type;
 
   stamp_message_list_item_get_message_body_html (data->item, NULL, on_message_body, data);
+}
+
+void
+stamp_message_list_reply_with_template (StampMessageList *self,
+                                        const gchar      *template_uid)
+{
+  GtkWidget *child = find_message_item (self, NULL);
+
+  if (!child)
+    return;
+
+  stamp_message_list_item_reply_with_template (STAMP_MESSAGE_LIST_ITEM (child), template_uid);
 }
 
 void

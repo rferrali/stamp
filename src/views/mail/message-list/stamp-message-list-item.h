@@ -83,6 +83,10 @@ stamp_message_list_item_get_web_view (StampMessageListItem *self);
 void stamp_message_list_item_set_mobile_mode (StampMessageListItem *self,
                                                gboolean mobile);
 
+void
+stamp_message_list_item_reply_with_template (StampMessageListItem *self,
+                                             const gchar          *template_uid);
+
 G_END_DECLS
 
 

@@ -91,7 +91,6 @@ struct _StampMessageListItem {
   StampMimeListUnsubscribe *unsubscribe;
 
   GSimpleActionGroup *actions;
-  StampComposerType type;
   gchar *save_img;
 };
 
@@ -1298,12 +1297,29 @@ on_view_source_activate (GSimpleAction *action,
   stamp_message_list_item_view_source (self);
 }
 
+typedef struct {
+  StampMessageListItem *self;
+  StampComposerType type;
+  CamelMimeMessage *template_message;
+} ComposerData;
+
+static void
+composer_data_free (gpointer user_data)
+{
+  ComposerData *data = user_data;
+
+  g_clear_object (&data->self);
+  g_clear_object (&data->template_message);
+  g_free (data);
+}
+
 static void
 on_message_body (GObject      *source,
                  GAsyncResult *res,
                  gpointer      user_data)
 {
-  StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
+  ComposerData *data = user_data;
+  StampMessageListItem *self = data->self;
   GtkWidget *composer;
   g_autoptr (GError) error = NULL;
   gchar *body;
@@ -1312,28 +1328,36 @@ on_message_body (GObject      *source,
   if (error) {
     if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
       g_warning ("Could not get message body html: %s", error->message);
+    composer_data_free (data);
     return;
   }
 
   if (!body) {
     g_warning ("Could not get message body html: empty response");
+    composer_data_free (data);
     return;
   }
 
-  composer = stamp_composer_new_with_quote (self->type,
+  composer = stamp_composer_new_with_quote (data->type,
                                             stamp_message_list_item_get_uid (self),
                                             self->account,
                                             stamp_message_list_item_get_web_view (self),
                                             stamp_message_list_item_get_message_info (self),
                                             stamp_message_list_item_get_message (self),
-                                            body);
+                                            body,
+                                            data->template_message);
   gtk_window_present (GTK_WINDOW (composer));
+
+  composer_data_free (data);
 }
 
 static void
 stamp_message_list_item_compose (StampMessageListItem *self,
-                                 StampComposerType     type)
+                                 StampComposerType     type,
+                                 CamelMimeMessage     *template_message)
 {
+  ComposerData *data;
+
   if (type == STAMP_COMPOSER_NEW) {
     GtkWidget *composer;
 
@@ -1342,8 +1366,13 @@ stamp_message_list_item_compose (StampMessageListItem *self,
     return;
   }
 
-  self->type = type;
-  stamp_message_list_item_get_message_body_html (self, NULL, on_message_body, self);
+  data = g_new0 (ComposerData, 1);
+  data->self = g_object_ref (self);
+  data->type = type;
+  if (template_message)
+    data->template_message = g_object_ref (template_message);
+
+  stamp_message_list_item_get_message_body_html (self, NULL, on_message_body, data);
 }
 
 static void
@@ -1353,7 +1382,49 @@ on_reply (GSimpleAction *action,
 {
   StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
 
-  stamp_message_list_item_compose (self, STAMP_COMPOSER_REPLY);
+  stamp_message_list_item_compose (self, STAMP_COMPOSER_REPLY, NULL);
+}
+
+static void
+on_get_template (GObject      *source,
+                 GAsyncResult *res,
+                 gpointer      user_data)
+{
+  StampMessageListItem *self;
+  g_autoptr (GError) error = NULL;
+  g_autoptr (CamelMimeMessage) message = NULL;
+
+  message = camel_folder_get_message_finish (CAMEL_FOLDER (source), res, &error);
+  if (error) {
+    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      g_warning ("%s: Could not get template: %s", G_STRFUNC, error->message);
+    return;
+  }
+
+  self = STAMP_MESSAGE_LIST_ITEM (user_data);
+  stamp_message_list_item_compose (self, STAMP_COMPOSER_REPLY, message);
+}
+
+void
+stamp_message_list_item_reply_with_template (StampMessageListItem *self,
+                                             const gchar          *template_uid)
+{
+  CamelFolder *templates_folder = stamp_account_get_mail_templates_folder (self->account);
+
+  if (!templates_folder)
+    return;
+
+  camel_folder_get_message (templates_folder, template_uid, G_PRIORITY_DEFAULT, self->cancellable, on_get_template, self);
+}
+
+static void
+on_reply_with_template (GSimpleAction *action,
+                        GVariant      *parameter,
+                        gpointer       user_data)
+{
+  StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
+
+  stamp_message_list_item_reply_with_template (self, g_variant_get_string (parameter, NULL));
 }
 
 static void
@@ -1363,7 +1434,7 @@ on_reply_all (GSimpleAction *action,
 {
   StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
 
-  stamp_message_list_item_compose (self, STAMP_COMPOSER_REPLY_ALL);
+  stamp_message_list_item_compose (self, STAMP_COMPOSER_REPLY_ALL, NULL);
 }
 
 static void
@@ -1373,7 +1444,7 @@ on_forward (GSimpleAction *action,
 {
   StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
 
-  stamp_message_list_item_compose (self, STAMP_COMPOSER_FORWARD);
+  stamp_message_list_item_compose (self, STAMP_COMPOSER_FORWARD, NULL);
 }
 
 static void
@@ -1425,6 +1496,7 @@ on_unsubscribe_activate (GSimpleAction *action,
 static const GActionEntry actions[] = {
   { "reply", on_reply},
   { "reply-all", on_reply_all},
+  { "reply-with-template", on_reply_with_template, "s"},
   { "forward", on_forward},
   { "mark-read", on_mark_read_activate},
   { "mark-unread", on_mark_unread_activate},

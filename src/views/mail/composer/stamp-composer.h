@@ -47,7 +47,8 @@ GtkWidget *stamp_composer_new_with_quote (StampComposerType       type,
                                           StampWebView           *webview,
                                           const CamelMessageInfo *info,
                                           CamelMimeMessage       *mime_message,
-                                          gchar                   *content_to_quote);
+                                          gchar                   *content_to_quote,
+                                          CamelMimeMessage       *template_message);
 
 void stamp_composer_set_to (StampComposer *self,
                             gchar          *to);

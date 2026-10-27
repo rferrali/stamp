@@ -1350,6 +1350,7 @@ handle_popover (RowData *row_data,
   GtkWidget *popover;
   g_autoptr (GMenu) menu = NULL;
   g_autoptr (GMenu) sub_menu = NULL;
+  g_autoptr (GPtrArray) templates = NULL;
   GdkRectangle rect;
   StampConversationRow *child = STAMP_CONVERSATION_ROW (gtk_list_item_get_child (row_data->list_item));
   graphene_point_t src_point = { (float)x, (float)y };
@@ -1359,12 +1360,34 @@ handle_popover (RowData *row_data,
   GList *categories;
   GPtrArray *labels;
   StampConversationItem *conversation_item;
+  StampAccount *account;
 
   gtk_selection_model_select_item (model, position, TRUE);
+
+  account = stamp_conversation_list_get_selected_account (row_data->self);
 
   menu = g_menu_new ();
   g_menu_append (menu, _("Reply"), "mail.reply-current");
   g_menu_append (menu, _("Reply All"), "mail.reply-all-current");
+
+  if (account)
+    templates = stamp_account_get_mail_templates (account);
+
+  if (templates && templates->len > 0) {
+    g_autoptr (GMenu) template_menu = g_menu_new ();
+
+    for (guint i = 0; i < templates->len; i++) {
+      CamelMessageInfo *info = templates->pdata[i];
+      const gchar *subject = camel_message_info_get_subject (info);
+      g_autoptr (GMenuItem) template_item = g_menu_item_new (subject && *subject ? subject : _("No Subject"), NULL);
+
+      g_menu_item_set_action_and_target (template_item, "mail.reply-with-template", "s", camel_message_info_get_uid (info));
+      g_menu_append_item (template_menu, template_item);
+    }
+
+    g_menu_append_submenu (menu, _("Reply with Template"), G_MENU_MODEL (template_menu));
+  }
+
   g_menu_append (menu, _("Forward"), "mail.forward-current");
 
   conversation_item = stamp_conversation_row_get_item (child);

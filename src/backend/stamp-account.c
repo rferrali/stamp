@@ -2145,6 +2145,50 @@ stamp_account_get_mail_templates_folder (StampAccount *self)
   return self->mail->templates_folder;
 }
 
+static gint
+compare_template_subjects (gconstpointer a,
+                           gconstpointer b)
+{
+  const gchar *subject_a = camel_message_info_get_subject (*(CamelMessageInfo **)a);
+  const gchar *subject_b = camel_message_info_get_subject (*(CamelMessageInfo **)b);
+
+  return g_utf8_collate (subject_a ? subject_a : "", subject_b ? subject_b : "");
+}
+
+GPtrArray *
+stamp_account_get_mail_templates (StampAccount *self)
+{
+  CamelFolder *folder = self->mail->templates_folder;
+  g_autoptr (GPtrArray) uids = NULL;
+  GPtrArray *templates;
+
+  if (!folder)
+    return NULL;
+
+  templates = g_ptr_array_new_with_free_func (g_object_unref);
+
+  camel_folder_summary_prepare_fetch_all (camel_folder_get_folder_summary (folder), NULL);
+
+  uids = camel_folder_dup_uids (folder);
+  for (guint i = 0; i < uids->len; i++) {
+    CamelMessageInfo *info = camel_folder_get_message_info (folder, uids->pdata[i]);
+
+    if (!info)
+      continue;
+
+    if (camel_message_info_get_flags (info) & (CAMEL_MESSAGE_DELETED | CAMEL_MESSAGE_JUNK)) {
+      g_object_unref (info);
+      continue;
+    }
+
+    g_ptr_array_add (templates, info);
+  }
+
+  g_ptr_array_sort (templates, compare_template_subjects);
+
+  return templates;
+}
+
 gint
 stamp_account_get_folder_order_rank (StampAccount    *self,
                                      CamelFolderInfo *info)

@@ -60,7 +60,9 @@ struct _StampMessageHeader {
   GtkWidget *internal;
   GtkWidget *reply_icon;
   GtkWidget *forwarded_icon;
+  GMenu *menu_model;
 
+  gboolean has_template_menu;
   gboolean to_filled;
   gboolean cc_filled;
   gboolean collapsed;
@@ -150,6 +152,41 @@ on_show_contact_activate (GSimpleAction *action,
 }
 
 static void
+on_menu_button_create_popup (GtkMenuButton *menu_button,
+                             gpointer       user_data)
+{
+  StampMessageHeader *self = STAMP_MESSAGE_HEADER (user_data);
+  g_autoptr (GPtrArray) templates = NULL;
+  g_autoptr (GMenu) template_menu = NULL;
+
+  /* Templates submenu sits after Reply and Reply All in menu_model */
+  if (self->has_template_menu) {
+    g_menu_remove (self->menu_model, 2);
+    self->has_template_menu = FALSE;
+  }
+
+  if (!self->account)
+    return;
+
+  templates = stamp_account_get_mail_templates (self->account);
+  if (!templates || templates->len == 0)
+    return;
+
+  template_menu = g_menu_new ();
+  for (guint i = 0; i < templates->len; i++) {
+    CamelMessageInfo *info = templates->pdata[i];
+    const gchar *subject = camel_message_info_get_subject (info);
+    g_autoptr (GMenuItem) template_item = g_menu_item_new (subject && *subject ? subject : _("No Subject"), NULL);
+
+    g_menu_item_set_action_and_target (template_item, "message-list-item.reply-with-template", "s", camel_message_info_get_uid (info));
+    g_menu_append_item (template_menu, template_item);
+  }
+
+  g_menu_insert_submenu (self->menu_model, 2, _("Reply with Template"), G_MENU_MODEL (template_menu));
+  self->has_template_menu = TRUE;
+}
+
+static void
 stamp_message_header_init (StampMessageHeader *self)
 {
   g_autoptr (GSimpleAction) compose_action = g_simple_action_new ("compose", NULL);
@@ -177,6 +214,8 @@ stamp_message_header_init (StampMessageHeader *self)
   gtk_widget_set_cursor_from_name (self->cc_more_button, "pointer");
 
   gtk_widget_set_parent (self->popover, GTK_WIDGET (self->avatar));
+
+  gtk_menu_button_set_create_popup_func (GTK_MENU_BUTTON (self->menu_button), on_menu_button_create_popup, self, NULL);
 }
 
 static void
@@ -399,6 +438,7 @@ stamp_message_header_class_init (StampMessageHeaderClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampMessageHeader, internal);
   gtk_widget_class_bind_template_child (widget_class, StampMessageHeader, reply_icon);
   gtk_widget_class_bind_template_child (widget_class, StampMessageHeader, forwarded_icon);
+  gtk_widget_class_bind_template_child (widget_class, StampMessageHeader, menu_model);
 
   gtk_widget_class_bind_template_callback (widget_class, on_more_button_clicked);
   gtk_widget_class_bind_template_callback (widget_class, on_cc_more_button_clicked);

@@ -35,6 +35,7 @@
 #include "stamp-composer-from.h"
 #include "stamp-contact-completion.h"
 #include "stamp-mail-view.h"
+#include "stamp-mime-parser.h"
 #include "stamp-rich-text-editor.h"
 #include "stamp-scheduler.h"
 #include "stamp-session.h"
@@ -2643,7 +2644,8 @@ stamp_composer_set_quote_content (StampComposer          *self,
                                   StampWebView           *webview,
                                   const CamelMessageInfo *info,
                                   CamelMimeMessage       *message,
-                                  gchar                  *content_to_quote)
+                                  gchar                  *content_to_quote,
+                                  CamelMimeMessage       *template_message)
 {
   const gchar *subject = camel_message_info_get_subject (info);
 
@@ -2700,6 +2702,21 @@ stamp_composer_set_quote_content (StampComposer          *self,
       g_autofree char *date_received = NULL;
       gchar *date_format = _("%a, %b %-e, %Y at %-l:%M %p");
       guint64 timestamp;
+
+      if (template_message) {
+        g_autoptr (StampMimeParser) parser = stamp_mime_parser_new (CAMEL_SESSION (stamp_session_get_default ()));
+        CamelInternetAddress *template_cc = camel_mime_message_get_recipients (template_message, CAMEL_RECIPIENT_TYPE_CC);
+        StampMimeBody *template_body;
+
+        if (template_cc)
+          if (stamp_add_addresses_to_completion (self, self->cc, template_cc))
+            gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (self->toggle), TRUE);
+
+        stamp_mime_parser_parse (parser, template_message, self->cancellable, NULL);
+        template_body = stamp_mime_parser_get_body (parser);
+        if (template_body && template_body->text)
+          g_string_append (message_content, template_body->text);
+      }
 
       message_content = g_string_append (message_content, "<br/><br/>");
 
@@ -2764,7 +2781,8 @@ stamp_composer_new_with_quote (StampComposerType       type,
                                StampWebView           *webview,
                                const CamelMessageInfo *info,
                                CamelMimeMessage       *mime_message,
-                               gchar                  *content_to_quote)
+                               gchar                  *content_to_quote,
+                               CamelMimeMessage       *template_message)
 {
   GtkWidget *composer = g_object_new (STAMP_TYPE_COMPOSER, "account", account, "application", GTK_APPLICATION (g_application_get_default ()), NULL);
 
@@ -2774,7 +2792,8 @@ stamp_composer_new_with_quote (StampComposerType       type,
                                     webview,
                                     info,
                                     mime_message,
-                                    content_to_quote);
+                                    content_to_quote,
+                                    template_message);
 
   return composer;
 }
