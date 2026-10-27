@@ -294,7 +294,7 @@ on_folder_item_folder_changed (CamelFolder           *folder,
   CamelFolder *trash_folder = stamp_account_get_mail_trash_folder (stamp_item_get_account (STAMP_ITEM (self)));
   CamelFolder *draft_folder = stamp_account_get_mail_drafts_folder (stamp_item_get_account (STAMP_ITEM (self)));
   StampAccount *account = stamp_item_get_account (STAMP_ITEM (self));
-  g_autofree char *settings_path = g_strconcat ("/org/tabos/stamp/mail/accounts/", stamp_account_get_name (account), "/", NULL);
+  g_autofree char *settings_path = g_strconcat ("/org/tabos/stamp/mail/accounts/", stamp_account_get_uid (account), "/", NULL);
   g_autoptr (GSettings) account_settings = g_settings_new_with_path ("org.tabos.stamp.mail.accounts", settings_path);
   g_autofree char *mode = g_settings_get_string (account_settings, "notification-mode");
   gboolean notify = TRUE;
