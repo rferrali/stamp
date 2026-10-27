@@ -352,11 +352,12 @@ on_rename_dialog_response (AdwAlertDialog *dialog,
     GtkEntry *entry = g_object_get_data (G_OBJECT (dialog), "rename-entry");
     const gchar *new_name = gtk_editable_get_text (GTK_EDITABLE (entry));
 
-    if (new_name && *new_name) {
+    if (new_name && *new_name && g_strcmp0 (new_name, stamp_attachment_button_get_filename (self)) != 0) {
       g_set_str (&self->filename, new_name);
 
       gtk_label_set_text (GTK_LABEL (self->filename_label), new_name);
       gtk_widget_set_tooltip_text (GTK_WIDGET (self), new_name);
+      g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FILENAME]);
     }
   }
 }

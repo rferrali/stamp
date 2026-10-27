@@ -90,6 +90,7 @@ struct _StampComposer {
   gboolean discard_draft;
   gint autosave_source_id;
   gboolean ignore_missing_attachments;
+  gboolean disposing;
 };
 
 G_DEFINE_FINAL_TYPE (StampComposer, stamp_composer, ADW_TYPE_APPLICATION_WINDOW);
@@ -106,6 +107,7 @@ enum {
 };
 
 static guint signals[LAST_SIGNAL];
+static void mark_dirty (StampComposer *self);
 
 typedef struct {
   StampMailView *mail_view;
@@ -1491,6 +1493,14 @@ attachment_batch_free (AttachmentBatch *batch)
 }
 
 static void
+on_composer_field_changed (GObject    *object,
+                           GParamSpec *pspec,
+                           gpointer    user_data)
+{
+  mark_dirty (STAMP_COMPOSER (user_data));
+}
+
+static void
 on_attachment_destroy (GtkWidget *widget,
                        gpointer   user_data)
 {
@@ -1500,6 +1510,19 @@ on_attachment_destroy (GtkWidget *widget,
 
   if (!self->attachments)
     gtk_revealer_set_reveal_child (GTK_REVEALER (self->attachment_revealer), FALSE);
+
+  mark_dirty (self);
+}
+
+static void
+add_attachment (StampComposer *self,
+                GtkWidget     *button)
+{
+  g_signal_connect_object (button, "destroy", G_CALLBACK (on_attachment_destroy), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (button, "notify::filename", G_CALLBACK (on_composer_field_changed), self, G_CONNECT_DEFAULT);
+  self->attachments = g_list_append (self->attachments, button);
+  adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
+  mark_dirty (self);
 }
 
 static void
@@ -1520,9 +1543,7 @@ attachment_add_simple (AttachmentBatch *batch,
   StampComposer *self = batch->self;
   GtkWidget *button = stamp_attachment_button_new_from_file (file);
 
-  g_signal_connect_object (button, "destroy", G_CALLBACK (on_attachment_destroy), self, G_CONNECT_DEFAULT);
-  self->attachments = g_list_append (self->attachments, button);
-  adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
+  add_attachment (self, button);
 
   batch->current++;
 
@@ -1553,9 +1574,7 @@ on_image_resize_response (AdwAlertDialog *dialog,
       button = stamp_attachment_button_new_from_file (data->file);
     }
 
-    g_signal_connect_object (button, "destroy", G_CALLBACK (on_attachment_destroy), self, G_CONNECT_DEFAULT);
-    self->attachments = g_list_append (self->attachments, button);
-    adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
+    add_attachment (self, button);
   }
 
   batch->current++;
@@ -1892,9 +1911,6 @@ on_bind_selected (GtkSignalListItemFactory *f,
 }
 
 static void
-mark_dirty (StampComposer *self);
-
-static void
 on_subject_changed (GtkWidget *entry,
                     gpointer   user_data)
 {
@@ -1977,6 +1993,9 @@ autosave_timeout_cb (gpointer user_data)
 static void
 mark_dirty (StampComposer *self)
 {
+  if (self->disposing)
+    return;
+
   self->is_dirty = TRUE;
 
   if (self->autosave_source_id)
@@ -2422,6 +2441,10 @@ stamp_composer_init (StampComposer *self)
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), FALSE);
   g_object_bind_property (self->to, "has-entries", action, "enabled", G_BINDING_SYNC_CREATE);
 
+  g_signal_connect_object (self->to, "notify::has-entries", G_CALLBACK (on_composer_field_changed), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (self->cc, "notify::has-entries", G_CALLBACK (on_composer_field_changed), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (self->bcc, "notify::has-entries", G_CALLBACK (on_composer_field_changed), self, G_CONNECT_DEFAULT);
+
   update_save_template_action (self);
 
   build_signature_menu (self);
@@ -2584,14 +2607,17 @@ stamp_composer_dispose (GObject *object)
 {
   StampComposer *self = STAMP_COMPOSER (object);
 
+  self->disposing = TRUE;
   g_clear_handle_id (&self->autosave_source_id, g_source_remove);
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
 
   g_clear_object (&self->orig_message);
 
-  for (GList *iter = self->attachments; iter; iter = iter->next)
+  for (GList *iter = self->attachments; iter; iter = iter->next) {
     g_signal_handlers_disconnect_by_func (iter->data, on_attachment_destroy, self);
+    g_signal_handlers_disconnect_by_func (iter->data, on_composer_field_changed, self);
+  }
 
   g_clear_pointer (&self->attachments, g_list_free);
 
@@ -2922,9 +2948,7 @@ stamp_composer_add_attachment (StampComposer *self,
 
   button = stamp_attachment_button_new_from_file (file);
 
-  g_signal_connect_object (button, "destroy", G_CALLBACK (on_attachment_destroy), self, G_CONNECT_DEFAULT);
-  self->attachments = g_list_append (self->attachments, button);
-  adw_wrap_box_append (ADW_WRAP_BOX (self->attachment_box), button);
+  add_attachment (self, button);
   attach_box_update_max_height (GTK_SCROLLED_WINDOW (self->scrolled_window), ADW_WRAP_BOX (self->attachment_box));
   gtk_revealer_set_reveal_child (GTK_REVEALER (self->attachment_revealer), TRUE);
 }
