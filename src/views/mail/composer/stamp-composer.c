@@ -2714,6 +2714,8 @@ remove_own_address (StampComposer        *self,
     return;
 
   own_mail = stamp_composer_from_get_mail (self->composer_from);
+  if (!own_mail)
+    return;
 
   len = camel_address_length (CAMEL_ADDRESS (address));
 
@@ -2722,7 +2724,7 @@ remove_own_address (StampComposer        *self,
     const gchar *ia_address;
 
     camel_internet_address_get (address, idx, &ia_name, &ia_address);
-    if (g_strcmp0 (ia_address, own_mail) == 0) {
+    if (ia_address && g_ascii_strcasecmp (ia_address, own_mail) == 0) {
       break;
     }
   }
