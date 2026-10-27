@@ -57,3 +57,44 @@ document.body.addEventListener('keyup', (e) => {
     document.execCommand('outdent', false, null);
   }
 }, true);
+
+document.addEventListener('paste', (e) => {
+  const data = e.clipboardData;
+  if (!data) return;
+
+  const html = data.getData('text/html');
+  const text = data.getData('text/plain');
+
+  e.preventDefault();
+
+  if (!html) {
+    text.replace(/\r\n?/g, '\n').split('\n').forEach((line, i) => {
+      if (i > 0) document.execCommand('insertLineBreak', false, null);
+      if (line) document.execCommand('insertText', false, line);
+    });
+    return;
+  }
+
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  doc.querySelectorAll('script, style, meta, link, title').forEach((el) => el.remove());
+  doc.querySelectorAll('[style]').forEach((el) => {
+    ['margin', 'margin-top', 'margin-bottom', 'line-height', 'padding-top', 'padding-bottom']
+      .forEach((p) => el.style.removeProperty(p));
+  });
+
+  const blocks = Array.from(doc.body.querySelectorAll('p, div')).reverse();
+  blocks.forEach((el) => {
+    if (el.closest('blockquote, li')) {
+      el.style.margin = '0';
+      return;
+    }
+    const next = el.nextSibling;
+    const frag = doc.createDocumentFragment();
+    while (el.firstChild) frag.appendChild(el.firstChild);
+    if (next || el.parentNode !== doc.body)
+      frag.appendChild(doc.createElement('br'));
+    el.replaceWith(frag);
+  });
+
+  document.execCommand('insertHTML', false, doc.body.innerHTML);
+}, true);
