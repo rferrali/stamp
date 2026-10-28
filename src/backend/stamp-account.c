@@ -1423,7 +1423,7 @@ stamp_account_enable_mail_async (StampAccount *self,
 
   if (g_strcmp0 (e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension)), "microsoft365") == 0) {
     data->pending++;
-    stamp_m365_get_categories_async (self->mail->source, data->cancellable, on_categories_ready, data);
+    stamp_m365_get_categories_async (self->collection, self->mail->service, data->cancellable, on_categories_ready, data);
   }
 }
 

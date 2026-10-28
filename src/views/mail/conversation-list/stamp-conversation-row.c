@@ -692,10 +692,26 @@ create_label (gpointer item,
   StampCategory *obj = STAMP_CATEGORY (item);
   const gchar *name = stamp_category_get_name (obj);
   GtkWidget *label = gtk_label_new (name);
-  g_autofree char *css_color = g_strdup_printf ("category-color-%s", stamp_category_get_color (obj));
+  const gchar *color = stamp_category_get_color (obj);
+  GdkDisplay *display = gtk_widget_get_display (label);
+  g_autofree char *css_class = NULL;
+
+  if (!color)
+    color = "#808080";
+
+  css_class = g_strdup_printf ("category-color-%s", color + 1);
+
+  if (!g_object_get_data (G_OBJECT (display), css_class)) {
+    g_autoptr (GtkCssProvider) provider = gtk_css_provider_new ();
+    g_autofree char *css = g_strdup_printf (".%s { background-color: mix(%s, white, 0.5); border-color: %s; color: #1a1a1a; }", css_class, color, color);
+
+    gtk_css_provider_load_from_string (provider, css);
+    gtk_style_context_add_provider_for_display (display, GTK_STYLE_PROVIDER (provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_set_data (G_OBJECT (display), css_class, GINT_TO_POINTER (1));
+  }
 
   gtk_widget_add_css_class (label, "category-pill");
-  gtk_widget_add_css_class (label, css_color);
+  gtk_widget_add_css_class (label, css_class);
 
   return label;
 }

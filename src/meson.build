@@ -102,6 +102,7 @@ stamp_deps = [
   dependency('gio-unix-2.0'),
   dependency('libadwaita-1', version: '>= 1.4'),
   dependency('camel-1.2', version: '>= 3.28'),
+  dependency('evolution-microsoft365'),
   dependency('gsettings-desktop-schemas'),
   dependency('gstreamer-1.0'),
   dependency('libsoup-3.0'),

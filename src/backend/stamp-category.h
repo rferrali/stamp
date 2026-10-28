@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include <glib-object.h>
+#include <camel/camel.h>
 #include <libedataserver/libedataserver.h>
 
 G_BEGIN_DECLS
@@ -31,8 +31,7 @@ G_DECLARE_FINAL_TYPE (StampCategory, stamp_category, STAMP, CATEGORY, GObject);
 StampCategory *
 stamp_category_new (const gchar *id,
                     const gchar *name,
-                    const gchar *color,
-                    const gchar *color_hex);
+                    const gchar *color);
 
 const gchar *
 stamp_category_get_id (StampCategory *self);
@@ -43,17 +42,15 @@ stamp_category_get_name (StampCategory *self);
 const gchar *
 stamp_category_get_color (StampCategory *self);
 
-const gchar *
-stamp_category_get_hex (StampCategory *self);
-
-/* Helper */
 GList *
 stamp_m365_get_categories_sync (ESource       *source,
+                                CamelService  *service,
                                 GCancellable  *cancellable,
                                 GError       **error);
 
 void
 stamp_m365_get_categories_async (ESource             *source,
+                                 CamelService        *service,
                                  GCancellable        *cancellable,
                                  GAsyncReadyCallback  callback,
                                  gpointer             user_data);

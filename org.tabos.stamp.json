@@ -211,10 +211,15 @@
           "type": "git",
           "url": "https://gitlab.gnome.org/jbrummer/evolution-ews.git",
           "branch": "priority"
+        },
+        {
+          "type": "file",
+          "path": "build-aux/install-evolution-ews-devel.py"
         }
       ],
       "post-install": [
-        "cp NEWS /app/share/NEWS.ews"
+        "cp NEWS /app/share/NEWS.ews",
+        "python3 install-evolution-ews-devel.py"
       ]
     },
     {
