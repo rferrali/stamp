@@ -146,17 +146,16 @@ update_encryption_banner (StampMessageListItem *self,
 }
 
 static void
-open_message (StampMessageListItem *self,
-              CamelMimeMessage     *message)
+open_message (StampMessageListItem *self)
 {
   StampMimeBody *body;
   const GList *signatures;
   const GList *encryptions;
   StampMimeCalendar *calendar;
   GList *list_unsubscribe;
-  const gchar *address = camel_medium_get_header (CAMEL_MEDIUM (message), "Disposition-Notification-To");
-  const gchar *auth_as = camel_medium_get_header (CAMEL_MEDIUM (message), "X-MS-Exchange-Organization-AuthAs");
-  const gchar *sender = camel_medium_get_header (CAMEL_MEDIUM (message), "Sender");
+  const gchar *address = camel_medium_get_header (CAMEL_MEDIUM (self->message), "Disposition-Notification-To");
+  const gchar *auth_as = camel_medium_get_header (CAMEL_MEDIUM (self->message), "X-MS-Exchange-Organization-AuthAs");
+  const gchar *sender = camel_medium_get_header (CAMEL_MEDIUM (self->message), "Sender");
   GList *attachments;
   StampMessageList *message_list = STAMP_MESSAGE_LIST (gtk_widget_get_ancestor (GTK_WIDGET (self), STAMP_TYPE_MESSAGE_LIST));
 
@@ -168,7 +167,7 @@ open_message (StampMessageListItem *self,
   g_clear_object (&self->parser);
 
   if (!address)
-    address = camel_medium_get_header (CAMEL_MEDIUM (message), "Return-Receipt-To");
+    address = camel_medium_get_header (CAMEL_MEDIUM (self->message), "Return-Receipt-To");
 
   if (address) {
     while (camel_mime_is_lwsp (*address))
@@ -200,7 +199,7 @@ open_message (StampMessageListItem *self,
   stamp_message_header_set_sender (STAMP_MESSAGE_HEADER (self->header), sender);
 
   self->parser = stamp_mime_parser_new (CAMEL_SESSION (stamp_session_get_default ()));
-  stamp_mime_parser_parse (self->parser, message, self->cancellable, NULL);
+  stamp_mime_parser_parse (self->parser, self->message, self->cancellable, NULL);
 
   signatures = stamp_mime_parser_get_signatures (self->parser);
   encryptions = stamp_mime_parser_get_encryptions (self->parser);
@@ -316,7 +315,7 @@ on_get_message (GObject      *source,
   StampMessageListItem *self;
   g_autoptr (GError) error = NULL;
   CamelFolder *folder;
-  CamelMimeMessage *message;
+  g_autoptr (CamelMimeMessage) message = NULL;
 
   folder = CAMEL_FOLDER (source);
   message = camel_folder_get_message_finish (folder, res, &error);
@@ -337,12 +336,10 @@ on_get_message (GObject      *source,
       g_settings_get_boolean (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_ALWAYS_SHOW_IMAGES))
     stamp_web_view_load_images (self->web_view);
 
-  g_clear_object (&self->message);
+  g_set_object (&self->message, message);
 
-  if (message)
-    self->message = g_object_ref (message);
-
-  open_message (self, message);
+  if (self->message)
+    open_message (self);
 }
 
 static void
