@@ -84,6 +84,9 @@ void
 stamp_conversation_list_undo_trash (StampConversationList *self);
 
 void
+stamp_conversation_list_commit_trash (StampConversationList *self);
+
+void
 stamp_conversation_list_finalize_trash (StampConversationList *self,
                                         gboolean               select_next);
 

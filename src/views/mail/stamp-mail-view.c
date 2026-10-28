@@ -250,6 +250,9 @@ on_trash_undo (AdwToast *toast,
 {
   StampMailView *self = STAMP_MAIL_VIEW (user_data);
 
+  if (toast != self->trash_toast)
+    return;
+
   stamp_conversation_list_undo_trash (self->conversation_list);
   g_clear_object (&self->trash_toast);
 }
@@ -260,6 +263,9 @@ on_trash_dismissed (AdwToast *toast,
 {
   StampMailView *self = STAMP_MAIL_VIEW (user_data);
 
+  if (toast != self->trash_toast)
+    return;
+
   stamp_conversation_list_finalize_trash (self->conversation_list, !is_mobile_view (self));
   g_clear_object (&self->trash_toast);
 }
@@ -268,6 +274,13 @@ static void
 trash (StampMailView         *self,
        StampConversationItem *item)
 {
+  if (self->trash_toast) {
+    g_autoptr (AdwToast) previous_toast = g_steal_pointer (&self->trash_toast);
+
+    stamp_conversation_list_commit_trash (self->conversation_list);
+    adw_toast_dismiss (previous_toast);
+  }
+
   if (stamp_conversation_list_trash (self->conversation_list, item)) {
     AdwToast *toast;
 
@@ -276,8 +289,8 @@ trash (StampMailView         *self,
     adw_toast_set_timeout (toast, 5);
     g_signal_connect (toast, "button-clicked", G_CALLBACK (on_trash_undo), self);
     g_signal_connect (toast, "dismissed", G_CALLBACK (on_trash_dismissed), self);
-    adw_toast_overlay_add_toast (self->toast_overlay, toast);
     self->trash_toast = g_object_ref (toast);
+    adw_toast_overlay_add_toast (self->toast_overlay, toast);
   }
 
   stamp_message_list_set_conversation (self->message_list, NULL, NULL);
