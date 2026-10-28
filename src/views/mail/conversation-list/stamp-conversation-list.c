@@ -2671,6 +2671,7 @@ stamp_conversation_list_init (StampConversationList *self)
   gtk_search_bar_connect_entry (GTK_SEARCH_BAR (self->search_bar), GTK_EDITABLE (self->search_entry));
 
   drag = gtk_gesture_pan_new (GTK_ORIENTATION_VERTICAL);
+  gtk_gesture_single_set_touch_only (GTK_GESTURE_SINGLE (drag), TRUE);
   gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (drag), GTK_PHASE_CAPTURE);
   gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (drag));
   self->vadj = gtk_scrolled_window_get_vadjustment (GTK_SCROLLED_WINDOW (self->scrolled_window));

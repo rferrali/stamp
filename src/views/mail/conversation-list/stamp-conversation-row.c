@@ -276,7 +276,9 @@ on_drag_update (GtkGestureDrag *gesture,
     if (fabs (dx) < 10 || fabs (dx) <= fabs (dy))
       return;
 
-    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+    if (!gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED))
+      return;
+
     self->claimed = TRUE;
   }
 
@@ -310,6 +312,9 @@ on_drag_end (GtkGestureDrag *gesture,
 {
   StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
   gdouble pos;
+
+  if (!self->claimed)
+    return;
 
   pos = CLAMP (dx, self->swipe_left == SWIPE_ACTION_NONE ? 0 : -96, self->swipe_right == SWIPE_ACTION_NONE ? 0 : 96);
 

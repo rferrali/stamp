@@ -225,6 +225,7 @@ template $StampConversationRow: Box {
     };
 
     GestureDrag {
+      touch-only: true;
       drag-update => $on_drag_update();
       drag-end => $on_drag_end();
       propagation-phase: capture;
