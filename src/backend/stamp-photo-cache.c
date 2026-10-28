@@ -466,6 +466,8 @@ stamp_on_contacts_received (GObject      *source,
         stamp_disk_cache_store (cache, pending->email, photo->data.inlined.data, photo->data.inlined.length);
       else
         g_warning ("%s: Could not parse inline photo for '%s'", G_STRFUNC, pending->email);
+
+      e_contact_photo_free (photo);
     } else if (photo->type == E_CONTACT_PHOTO_TYPE_URI) {
       g_debug ("%s: Found URI photo for '%s': %s", G_STRFUNC, pending->email, photo->data.uri);
 
