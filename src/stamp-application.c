@@ -38,12 +38,17 @@ struct _StampApplication {
   gboolean startup_finished;
   GQueue *pending_mailto;
   StampSession *session;
-  gchar *password;
   gboolean quit_requested;
   gboolean quit_pending_confirmed;
   StampComposer *quit_composer;
   guint quit_source_id;
 };
+
+typedef struct {
+  GMainLoop *loop;
+  GtkWidget *entry;
+  gchar *password;
+} PasswordPromptData;
 
 G_DEFINE_FINAL_TYPE (StampApplication, stamp_application, ADW_TYPE_APPLICATION);
 
@@ -222,18 +227,16 @@ stamp_application_command_line (GApplication            *app,
 }
 
 static void
-on_password_dialog_response (GtkWidget *dialog,
-                             gchar     *response,
-                             gpointer   user_data)
+on_password_dialog_response (AdwAlertDialog *dialog,
+                             const gchar    *response,
+                             gpointer        user_data)
 {
-  StampApplication *self = STAMP_APPLICATION (user_data);
-  GtkWidget *entry = g_object_get_data (G_OBJECT (dialog), "entry");
-  GMainLoop *loop = g_object_get_data (G_OBJECT (dialog), "loop");
+  PasswordPromptData *data = user_data;
 
   if (g_strcmp0 (response, "decrypt") == 0)
-    self->password = g_strdup (gtk_editable_get_text (GTK_EDITABLE (entry)));
+    data->password = g_strdup (gtk_editable_get_text (GTK_EDITABLE (data->entry)));
 
-  g_main_loop_quit (loop);
+  g_main_loop_quit (data->loop);
 }
 
 static void
@@ -247,10 +250,13 @@ on_pk11_password (StampSession  *session,
   g_autofree char *prompt = NULL;
   g_autofree char *slot_name = g_strdup (PK11_GetSlotName (slot));
   g_autofree char *token_name = g_strdup (PK11_GetTokenName (slot));
-  AdwDialog *dialog;
+  g_autoptr (AdwAlertDialog) dialog = NULL;
+  g_autoptr (GMainLoop) loop = g_main_loop_new (NULL, FALSE);
+  PasswordPromptData data = { .loop = loop };
   GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (self));
-  GtkWidget *entry;
-  GMainLoop *loop;
+  gulong response_handler;
+
+  *password = NULL;
 
   g_strchomp (slot_name);
 
@@ -262,27 +268,25 @@ on_pk11_password (StampSession  *session,
   else
     prompt = g_strdup_printf (_("Enter the password for “%s”"), slot_name);
 
-  dialog = adw_alert_dialog_new (_("Enter Password"), prompt);
-  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", _("Cancel"));
-  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "decrypt", _("Decrypt"));
-  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "decrypt");
-  g_signal_connect_object (dialog, "response", G_CALLBACK (on_password_dialog_response), self, G_CONNECT_DEFAULT);
+  dialog = ADW_ALERT_DIALOG (g_object_ref_sink (adw_alert_dialog_new (_("Enter Password"), prompt)));
+  adw_alert_dialog_add_response (dialog, "cancel", _("Cancel"));
+  adw_alert_dialog_add_response (dialog, "decrypt", _("Decrypt"));
+  adw_alert_dialog_set_default_response (dialog, "decrypt");
+  adw_alert_dialog_set_close_response (dialog, "cancel");
+  response_handler = g_signal_connect (dialog, "response", G_CALLBACK (on_password_dialog_response), &data);
 
-  entry = gtk_entry_new ();
-  gtk_entry_set_activates_default (GTK_ENTRY (entry), TRUE);
-  gtk_entry_set_visibility (GTK_ENTRY (entry), FALSE);
-  adw_alert_dialog_set_extra_child (ADW_ALERT_DIALOG (dialog), entry);
+  data.entry = gtk_entry_new ();
+  gtk_entry_set_activates_default (GTK_ENTRY (data.entry), TRUE);
+  gtk_entry_set_visibility (GTK_ENTRY (data.entry), FALSE);
+  adw_alert_dialog_set_extra_child (dialog, data.entry);
 
-  loop = g_main_loop_new (NULL, FALSE);
-  g_object_set_data_full (G_OBJECT (dialog), "entry", entry, NULL);
-  g_object_set_data_full (G_OBJECT (dialog), "loop", loop, NULL);
-
-  adw_dialog_present (dialog, GTK_WIDGET (window));
-  gtk_widget_grab_focus (entry);
+  adw_dialog_present (ADW_DIALOG (dialog), GTK_WIDGET (window));
+  gtk_widget_grab_focus (data.entry);
 
   g_main_loop_run (loop);
 
-  *password = self->password;
+  g_signal_handler_disconnect (dialog, response_handler);
+  *password = g_steal_pointer (&data.password);
 }
 
 static void
@@ -316,7 +320,6 @@ stamp_application_dispose (GObject *object)
   g_clear_handle_id (&self->quit_source_id, g_source_remove);
   g_clear_object (&self->quit_composer);
   g_clear_object (&self->session);
-  g_clear_pointer (&self->password, g_free);
 
   if (self->pending_mailto) {
     g_queue_free_full (self->pending_mailto, g_free);
