@@ -310,7 +310,6 @@ progress_indicator (gpointer user_data)
 {
   StampContactList *self = STAMP_CONTACT_LIST (user_data);
 
-  g_usleep (0.05 * G_USEC_PER_SEC);
   gtk_progress_bar_pulse (GTK_PROGRESS_BAR (self->progress));
 
   return G_SOURCE_CONTINUE;
@@ -327,7 +326,7 @@ on_contact_search_entry_changed (GtkWidget *search_entry,
   if (self->account && sexp && strlen (sexp) > 0) {
     if (!self->progress_handle) {
       gtk_widget_set_visible (self->progress, TRUE);
-      self->progress_handle = g_idle_add (progress_indicator, self);
+      self->progress_handle = g_timeout_add (50, progress_indicator, self);
     }
 
     stamp_account_search_contacts (self->account, E_BOOK_CLIENT (self->client), sexp, NULL, on_search_contact, self);
