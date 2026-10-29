@@ -1635,11 +1635,9 @@ present_image_resize_dialog (AttachmentBatch *batch,
                              GFile           *file,
                              GdkPixbuf       *pixbuf,
                              GFileInfo       *info,
-                             const gchar     *content_type,
                              gsize            file_size)
 {
   StampComposer *self = batch->self;
-  const gchar *mime_type = content_type ? g_content_type_get_mime_type (content_type) : NULL;
   ResizeData *data = g_new0 (ResizeData, 1);
   g_autofree gchar *heading = NULL;
   AdwDialog *dialog;
@@ -1649,7 +1647,7 @@ present_image_resize_dialog (AttachmentBatch *batch,
   data->batch = batch;
   data->file = g_object_ref (file);
   data->filename = g_strdup (g_file_info_get_display_name (info));
-  data->content_type = g_strdup (mime_type ? mime_type : "image/jpeg");
+  data->content_type = g_strdup ("image/png");
   data->original_size = file_size;
 
   heading = g_strdup_printf (_("Large image: %s"), data->filename);
@@ -1723,7 +1721,7 @@ process_attachment_file (AttachmentBatch *batch)
       g_warning ("%s: Could not load pixbuf: %s", G_STRFUNC, error->message);
   }
 
-  present_image_resize_dialog (batch, file, pixbuf, info, content_type, file_size);
+  present_image_resize_dialog (batch, file, pixbuf, info, file_size);
 }
 
 static void

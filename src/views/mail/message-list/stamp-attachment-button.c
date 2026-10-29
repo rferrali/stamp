@@ -679,32 +679,40 @@ CamelMimePart *
 stamp_attachment_button_get_mime_part (StampAttachmentButton *self)
 {
   g_autoptr (GFileInfo) info = NULL;
-  const gchar *content_type;
-  const gchar *mime_type;
+  g_autoptr (CamelDataWrapper) wrapper = NULL;
+  g_autoptr (GInputStream) input_stream = NULL;
+  g_autofree char *mime_type = NULL;
+  const gchar *filename = self->filename;
   CamelMimePart *part = NULL;
-  CamelDataWrapper *wrapper;
-  GInputStream *input_stream;
 
-  if (!self->file)
+  if (self->data) {
+    input_stream = g_memory_input_stream_new_from_bytes (self->data);
+    mime_type = g_strdup (self->content_type);
+  } else if (self->file) {
+    info = g_file_query_info (self->file,
+                              G_FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME "," G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
+                              G_FILE_QUERY_INFO_NONE, NULL, NULL);
+    if (!info)
+      return NULL;
+
+    mime_type = g_content_type_get_mime_type (g_file_info_get_content_type (info));
+    input_stream = G_INPUT_STREAM (g_file_read (self->file, self->cancellable, NULL));
+    if (!filename)
+      filename = g_file_info_get_display_name (info);
+  } else {
     return NULL;
-
-  info = g_file_query_info (self->file,
-                            G_FILE_ATTRIBUTE_STANDARD_DISPLAY_NAME "," G_FILE_ATTRIBUTE_STANDARD_SIZE "," G_FILE_ATTRIBUTE_STANDARD_CONTENT_TYPE,
-                            G_FILE_QUERY_INFO_NONE, NULL, NULL);
-
-  content_type = g_file_info_get_content_type (info);
-  mime_type = g_content_type_get_mime_type (content_type);
+  }
 
   wrapper = camel_data_wrapper_new ();
+  if (!input_stream ||
+      !camel_data_wrapper_construct_from_input_stream_sync (wrapper, input_stream, self->cancellable, NULL))
+    return NULL;
 
-  input_stream = G_INPUT_STREAM (g_file_read (self->file, NULL, NULL));
-  camel_data_wrapper_construct_from_input_stream_sync (wrapper, input_stream, self->cancellable, NULL);
-
-  camel_data_wrapper_set_mime_type (wrapper, mime_type);
+  camel_data_wrapper_set_mime_type (wrapper, mime_type ? mime_type : "application/octet-stream");
 
   part = camel_mime_part_new ();
   camel_mime_part_set_disposition (part, "attachment");
-  camel_mime_part_set_filename (part, self->filename ? self->filename : g_file_info_get_display_name (info));
+  camel_mime_part_set_filename (part, filename);
   camel_medium_set_content (CAMEL_MEDIUM (part), wrapper);
 
   camel_mime_part_set_encoding (part, CAMEL_TRANSFER_ENCODING_BASE64);
