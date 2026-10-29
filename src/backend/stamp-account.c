@@ -739,6 +739,69 @@ find_book_by_source (StampAccount *self,
   return NULL;
 }
 
+static gchar *
+address_book_source_get_string (ESource     *source,
+                                const gchar *group,
+                                const gchar *key)
+{
+  g_autofree gchar *data = e_source_to_string (source, NULL);
+  g_autoptr (GKeyFile) key_file = g_key_file_new ();
+
+  if (!g_key_file_load_from_data (key_file, data, -1, G_KEY_FILE_NONE, NULL))
+    return NULL;
+
+  return g_key_file_get_string (key_file, group, key, NULL);
+}
+
+static const gchar *
+address_book_get_kind (StampAccount *self,
+                       EClient      *client)
+{
+  ESource *source = e_client_get_source (client);
+  ESourceAddressBook *extension = e_source_get_extension (source, E_SOURCE_EXTENSION_ADDRESS_BOOK);
+  const gchar *backend = e_source_backend_get_backend_name (E_SOURCE_BACKEND (extension));
+
+  if (g_strcmp0 (backend, "local") == 0)
+    return "local";
+
+  if (g_strcmp0 (backend, "microsoft365") == 0) {
+    g_autofree gchar *folder_id = address_book_source_get_string (source, "Microsoft365 Folder", "Id");
+
+    if (folder_id && g_ascii_strcasecmp (folder_id, "folder-id::users") == 0)
+      return "organizational-users";
+    if (folder_id && g_ascii_strcasecmp (folder_id, "folder-id::orgContacts") == 0)
+      return "organizational-contacts";
+  } else if (g_strcmp0 (backend, "ews") == 0 && self->registry) {
+    const gchar *extension_name = e_source_camel_get_extension_name ("ews");
+    g_autoptr (ESource) collection = e_source_registry_find_extension (self->registry, source, extension_name);
+
+    if (collection) {
+      g_autofree gchar *gal_uid = address_book_source_get_string (collection, extension_name, "GalUid");
+
+      if (g_strcmp0 (gal_uid, e_source_get_uid (source)) == 0)
+        return "global-address-list";
+    }
+  }
+
+  return "contacts";
+}
+
+static gboolean
+address_book_kind_is_directory (const gchar *kind)
+{
+  return g_str_equal (kind, "organizational-users") ||
+         g_str_equal (kind, "organizational-contacts") ||
+         g_str_equal (kind, "global-address-list");
+}
+
+gboolean
+stamp_account_address_book_is_search_only (StampAccount *self,
+                                           EClient      *client)
+{
+  return address_book_kind_is_directory (address_book_get_kind (self, client)) ||
+         !e_client_check_capability (client, "do-initial-query");
+}
+
 static void
 on_book_client_ready (GObject      *src,
                       GAsyncResult *res,

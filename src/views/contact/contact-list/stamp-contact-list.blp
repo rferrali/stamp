@@ -132,6 +132,16 @@ template $StampContactList: Adw.BreakpointBin {
       }
 
       StackPage {
+        name: "search";
+
+        child: Adw.StatusPage {
+          icon-name: "edit-find-symbolic";
+          title: _("Search Contacts");
+          description: _("Enter at least three characters to search this address book.");
+        };
+      }
+
+      StackPage {
         name: "empty";
 
         child: Adw.Bin {};

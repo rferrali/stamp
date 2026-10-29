@@ -158,6 +158,10 @@ stamp_mail_service_get_identity_source (StampMailService *self);
  * Contacts
  */
 
+gboolean
+stamp_account_address_book_is_search_only (StampAccount *self,
+                                           EClient      *client);
+
 void
 stamp_account_get_photo (StampAccount        *self,
                          const gchar          *sender,

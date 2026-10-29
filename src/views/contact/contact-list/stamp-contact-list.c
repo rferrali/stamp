@@ -46,9 +46,11 @@ struct _StampContactList {
   StampAccount *account;
   guint progress_handle;
   GCancellable *cancellable;
+  GCancellable *search_cancellable;
 
   gboolean loading_done;
   guint loading_timeout_id;
+  gboolean search_only;
 
   StampSortMode sort_mode;
 };
@@ -68,6 +70,63 @@ enum {
 
 static gint signals[LAST_SIGNAL] = { 0 };
 
+typedef struct {
+  StampContactList *self;
+  GCancellable *cancellable;
+} ContactRequest;
+
+static ContactRequest *
+contact_request_new (StampContactList *self,
+                     GCancellable     *cancellable)
+{
+  ContactRequest *request = g_new0 (ContactRequest, 1);
+
+  request->self = g_object_ref (self);
+  request->cancellable = g_object_ref (cancellable);
+
+  return request;
+}
+
+static void
+contact_request_free (ContactRequest *request)
+{
+  g_object_unref (request->cancellable);
+  g_object_unref (request->self);
+  g_free (request);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (ContactRequest, contact_request_free)
+
+static void
+update_contact_list_state (StampContactList *self)
+{
+  const gchar *search_text = gtk_editable_get_text (GTK_EDITABLE (self->search_entry));
+
+  if (!self->client)
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "empty");
+  else if (self->search_only && g_utf8_strlen (search_text, -1) < 3)
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "search");
+  else if (!self->loading_done)
+    return;
+  else if (g_list_model_get_n_items (G_LIST_MODEL (self->filter_list_model)) == 0)
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "notfound");
+  else
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "content");
+}
+
+static void
+replace_contacts (StampContactList *self,
+                  GSList           *contacts)
+{
+  g_autoptr (GPtrArray) items = g_ptr_array_new_with_free_func (g_object_unref);
+  guint old = g_list_model_get_n_items (G_LIST_MODEL (self->list_store));
+
+  for (GSList *iter = contacts; iter; iter = iter->next)
+    g_ptr_array_add (items, stamp_contact_item_new (iter->data));
+
+  g_list_store_splice (self->list_store, 0, old, items->pdata, items->len);
+  update_contact_list_state (self);
+}
 
 static void
 on_show_loading (gpointer user_data)
@@ -85,36 +144,31 @@ on_get_contacts (GObject      *object,
                  GAsyncResult *res,
                  gpointer      user_data)
 {
-  StampContactList *self = STAMP_CONTACT_LIST (user_data);
+  g_autoptr (ContactRequest) request = user_data;
+  StampContactList *self = request->self;
   EBookClient *client = E_BOOK_CLIENT (object);
   g_autoslist (EContact) contacts = NULL;
   g_autoptr (GError) error = NULL;
-  guint old;
-  g_autoptr (GPtrArray) items = NULL;
+
+  e_book_client_get_contacts_finish (client, res, &contacts, &error);
+  if (g_cancellable_is_cancelled (request->cancellable))
+    return;
 
   self->loading_done = TRUE;
   g_clear_handle_id (&self->loading_timeout_id, g_source_remove);
 
-  gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "content");
-
-  e_book_client_get_contacts_finish (client, res, &contacts, &error);
   if (error) {
     if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
       g_warning ("Could not get contacts: %s", error->message);
+    update_contact_list_state (self);
     return;
   }
 
-  old = g_list_model_get_n_items (G_LIST_MODEL (self->list_store));
-  items = g_ptr_array_new_full (g_slist_length (contacts), g_object_unref);
-
-  for (GSList *iter = contacts; iter && iter->data; iter = g_slist_next (iter)) {
-    EContact *c = iter->data;
-    StampContactItem *item = stamp_contact_item_new (c);
-    g_ptr_array_add (items, item);
-  }
-
-  g_list_store_splice (self->list_store, 0, old, (gpointer *)items->pdata, items->len);
+  replace_contacts (self, contacts);
 }
+
+static void on_contact_search_entry_changed (GtkWidget *search_entry,
+                                             gpointer   user_data);
 
 void
 stamp_contact_list_load (StampContactList *self,
@@ -126,19 +180,24 @@ stamp_contact_list_load (StampContactList *self,
   self->account = account;
   self->client = client;
 
-  if (!client)
-    return;
+  g_cancellable_cancel (self->cancellable);
+  g_clear_object (&self->cancellable);
 
-  if (self->cancellable) {
-    g_cancellable_cancel (self->cancellable);
-    g_clear_object (&self->cancellable);
+  g_cancellable_cancel (self->search_cancellable);
+  g_clear_object (&self->search_cancellable);
+
+  g_clear_handle_id (&self->loading_timeout_id, g_source_remove);
+  g_clear_handle_id (&self->progress_handle, g_source_remove);
+  gtk_widget_set_visible (self->progress, FALSE);
+  self->loading_done = TRUE;
+  g_list_store_remove_all (self->list_store);
+
+  if (!client) {
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "empty");
+    return;
   }
 
-  self->cancellable = g_cancellable_new ();
-
-  gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "empty");
-  self->loading_done = FALSE;
-  self->loading_timeout_id = g_timeout_add_once (500, on_show_loading, self);
+  self->search_only = stamp_account_address_book_is_search_only (account, client);
   if (self->window_title) {
     ESource *source = e_client_get_source (E_CLIENT (client));
 
@@ -148,7 +207,19 @@ stamp_contact_list_load (StampContactList *self,
 
   gtk_single_selection_set_selected (self->selection, GTK_INVALID_LIST_POSITION);
 
-  e_book_client_get_contacts (E_BOOK_CLIENT (client), query, self->cancellable, on_get_contacts, self);
+  if (self->search_only) {
+    gtk_search_bar_set_search_mode (GTK_SEARCH_BAR (self->search_bar), TRUE);
+    update_contact_list_state (self);
+    on_contact_search_entry_changed (self->search_entry, self);
+    return;
+  }
+
+  self->cancellable = g_cancellable_new ();
+  gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "empty");
+  self->loading_done = FALSE;
+  self->loading_timeout_id = g_timeout_add_once (500, on_show_loading, self);
+  e_book_client_get_contacts (E_BOOK_CLIENT (client), query, self->cancellable,
+                              on_get_contacts, contact_request_new (self, self->cancellable));
 }
 
 static void
@@ -214,7 +285,7 @@ filter_func (gpointer object,
     E_CONTACT_ADDRESS_LABEL_HOME, E_CONTACT_ADDRESS_LABEL_WORK, E_CONTACT_ADDRESS_LABEL_OTHER,
   };
 
-  if (!search_text || strlen (search_text) == 0)
+  if (self->search_only || !search_text || strlen (search_text) == 0)
     return TRUE;
 
   text = g_string_new (stamp_contact_item_get_name (item));
@@ -290,19 +361,31 @@ on_search_contact (GObject      *source,
                    GAsyncResult *res,
                    gpointer      user_data)
 {
-  StampContactList *self = STAMP_CONTACT_LIST (user_data);
+  g_autoptr (ContactRequest) request = user_data;
+  StampContactList *self = request->self;
   g_autoptr (GError) error = NULL;
   g_autoslist (EContact) list = NULL;
 
-  list = stamp_account_search_contacts_finish (self->account, E_BOOK_CLIENT (self->client), res, &error);
+  e_book_client_get_contacts_finish (E_BOOK_CLIENT (source), res, &list, &error);
+  if (g_cancellable_is_cancelled (request->cancellable))
+    return;
 
-  if (list && g_slist_length (list) > 0) {
+  if (self->search_only)
+    self->loading_done = TRUE;
+
+  if (error) {
+    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      g_warning ("Could not search contacts: %s", error->message);
+  } else if (self->search_only) {
+    replace_contacts (self, list);
+  } else if (list) {
     stamp_contact_list_load (self, self->client, self->account);
     gtk_filter_changed (self->filter, GTK_FILTER_CHANGE_DIFFERENT);
   }
 
   g_clear_handle_id (&self->progress_handle, g_source_remove);
   gtk_widget_set_visible (self->progress, FALSE);
+  update_contact_list_state (self);
 }
 
 static gboolean
@@ -322,20 +405,35 @@ on_contact_search_entry_changed (GtkWidget *search_entry,
   StampContactList *self = STAMP_CONTACT_LIST (user_data);
   const gchar *sexp = gtk_editable_get_text (GTK_EDITABLE (self->search_entry));
 
-  /* Searching contact */
-  if (self->account && sexp && strlen (sexp) > 0) {
+  g_cancellable_cancel (self->search_cancellable);
+  g_clear_object (&self->search_cancellable);
+
+  if (self->search_only) {
+    self->loading_done = TRUE;
+    replace_contacts (self, NULL);
+  }
+
+  if (self->account && self->client && sexp && g_utf8_strlen (sexp, -1) > 2) {
+    if (self->search_only) {
+      self->loading_done = FALSE;
+      gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "empty");
+    }
+
     if (!self->progress_handle) {
       gtk_widget_set_visible (self->progress, TRUE);
       self->progress_handle = g_timeout_add (50, progress_indicator, self);
     }
 
-    stamp_account_search_contacts (self->account, E_BOOK_CLIENT (self->client), sexp, NULL, on_search_contact, self);
+    self->search_cancellable = g_cancellable_new ();
+
+    stamp_account_search_contacts (self->account, E_BOOK_CLIENT (self->client), sexp, self->search_cancellable, on_search_contact, contact_request_new (self, self->search_cancellable));
   } else {
     g_clear_handle_id (&self->progress_handle, g_source_remove);
     gtk_widget_set_visible (self->progress, FALSE);
   }
 
   gtk_filter_changed (self->filter, GTK_FILTER_CHANGE_DIFFERENT);
+  update_contact_list_state (self);
 }
 
 static void
@@ -346,13 +444,8 @@ on_items_changed (GListModel *model,
                   gpointer    user_data)
 {
   StampContactList *self = STAMP_CONTACT_LIST (user_data);
-  guint n_items = g_list_model_get_n_items (model);
 
-  if (n_items == 0) {
-    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "notfound");
-  } else {
-    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "content");
-  }
+  update_contact_list_state (self);
 }
 
 static void
