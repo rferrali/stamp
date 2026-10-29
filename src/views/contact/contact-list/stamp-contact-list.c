@@ -370,17 +370,13 @@ on_search_contact (GObject      *source,
   if (g_cancellable_is_cancelled (request->cancellable))
     return;
 
-  if (self->search_only)
-    self->loading_done = TRUE;
+  self->loading_done = TRUE;
 
   if (error) {
     if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
       g_warning ("Could not search contacts: %s", error->message);
-  } else if (self->search_only) {
+  } else {
     replace_contacts (self, list);
-  } else if (list) {
-    stamp_contact_list_load (self, self->client, self->account);
-    gtk_filter_changed (self->filter, GTK_FILTER_CHANGE_DIFFERENT);
   }
 
   g_clear_handle_id (&self->progress_handle, g_source_remove);
@@ -413,11 +409,9 @@ on_contact_search_entry_changed (GtkWidget *search_entry,
     replace_contacts (self, NULL);
   }
 
-  if (self->account && self->client && sexp && g_utf8_strlen (sexp, -1) > 2) {
-    if (self->search_only) {
-      self->loading_done = FALSE;
-      gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "empty");
-    }
+  if (self->search_only && self->account && self->client && sexp && g_utf8_strlen (sexp, -1) > 2) {
+    self->loading_done = FALSE;
+    gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "empty");
 
     if (!self->progress_handle) {
       gtk_widget_set_visible (self->progress, TRUE);
