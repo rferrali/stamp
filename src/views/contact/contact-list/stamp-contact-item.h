@@ -51,4 +51,7 @@ stamp_contact_item_get_office (StampContactItem *self);
 EContact *
 stamp_contact_item_get_contact (StampContactItem *self);
 
+GdkTexture *
+stamp_contact_item_get_photo (StampContactItem *self);
+
 G_END_DECLS

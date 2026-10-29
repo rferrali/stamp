@@ -196,18 +196,6 @@ add_org_row (GtkWidget   *list_box,
   gtk_list_box_append (GTK_LIST_BOX (list_box), row);
 }
 
-static void
-on_get_photo (gpointer texture,
-              gpointer user_data)
-{
-  StampContactDetails *self = STAMP_CONTACT_DETAILS (user_data);
-
-  if (texture)
-    adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), GDK_PAINTABLE (texture));
-  else
-    adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), NULL);
-}
-
 void
 stamp_contact_details_show (StampContactDetails *self,
                             StampAccount        *account,
@@ -215,6 +203,7 @@ stamp_contact_details_show (StampContactDetails *self,
 {
   g_autofree char *mail = NULL;
   g_autofree char *name = NULL;
+  g_autoptr (GdkTexture) photo = NULL;
   g_autoptr (EContactDate) birthdate = NULL;
   g_autoptr (EContactAddress) address = NULL;
   const gchar *item_mail;
@@ -240,12 +229,9 @@ stamp_contact_details_show (StampContactDetails *self,
 
   adw_avatar_set_text (ADW_AVATAR (self->avatar), name);
 
-  if (mail)
-    stamp_account_get_photo (account, mail, self->cancellable, on_get_photo, self);
-  else
-    stamp_account_get_photo (account, name, self->cancellable, on_get_photo, self);
+  photo = stamp_contact_item_get_photo (contact);
+  adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), photo ? GDK_PAINTABLE (photo) : NULL);
   e_contact = stamp_contact_item_get_contact (contact);
-  /* adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), stamp_get_contact_photo (e_contact)); */
 
   gtk_label_set_text (GTK_LABEL (self->name), name);
 

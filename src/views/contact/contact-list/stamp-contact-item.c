@@ -1,5 +1,5 @@
 /*
- * Copyright 2025 Jan-Michael Brummer
+ * Copyright 2025-2026 Jan-Michael Brummer
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -111,4 +111,31 @@ EContact *
 stamp_contact_item_get_contact (StampContactItem *self)
 {
   return self->contact;
+}
+
+GdkTexture *
+stamp_contact_item_get_photo (StampContactItem *self)
+{
+  EContact *contact = stamp_contact_item_get_contact (self);
+  g_autoptr (EContactPhoto) photo = NULL;
+  GdkTexture *texture = NULL;
+
+  if (!contact)
+    return NULL;
+
+  photo = e_contact_get (contact, E_CONTACT_PHOTO);
+  if (!photo)
+    return NULL;
+
+  if (photo->type == E_CONTACT_PHOTO_TYPE_INLINED) {
+    g_autoptr (GBytes) bytes = g_bytes_new (photo->data.inlined.data, photo->data.inlined.length);
+
+    texture = gdk_texture_new_from_bytes (bytes, NULL);
+  } else if (photo->type == E_CONTACT_PHOTO_TYPE_URI && g_str_has_prefix (photo->data.uri, "file://")) {
+    g_autoptr (GFile) file = g_file_new_for_uri (photo->data.uri);
+
+    texture = gdk_texture_new_from_file (file, NULL);
+  }
+
+  return texture;
 }

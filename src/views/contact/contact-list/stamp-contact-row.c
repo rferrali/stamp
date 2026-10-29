@@ -26,10 +26,6 @@ struct _StampContactRow {
 
   GtkWidget *avatar;
   GtkWidget *name;
-
-  GCancellable *cancellable;
-  guint instance_id;
-  guint generation;
 };
 
 G_DEFINE_FINAL_TYPE (StampContactRow, stamp_contact_row, ADW_TYPE_BIN);
@@ -40,15 +36,10 @@ typedef enum {
 
 static GParamSpec *props[PROP_NAME + 1];
 
-static guint next_instance_id = 1;
-
 static void
 stamp_contact_row_dispose (GObject *object)
 {
   StampContactRow *self = STAMP_CONTACT_ROW (object);
-
-  g_cancellable_cancel (self->cancellable);
-  g_clear_object (&self->cancellable);
 
   gtk_widget_dispose_template (GTK_WIDGET (self), STAMP_TYPE_CONTACT_ROW);
 
@@ -112,38 +103,12 @@ void
 stamp_contact_row_init (StampContactRow *self)
 {
   gtk_widget_init_template (GTK_WIDGET (self));
-  self->instance_id = next_instance_id++;
 }
 
 GtkWidget *
 stamp_contact_row_new (void)
 {
   return g_object_new (STAMP_TYPE_CONTACT_ROW, NULL);
-}
-
-typedef struct {
-  StampContactRow *self;
-  guint instance_id;
-  guint generation;
-} StampPhotoToken;
-
-static void
-on_get_photo (gpointer texture,
-              gpointer user_data)
-{
-  g_autofree StampPhotoToken *token = user_data;
-  StampContactRow *self = STAMP_CONTACT_ROW (token->self);
-
-  if (token->instance_id != self->instance_id || token->generation != token->self->generation) {
-    if (texture)
-      g_object_unref (texture);
-    return;
-  }
-
-  if (texture)
-    adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), GDK_PAINTABLE (texture));
-  else
-    adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), NULL);
 }
 
 static gboolean
@@ -204,24 +169,10 @@ stamp_contact_row_bind_mail (StampContactRow  *self,
 {
   const gchar *mail = stamp_contact_item_get_mail (item);
   const gchar *name = stamp_contact_item_get_name (item);
-  StampPhotoToken *token;
+  g_autoptr (GdkTexture) photo = NULL;
 
-  if (self->cancellable) {
-    g_cancellable_cancel (self->cancellable);
-    g_clear_object (&self->cancellable);
-  }
-  self->cancellable = g_cancellable_new ();
-
-  token = g_new0 (StampPhotoToken, 1);
-  token->self = self;
-  token->instance_id = self->instance_id;
-  token->generation = self->generation;
-
-  if (mail) {
-    stamp_account_get_photo (stamp_contact_list_get_account (list), mail, self->cancellable, on_get_photo, token);
-  } else {
-    stamp_account_get_photo (stamp_contact_list_get_account (list), name, self->cancellable, on_get_photo, token);
-  }
+  photo = stamp_contact_item_get_photo (item);
+  adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), photo ? GDK_PAINTABLE (photo) : NULL);
 
   if (!name || strlen (name) == 0)
     name = mail;
