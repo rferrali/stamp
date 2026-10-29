@@ -91,6 +91,7 @@ struct _StampComposer {
   gint autosave_source_id;
   gboolean ignore_missing_attachments;
   gboolean disposing;
+  gboolean is_sending;
 };
 
 G_DEFINE_FINAL_TYPE (StampComposer, stamp_composer, ADW_TYPE_APPLICATION_WINDOW);
@@ -110,6 +111,7 @@ static guint signals[LAST_SIGNAL];
 static void mark_dirty (StampComposer *self);
 
 typedef struct {
+  StampComposer *composer;
   StampMailView *mail_view;
   StampAccount *account;
   gchar *draft_uid;
@@ -124,12 +126,14 @@ get_main_mail_view (void)
 }
 
 static SendCompletedData *
-send_completed_data_new (StampMailView *mail_view,
+send_completed_data_new (StampComposer *composer,
+                         StampMailView *mail_view,
                          StampAccount  *account,
                          const gchar   *draft_uid)
 {
   SendCompletedData *data = g_new0 (SendCompletedData, 1);
 
+  data->composer = g_object_ref (composer);
   data->mail_view = mail_view ? g_object_ref (mail_view) : NULL;
   data->account = g_object_ref (account);
   data->draft_uid = g_strdup (draft_uid);
@@ -142,6 +146,7 @@ send_completed_data_free (gpointer data)
 {
   SendCompletedData *scd = data;
 
+  g_clear_object (&scd->composer);
   g_clear_object (&scd->mail_view);
   g_clear_object (&scd->account);
   g_free (scd->draft_uid);
@@ -235,6 +240,30 @@ set_send_action_enabled (StampComposer *self,
 
   action = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "send");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), enabled);
+}
+
+static void
+set_send_in_progress (StampComposer *self,
+                      gboolean       in_progress)
+{
+  GAction *action = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "schedule");
+
+  self->is_sending = in_progress;
+  gtk_widget_set_sensitive (GTK_WIDGET (self), !in_progress);
+  set_send_action_enabled (self, !in_progress);
+  g_simple_action_set_enabled (G_SIMPLE_ACTION (action), !in_progress);
+}
+
+static void
+show_send_error (StampComposer *self,
+                 const GError  *error)
+{
+  AdwDialog *dialog = adw_alert_dialog_new (_("Cannot send mail"), error->message);
+
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _("_Close"));
+  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "close");
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "close");
+  adw_dialog_present (dialog, GTK_WIDGET (self));
 }
 
 static void
@@ -426,15 +455,16 @@ on_send_mail (GObject      *account,
               gpointer      user_data)
 {
   SendCompletedData *data = user_data;
+  StampComposer *self = data->composer;
   g_autoptr (GError) error = NULL;
 
-  if (!stamp_account_send_mail_finish (STAMP_ACCOUNT (account), res, &error)) {
-    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
-      g_autofree char *tmp = g_strdup_printf (_("Failed to send mail: %s"), error->message);
+  set_send_in_progress (self, FALSE);
 
-      g_warning ("%s", tmp);
-      stamp_mail_view_show_toast (data->mail_view, tmp);
-    }
+  if (!stamp_account_send_mail_finish (STAMP_ACCOUNT (account), res, &error)) {
+    mark_dirty (self);
+    self->ignore_missing_attachments = FALSE;
+    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      show_send_error (self, error);
 
     send_completed_data_free (data);
     return;
@@ -443,7 +473,10 @@ on_send_mail (GObject      *account,
   if (data->draft_uid)
     stamp_account_remove_draft (data->account, data->draft_uid);
 
-  stamp_mail_view_show_toast (data->mail_view, _("Mail sent"));
+  self->is_dirty = FALSE;
+  if (data->mail_view)
+    stamp_mail_view_show_toast (data->mail_view, _("Mail sent"));
+  gtk_window_destroy (GTK_WINDOW (self));
   send_completed_data_free (data);
 }
 
@@ -624,6 +657,17 @@ static void on_get_body_html (GObject      *source_object,
                               GAsyncResult *res,
                               gpointer      user_data);
 
+static void
+request_send_body (StampComposer *self)
+{
+  if (self->is_sending)
+    return;
+
+  set_send_in_progress (self, TRUE);
+  g_clear_handle_id (&self->autosave_source_id, g_source_remove);
+  stamp_webview_get_body_html (self->webview, self->cancellable, on_get_body_html, g_object_ref (self));
+}
+
 static gboolean
 check_attachment_reminder (StampComposer *self,
                            const gchar   *body)
@@ -663,7 +707,7 @@ on_attachment_reminder_response (GtkWidget *dialog,
 
   if (g_strcmp0 (response, "send-anyway") == 0) {
     self->ignore_missing_attachments = TRUE;
-    stamp_webview_get_body_html (self->webview, NULL, on_get_body_html, self);
+    request_send_body (self);
   } else {
     set_send_action_enabled (self, TRUE);
   }
@@ -694,16 +738,16 @@ on_get_body_html (GObject      *source_object,
                   GAsyncResult *res,
                   gpointer      user_data)
 {
-  StampComposer *self = user_data;
+  g_autoptr (StampComposer) self = user_data;
   StampWebView *web_view = STAMP_WEB_VIEW (source_object);
   StampMailView *mail_view = NULL;
   StampAccount *account;
   g_autoptr (GError) error = NULL;
   g_autofree char *body_plain = NULL;
   g_autofree char *body = stamp_webview_get_body_html_finish (web_view, res, &body_plain, &error);
-  CamelMimeMessage *mime_message;
-  CamelInternetAddress *sender;
-  CamelInternetAddress *recipient;
+  g_autoptr (CamelMimeMessage) mime_message = NULL;
+  g_autoptr (CamelInternetAddress) sender = NULL;
+  g_autoptr (CamelInternetAddress) recipient = NULL;
   SendCompletedData *data;
   const gchar *name;
   const gchar *mail;
@@ -715,13 +759,21 @@ on_get_body_html (GObject      *source_object,
   const gchar *from_domain;
   const gchar *at;
 
+  if (!gtk_widget_get_visible (GTK_WIDGET (self)))
+    return;
+
   if (!body) {
+    set_send_in_progress (self, FALSE);
+    mark_dirty (self);
     if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-      g_warning ("Failed to get HTML content for mail: %s", error->message);
+      show_send_error (self, error);
     return;
   }
 
   if (!self->ignore_missing_attachments && check_attachment_reminder (self, body)) {
+    set_send_in_progress (self, FALSE);
+    set_send_action_enabled (self, FALSE);
+    mark_dirty (self);
     show_attachment_reminder (self);
     return;
   }
@@ -764,19 +816,16 @@ on_get_body_html (GObject      *source_object,
                   self->cancellable,
                   &error);
     if (error) {
-      AdwAlertDialog *dialog = ADW_ALERT_DIALOG (adw_alert_dialog_new (_("Cannot send mail"), error->message));
-
-      adw_alert_dialog_add_response (dialog, "close", _("_Close"));
-      adw_alert_dialog_set_default_response (dialog, "close");
-      adw_alert_dialog_set_close_response (dialog, "close");
-      adw_dialog_present (ADW_DIALOG (dialog), GTK_WIDGET (self));
+      set_send_in_progress (self, FALSE);
+      mark_dirty (self);
+      show_send_error (self, error);
       return;
     }
   }
 
   mail_view = get_main_mail_view ();
 
-  data = send_completed_data_new (mail_view, account, self->draft_uid);
+  data = send_completed_data_new (self, mail_view, account, self->draft_uid);
 
   camel_medium_set_header (CAMEL_MEDIUM (mime_message), "User-Agent", USER_AGENT);
 
@@ -795,9 +844,7 @@ on_get_body_html (GObject      *source_object,
   stamp_account_send_mail (account, mime_message, sender, recipient,
                            do_pgp_sign || do_smime_sign, do_pgp_encrypt || do_smime_encrypt, NULL, on_send_mail, data);
 
-  self->is_dirty = FALSE;
-  stamp_mail_view_show_toast (mail_view, _("Sending Mail…"));
-  gtk_window_destroy (GTK_WINDOW (self));
+  adw_toast_overlay_add_toast (self->toast_overlay, adw_toast_new (_("Sending Mail…")));
 }
 
 static void
@@ -1286,7 +1333,7 @@ on_send_activated (GSimpleAction *action,
 
     adw_dialog_present (dialog, GTK_WIDGET (self));
   } else {
-    stamp_webview_get_body_html (self->webview, NULL, on_get_body_html, self);
+    request_send_body (self);
   }
 }
 
@@ -1943,7 +1990,7 @@ on_auto_save_get_body_html (GObject      *source_object,
                             GAsyncResult *res,
                             gpointer      user_data)
 {
-  StampComposer *self = user_data;
+  g_autoptr (StampComposer) self = user_data;
   StampWebView *web_view = STAMP_WEB_VIEW (source_object);
   g_autoptr (GError) error = NULL;
   g_autofree char *body_plain = NULL;
@@ -1953,6 +2000,9 @@ on_auto_save_get_body_html (GObject      *source_object,
   CamelInternetAddress *recipient;
   const gchar *name;
   const gchar *mail;
+
+  if (self->is_sending || !gtk_widget_get_visible (GTK_WIDGET (self)))
+    return;
 
   if (!body) {
     if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
@@ -1985,7 +2035,7 @@ autosave_timeout_cb (gpointer user_data)
   StampComposer *self = STAMP_COMPOSER (user_data);
 
   self->autosave_source_id = 0;
-  stamp_webview_get_body_html (self->webview, self->cancellable, on_auto_save_get_body_html, self);
+  stamp_webview_get_body_html (self->webview, self->cancellable, on_auto_save_get_body_html, g_object_ref (self));
 }
 
 static void
@@ -2548,6 +2598,9 @@ on_close_request (GtkWindow *source,
 {
   StampComposer *self = STAMP_COMPOSER (user_data);
   AdwDialog *dialog;
+
+  if (self->is_sending)
+    return TRUE;
 
   g_clear_handle_id (&self->autosave_source_id, g_source_remove);
 
