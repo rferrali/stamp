@@ -1308,17 +1308,19 @@ insert_signature (StampComposer  *self,
   g_autofree char *encoded = g_base64_encode ((const guchar *)content, strlen (content));
   g_autofree char *js = g_strdup_printf (
     "(function(){"
-    "  var bytes = Uint8Array.from(atob('%s'), function(c){return c.charCodeAt(0)}), html = new TextDecoder('utf-8').decode(bytes), el = document.getElementById('mail-signature');"
+    "  var bytes = Uint8Array.from(atob('%s'), function(c){return c.charCodeAt(0)}), html = new TextDecoder('utf-8').decode(bytes);"
     "  var ed = document.getElementById('message-body');"
     "  if (!ed) return 'no-editor';"
+    "  var el = ed.querySelector(':scope > #mail-signature');"
+    "  var quote = ed.querySelector(':scope > #mail-quote');"
     "  if (el) { el.outerHTML = '<div id=\"mail-signature\">' + html + '</div>'; return 'replaced'; }"
-    "  ed.appendChild(document.createElement('br'));"
     "  ed.focus();"
     "  var div = document.createElement('div');"
     "  div.id = 'mail-signature';"
     "  div.innerHTML = html;"
-    "  ed.appendChild(div);"
-    "  return 'appended';"
+    "  if (quote) { ed.insertBefore(div, quote); }"
+    "  else { ed.appendChild(document.createElement('br')); ed.appendChild(div); }"
+    "  return 'inserted';"
     "})()",
     encoded);
 
@@ -1352,9 +1354,9 @@ on_signature_activated (GSimpleAction *action,
   if (new_sig == self->active_signature)
     return;
 
-  if (self->active_signature)
+  if (self->active_signature && !new_sig)
     webkit_web_view_evaluate_javascript (WEBKIT_WEB_VIEW (self->webview),
-                                         "(function(){ var el = document.getElementById('mail-signature'); if (el) { el.remove(); return 'removed'; } return 'not-found'; })()",
+                                         "(function(){ var ed = document.getElementById('message-body'), el = ed && ed.querySelector(':scope > #mail-signature'); if (el) { el.remove(); return 'removed'; } return 'not-found'; })()",
                                          -1, NULL, NULL, NULL, NULL, NULL);
 
   self->active_signature = NULL;
@@ -2652,9 +2654,10 @@ stamp_composer_set_quote_content (StampComposer          *self,
 
         who = formatted_from;
 
+        g_string_append (message_content, "<div id=\"mail-quote\">");
         g_string_append_printf (message_content, _("On %s, %s wrote:"), date_received, who);
         message_content = g_string_append (message_content, "<br/>");
-        g_string_append_printf (message_content, "<blockquote type=\"cite\">%s</blockquote>", content_to_quote);
+        g_string_append_printf (message_content, "<blockquote type=\"cite\">%s</blockquote></div>", content_to_quote);
       } else if (type == STAMP_COMPOSER_FORWARD) {
         g_string_append_printf (message_content, _("---------- Forwarded message ----------"));
         g_string_append_printf (message_content, "<br/><br/>");
