@@ -33,6 +33,9 @@
 #include "stamp-attachment-button.h"
 #include "stamp-message-header.h"
 #include "stamp-message-list.h"
+#include "stamp-meeting-details.h"
+#include "stamp-calendar-autocleanups.h"
+#include "stamp-meeting-response.h"
 #include "stamp-mime-parser.h"
 #include "stamp-session.h"
 #include "stamp-settings.h"
@@ -46,7 +49,11 @@ struct _StampMessageListItem {
 
   GtkWidget *header;
   GtkWidget *secondary_revealer;
-  GtkWidget *vcard_banner;
+  GtkWidget *meeting_card;
+  GtkWidget *meeting_details;
+  GtkWidget *meeting_rsvp;
+  GtkWidget *meeting_remove;
+  GtkWidget *meeting_removed_label;
   GtkWidget *blocked_images_banner;
   GtkWidget *signature_banner;
   GtkWidget *encryption_banner;
@@ -77,6 +84,10 @@ struct _StampMessageListItem {
   GCancellable *cancellable;
   CamelMimeMessage *message;
   ICalComponent *calendar;
+  GCancellable *meeting_lookup;
+  GCancellable *meeting_send;
+  gboolean meeting_removed;
+  gboolean meeting_calendar_checked;
   StampMimeListUnsubscribe *unsubscribe;
 
   GSimpleActionGroup *actions;
@@ -143,6 +154,227 @@ update_encryption_banner (StampMessageListItem *self,
 
   adw_banner_set_title (banner, _("Message decrypted"));
   adw_banner_set_revealed (banner, TRUE);
+}
+
+typedef struct {
+  ICalComponent *calendar;
+  gchar *collection_uid;
+  gchar *email;
+  gchar *method;
+  ESource *auth_source;
+  gboolean calendar_checked;
+  gboolean calendar_found;
+} MeetingLookup;
+
+static void
+cancel_meeting_operation (GCancellable **cancellable)
+{
+  g_cancellable_cancel (*cancellable);
+  g_clear_object (cancellable);
+}
+
+static void
+meeting_lookup_free (MeetingLookup *lookup)
+{
+  g_clear_object (&lookup->calendar);
+  g_clear_object (&lookup->auth_source);
+  g_free (lookup->collection_uid);
+  g_free (lookup->email);
+  g_free (lookup->method);
+  g_free (lookup);
+}
+
+void
+stamp_message_list_item_set_mobile_mode (StampMessageListItem *self,
+                                         gboolean              mobile)
+{
+  GtkWidget *details = gtk_widget_get_first_child (self->meeting_details);
+
+  if (details)
+    stamp_meeting_details_set_mobile_mode (details, mobile);
+}
+
+static void
+update_meeting_details (StampMessageListItem  *self,
+                        const gchar           *method,
+                        const gchar           *email,
+                        ICalParameterPartstat  response,
+                        gboolean               response_pending)
+{
+  StampMessageList *list;
+  gboolean can_respond;
+  GtkWidget *details = stamp_meeting_details_new (self->account, self->calendar, method, email, response, response_pending, &can_respond);
+
+  while (gtk_widget_get_first_child (self->meeting_details))
+    gtk_box_remove (GTK_BOX (self->meeting_details), gtk_widget_get_first_child (self->meeting_details));
+
+  if (details)
+    gtk_box_append (GTK_BOX (self->meeting_details), details);
+
+  list = STAMP_MESSAGE_LIST (gtk_widget_get_ancestor (GTK_WIDGET (self), STAMP_TYPE_MESSAGE_LIST));
+  stamp_message_list_item_set_mobile_mode (self, list && stamp_message_list_get_mobile_mode (list));
+
+  gtk_widget_set_visible (self->meeting_card, details != NULL);
+  gtk_widget_set_visible (self->meeting_rsvp, details && can_respond);
+  gtk_widget_set_visible (self->meeting_remove, details && !response_pending && self->meeting_calendar_checked && !self->meeting_removed && stamp_meeting_details_is_cancelled (self->calendar, method));
+  gtk_widget_set_visible (self->meeting_removed_label, details && self->meeting_calendar_checked && self->meeting_removed);
+  gtk_widget_set_sensitive (self->meeting_remove, self->meeting_send == NULL);
+}
+
+static void
+lookup_meeting_response_thread (GTask        *task,
+                                gpointer      source_object,
+                                gpointer      task_data,
+                                GCancellable *cancellable)
+{
+  MeetingLookup *lookup = task_data;
+  g_autoptr (ESourceRegistry) registry = NULL;
+  g_autoptr (ESource) account_source = NULL;
+  g_autoptr (ESource) account_collection = NULL;
+  g_autoptr (ICalComponent) event = NULL;
+  g_autoptr (ICalTime) rid = NULL;
+  g_autofree gchar *rid_string = NULL;
+  const gchar *uid;
+  const gchar *collection_uid = lookup->collection_uid;
+  g_autolist (ESource) sources = NULL;
+  ICalParameterPartstat response = I_CAL_PARTSTAT_NONE;
+
+  if (stamp_meeting_details_is_cancelled (lookup->calendar, lookup->method)) {
+    g_autoptr (GError) error = NULL;
+    g_autoptr (ECalClient) client = NULL;
+    g_autoptr (ICalComponent) stored = NULL;
+
+    registry = e_source_registry_new_sync (cancellable, &error);
+    if (registry)
+      client = stamp_meeting_response_ref_existing_client_sync (registry, lookup->collection_uid, lookup->auth_source, lookup->calendar, &stored, cancellable, &error);
+
+    lookup->calendar_checked = client != NULL || g_error_matches (error, E_CAL_CLIENT_ERROR, E_CAL_CLIENT_ERROR_OBJECT_NOT_FOUND);
+    lookup->calendar_found = client != NULL;
+
+    if (error && !lookup->calendar_checked)
+      g_debug ("Meeting lookup: could not check cancelled meeting: %s", error->message);
+
+    g_task_return_int (task, I_CAL_PARTSTAT_NONE);
+    return;
+  }
+
+  event = stamp_meeting_response_ref_event (lookup->calendar);
+  uid = event ? i_cal_component_get_uid (event) : NULL;
+  if (!uid || !*uid) {
+    g_task_return_int (task, response);
+    return;
+  }
+  rid = i_cal_component_get_recurrenceid (event);
+
+  if (rid && !i_cal_time_is_null_time (rid))
+    rid_string = i_cal_time_as_ical_string (rid);
+
+  g_debug ("Meeting lookup: account collection %s", collection_uid);
+  registry = e_source_registry_new_sync (cancellable, NULL);
+  if (!registry) {
+    g_task_return_int (task, response);
+    return;
+  }
+
+  account_source = e_source_registry_ref_source (registry, collection_uid);
+  if (account_source)
+    account_collection = e_source_registry_find_extension (registry, account_source, E_SOURCE_EXTENSION_COLLECTION);
+
+  if (account_collection)
+    collection_uid = e_source_get_uid (account_collection);
+
+  sources = e_source_registry_list_enabled (registry, E_SOURCE_EXTENSION_CALENDAR);
+  for (GList *iter = sources; iter && !g_cancellable_is_cancelled (cancellable); iter = iter->next) {
+    ESource *source = iter->data;
+    g_autoptr (ESource) collection = e_source_registry_find_extension (registry, source, E_SOURCE_EXTENSION_COLLECTION);
+    g_autoptr (EClient) client = NULL;
+    g_autoptr (ICalComponent) stored = NULL;
+    g_autoptr (GError) error = NULL;
+    ICalParameterPartstat candidate;
+
+    if (g_strcmp0 (e_source_get_parent (source), lookup->collection_uid) != 0 && (!collection || g_strcmp0 (e_source_get_uid (collection), collection_uid) != 0))
+      continue;
+
+    g_debug ("Meeting lookup: checking calendar '%s' (%s)", e_source_get_display_name (source), e_source_get_uid (source));
+    client = e_cal_client_connect_sync (source, E_CAL_CLIENT_SOURCE_TYPE_EVENTS, 10, cancellable, &error);
+    if (!client) {
+      g_debug ("Meeting lookup: cannot connect to '%s': %s", e_source_get_display_name (source), error ? error->message : "unknown error");
+      continue;
+    }
+
+    if (!e_cal_client_get_object_sync (E_CAL_CLIENT (client), uid, rid_string, &stored, cancellable, &error)) {
+      g_debug ("Meeting lookup: no result from '%s': %s", e_source_get_display_name (source), error ? error->message : "unknown error");
+      continue;
+    }
+
+    candidate = stamp_meeting_details_get_saved_response (lookup->calendar, stored, lookup->email, TRUE);
+    g_debug ("Meeting lookup: calendar '%s', backend remapped UID: %s, response: %d", e_source_get_display_name (source), g_strcmp0 (uid, i_cal_component_get_uid (stored)) != 0 ? "yes" : "no", candidate);
+
+    if (candidate == I_CAL_PARTSTAT_NONE)
+      continue;
+
+    response = candidate;
+    if (response == I_CAL_PARTSTAT_ACCEPTED || response == I_CAL_PARTSTAT_DECLINED || response == I_CAL_PARTSTAT_TENTATIVE || response == I_CAL_PARTSTAT_DELEGATED)
+      break;
+  }
+
+  g_task_return_int (task, response);
+}
+
+static void
+on_meeting_response_loaded (GObject      *source_object,
+                            GAsyncResult *result,
+                            gpointer      user_data)
+{
+  StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (source_object);
+  MeetingLookup *lookup = g_task_get_task_data (G_TASK (result));
+  g_autoptr (GError) error = NULL;
+  gint response = g_task_propagate_int (G_TASK (result), &error);
+
+  if (g_task_get_cancellable (G_TASK (result)) != self->meeting_lookup)
+    return;
+
+  g_clear_object (&self->meeting_lookup);
+
+  if (error)
+    return;
+
+  if (stamp_meeting_details_is_cancelled (lookup->calendar, lookup->method)) {
+    self->meeting_calendar_checked = lookup->calendar_checked;
+    self->meeting_removed = lookup->calendar_checked && !lookup->calendar_found;
+  }
+
+  update_meeting_details (self, lookup->method, lookup->email, response, FALSE);
+}
+
+static void
+lookup_meeting_response (StampMessageListItem *self,
+                         const gchar          *method,
+                         const gchar          *email)
+{
+  const gchar *collection_uid = stamp_account_get_uid (self->account);
+  MeetingLookup *lookup;
+  g_autoptr (GTask) task = NULL;
+
+  if (self->meeting_lookup || self->meeting_send || !collection_uid || ((!email || !*email) && !stamp_meeting_details_is_cancelled (self->calendar, method)))
+    return;
+
+  lookup = g_new0 (MeetingLookup, 1);
+  lookup->calendar = i_cal_component_clone (self->calendar);
+  lookup->auth_source = g_object_ref (stamp_mail_service_get_source (stamp_account_get_mail_service (self->account)));
+  lookup->collection_uid = g_strdup (collection_uid);
+  lookup->email = g_strdup (email);
+  lookup->method = g_strdup (method);
+
+  self->meeting_lookup = g_cancellable_new ();
+
+  task = g_task_new (self, self->meeting_lookup, on_meeting_response_loaded, NULL);
+  g_task_set_task_data (task, lookup, (GDestroyNotify)meeting_lookup_free);
+
+  self->meeting_calendar_checked = FALSE;
+
+  update_meeting_details (self, method, email, I_CAL_PARTSTAT_NONE, TRUE);
+  g_task_run_in_thread (task, lookup_meeting_response_thread);
 }
 
 static void
@@ -230,45 +462,36 @@ open_message (StampMessageListItem *self)
 
   update_encryption_banner (self, encryptions);
 
+  cancel_meeting_operation (&self->meeting_send);
+  self->meeting_removed = FALSE;
+  self->meeting_calendar_checked = FALSE;
+  gtk_widget_set_sensitive (self->meeting_rsvp, TRUE);
+
+  cancel_meeting_operation (&self->meeting_lookup);
+
   calendar = stamp_mime_parser_get_invitations (self->parser);
+  gtk_widget_set_visible (self->meeting_card, FALSE);
+  g_clear_object (&self->calendar);
+
   if (calendar) {
-    ICalTime *time;
+    const gchar *email = NULL;
 
+    camel_internet_address_get (stamp_account_get_address (self->account), 0, NULL, &email);
     self->calendar = g_object_ref (calendar->ical);
-    time = i_cal_component_get_dtstart (self->calendar);
-    if (time) {
-      g_autofree char *tmp = g_strdup_printf ("%s: %d.%d.%d %.2d:%.2d",
-                                              i_cal_component_get_summary (self->calendar),
-                                              i_cal_time_get_day (time),
-                                              i_cal_time_get_month (time),
-                                              i_cal_time_get_year (time),
-                                              i_cal_time_get_hour (time),
-                                              i_cal_time_get_minute (time));
-      adw_banner_set_title (ADW_BANNER (self->vcard_banner), tmp);
-      adw_banner_set_revealed (ADW_BANNER (self->vcard_banner), TRUE);
+    update_meeting_details (self, calendar->method, email, I_CAL_PARTSTAT_NONE, FALSE);
 
-      if (g_strcmp0 (calendar->method, "REPLY") == 0)
-        adw_banner_set_button_label (ADW_BANNER (self->vcard_banner), NULL);
-    }
+    if (gtk_widget_get_visible (self->meeting_card))
+      lookup_meeting_response (self, calendar->method, email);
   }
 
   list_unsubscribe = stamp_mime_parser_get_list_unsubscribe (self->parser);
-  if (list_unsubscribe) {
+  if (list_unsubscribe)
     self->unsubscribe = list_unsubscribe->data;
-  }
 
   body = stamp_mime_parser_get_body (self->parser);
   if (body && body->text) {
     self->message_content = g_strdup (body->text);
     self->message_is_html = body->is_html;
-
-    if (self->message_is_html && body->is_html) {
-      /*char *html_with_images = stamp_mime_parser_embed_inline_images (parser, self->message_content);
-      if (html_with_images) {
-        g_clear_pointer (&self->message_content, g_free);
-        self->message_content = html_with_images;
-      }*/
-    }
   }
 
   attachments = stamp_mime_parser_get_attachments (self->parser);
@@ -378,6 +601,13 @@ stamp_message_list_item_set_expanded (StampMessageListItem *self,
     if (!self->message_loaded) {
       start_get_message (self, NULL, NULL);
       self->message_loaded = TRUE;
+    } else if (self->calendar && self->parser) {
+      StampMimeCalendar *calendar = stamp_mime_parser_get_invitations (self->parser);
+      const gchar *email = NULL;
+
+      camel_internet_address_get (stamp_account_get_address (self->account), 0, NULL, &email);
+      if (calendar)
+        lookup_meeting_response (self, calendar->method, email);
     }
 
     gtk_widget_add_css_class (GTK_WIDGET (self), "expanded");
@@ -509,24 +739,13 @@ on_save_all (GtkButton *button,
 }
 
 static void
-on_row_clicked (GObject  *object,
-                gint      n_press,
-                gdouble   x,
-                gdouble   y,
-                gpointer  user_data)
+on_header_clicked (GObject  *object,
+                   gint      n_press,
+                   gdouble   x,
+                   gdouble   y,
+                   gpointer  user_data)
 {
   StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
-
-  if (self->expanded && self->web_view) {
-    GtkGestureClick *gesture = GTK_GESTURE_CLICK (object);
-    GtkWidget *gesture_widget = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
-    graphene_rect_t web_view_bounds;
-
-    if (gtk_widget_compute_bounds (GTK_WIDGET (self->web_view), gesture_widget, &web_view_bounds) &&
-        x >= web_view_bounds.origin.x && x <= web_view_bounds.origin.x + web_view_bounds.size.width &&
-        y >= web_view_bounds.origin.y && y <= web_view_bounds.origin.y + web_view_bounds.size.height)
-      return;
-  }
 
   stamp_message_list_item_set_expanded (self, !self->expanded);
 }
@@ -579,81 +798,170 @@ on_show_signatures (AdwBanner *banner,
   adw_dialog_present (dialog, GTK_WIDGET (window));
 }
 
+typedef struct {
+  ICalComponent *calendar;
+  ESource *auth_source;
+  gchar *account_uid;
+  gchar *email;
+  ICalParameterPartstat response;
+  gboolean remove;
+} MeetingResponse;
+
 static void
-stamp_message_list_item_send_rsvp (StampMessageListItem  *self,
-                                   ICalParameterPartstat  stat)
+meeting_response_free (MeetingResponse *response)
 {
-  ICalProperty *prop;
-  ICalComponent *event;
-  GCancellable *cancellable = g_cancellable_new ();
-  g_autoptr (EClient) client = NULL;
-  g_autoptr (GError) local_error = NULL;
-  ESourceRegistry *registry = e_source_registry_new_sync (cancellable, &local_error);
+  g_clear_object (&response->calendar);
+  g_clear_object (&response->auth_source);
+  g_free (response->account_uid);
+  g_free (response->email);
+  g_free (response);
+}
+
+static void
+send_meeting_response_thread (GTask        *task,
+                              gpointer      source_object,
+                              gpointer      task_data,
+                              GCancellable *cancellable)
+{
+  MeetingResponse *response = task_data;
+  g_autoptr (ESourceRegistry) registry = NULL;
+  g_autoptr (ECalClient) client = NULL;
+  g_autoptr (ICalComponent) reply = NULL;
+  g_autoptr (GError) error = NULL;
+
+  registry = e_source_registry_new_sync (cancellable, &error);
+  if (!registry) {
+    g_task_return_error (task, g_steal_pointer (&error));
+    return;
+  }
+
+  if (response->remove) {
+    g_autoptr (ICalComponent) stored = NULL;
+    ECalComponentId *id;
+    const gchar *rid;
+    gboolean success;
+
+    client = stamp_meeting_response_ref_existing_client_sync (registry, response->account_uid, response->auth_source, response->calendar, &stored, cancellable, &error);
+    if (!client) {
+      if (g_error_matches (error, E_CAL_CLIENT_ERROR, E_CAL_CLIENT_ERROR_OBJECT_NOT_FOUND)) {
+        g_task_return_boolean (task, TRUE);
+        return;
+      }
+
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+    id = stamp_meeting_response_get_removal_id (response->calendar, stored, &error);
+    if (!id) {
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+
+    rid = e_cal_component_id_get_rid (id);
+    success = e_cal_client_remove_object_sync (client, e_cal_component_id_get_uid (id), rid, rid && *rid ? E_CAL_OBJ_MOD_THIS : E_CAL_OBJ_MOD_ALL, E_CAL_OPERATION_FLAG_DISABLE_ITIP_MESSAGE, cancellable, &error);
+    e_cal_component_id_free (id);
+
+    if (!success && !g_error_matches (error, E_CAL_CLIENT_ERROR, E_CAL_CLIENT_ERROR_OBJECT_NOT_FOUND)) {
+      if (!error)
+        g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_FAILED, _("The meeting could not be removed from the calendar"));
+
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+  } else {
+    reply = stamp_meeting_response_new_reply (response->calendar, response->email, response->response, &error);
+
+    if (reply)
+      client = stamp_meeting_response_ref_client_sync (registry, response->account_uid, response->auth_source, response->calendar, cancellable, &error);
+
+    if (!client || !stamp_meeting_response_receive_sync (client, reply, response->email, cancellable, &error)) {
+      if (!error)
+        g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_FAILED, _("The meeting response could not be saved or sent"));
+
+      g_task_return_error (task, g_steal_pointer (&error));
+      return;
+    }
+  }
+  g_task_return_boolean (task, TRUE);
+}
+
+static void
+on_meeting_response_sent (GObject      *source_object,
+                          GAsyncResult *result,
+                          gpointer      user_data)
+{
+  StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (source_object);
+  MeetingResponse *response = g_task_get_task_data (G_TASK (result));
+  g_autoptr (GError) error = NULL;
+  gboolean success = g_task_propagate_boolean (G_TASK (result), &error);
+
+  if (g_task_get_cancellable (G_TASK (result)) != self->meeting_send)
+    return;
+
+  g_clear_object (&self->meeting_send);
+  gtk_widget_set_sensitive (self->meeting_rsvp, TRUE);
+  gtk_widget_set_sensitive (self->meeting_remove, TRUE);
+
+  if (success && response->remove) {
+    StampMimeCalendar *calendar = stamp_mime_parser_get_invitations (self->parser);
+
+    self->meeting_removed = TRUE;
+    self->meeting_calendar_checked = TRUE;
+    update_meeting_details (self, calendar ? calendar->method : "CANCEL", response->email, I_CAL_PARTSTAT_NONE, FALSE);
+  } else if (success) {
+    update_meeting_details (self, "REQUEST", response->email, response->response, FALSE);
+  } else if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+    AdwDialog *dialog = adw_alert_dialog_new (response->remove ? _("Meeting removal failed") : _("Meeting response failed"), error->message);
+
+    adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _("Close"));
+    adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "close");
+    adw_dialog_present (dialog, GTK_WIDGET (self));
+  }
+}
+
+static void
+start_meeting_operation (StampMessageListItem  *self,
+                         ICalParameterPartstat  stat,
+                         gboolean               remove)
+{
+  const gchar *email = NULL;
+  MeetingResponse *response;
   StampMailService *service = stamp_account_get_mail_service (self->account);
-  const gchar *collection_uid = e_source_get_parent (stamp_mail_service_get_source (service));
-  GList *sources = e_source_registry_list_sources (registry, E_SOURCE_EXTENSION_CALENDAR);
-  ESource *source = NULL;
-  CamelInternetAddress *address = stamp_account_get_address (self->account);
-  const gchar *name;
-  const gchar *email;
-  gboolean stat_set = FALSE;
+  g_autoptr (GTask) task = NULL;
 
-  camel_internet_address_get (address, 0, &name, &email);
-
-  for (GList *l = sources; l; l = l->next) {
-    ESource *src = l->data;
-
-    if (g_strcmp0 (e_source_get_parent (src), collection_uid) == 0 /* && g_strcmp0 (e_source_get_display_name (src), "Kalender") == 0*/) {
-      source = g_object_ref (src);
-      break;
-    }
-  }
-
-  if (!source) {
-    g_warning ("%s: Could not find source, abort", G_STRFUNC);
+  if (self->meeting_send)
     return;
-  }
 
-  event = i_cal_component_get_first_component (self->calendar, I_CAL_VEVENT_COMPONENT);
+  camel_internet_address_get (stamp_account_get_address (self->account), 0, NULL, &email);
 
-  for (prop = i_cal_component_get_first_property (event, I_CAL_ATTENDEE_PROPERTY); prop; prop = i_cal_component_get_next_property (event, I_CAL_ATTENDEE_PROPERTY)) {
-    const gchar *attendee = i_cal_property_get_attendee (prop);
-    const gchar *attendee_email;
+  cancel_meeting_operation (&self->meeting_lookup);
+  self->meeting_send = g_cancellable_new ();
 
-    if (g_str_has_prefix (attendee, "mailto:"))
-      attendee_email = attendee + 7;
-    else
-      attendee_email = attendee;
+  response = g_new0 (MeetingResponse, 1);
+  response->calendar = i_cal_component_clone (self->calendar);
+  response->auth_source = g_object_ref (stamp_mail_service_get_source (service));
+  response->account_uid = g_strdup (stamp_account_get_uid (self->account));
+  response->email = g_strdup (email);
+  response->response = stat;
+  response->remove = remove;
 
-    if (g_strcmp0 (attendee_email, email) == 0) {
-      ICalParameter *p = i_cal_parameter_new_partstat (stat);
+  task = g_task_new (self, self->meeting_send, on_meeting_response_sent, NULL);
+  g_task_set_task_data (task, response, (GDestroyNotify)meeting_response_free);
+  gtk_widget_set_sensitive (self->meeting_rsvp, FALSE);
+  gtk_widget_set_sensitive (self->meeting_remove, FALSE);
+  g_task_run_in_thread (task, send_meeting_response_thread);
+}
 
-      i_cal_property_set_parameter (prop, p);
-      stat_set = TRUE;
-      break;
-    }
-  }
+static void
+on_remove_meeting (GtkButton *button,
+                   gpointer   user_data)
+{
+  StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
+  StampMimeCalendar *calendar = self->parser ? stamp_mime_parser_get_invitations (self->parser) : NULL;
 
-  if (!stat_set) {
-    g_autofree char *mailto = g_strdup_printf ("mailto:%s", email);
-    ICalProperty *attendee = i_cal_property_new_attendee (mailto);
-
-    i_cal_property_add_parameter (attendee, i_cal_parameter_new_partstat (stat));
-    i_cal_component_add_property (event, attendee);
-  }
-
-  client = e_cal_client_connect_sync (source, E_CAL_CLIENT_SOURCE_TYPE_EVENTS, 30, cancellable, &local_error);
-  if (!client) {
-    g_warning ("%s: Could not create ECalClient: %s", G_STRFUNC, local_error->message);
-    return;
-  }
-
-  i_cal_component_set_method (self->calendar, I_CAL_METHOD_REPLY);
-  e_cal_client_receive_objects_sync (E_CAL_CLIENT (client), self->calendar, E_CAL_OPERATION_FLAG_NONE, cancellable, &local_error);
-  if (local_error) {
-    g_warning ("%s: Could not receive event: %s", G_STRFUNC, local_error->message);
-    return;
-  }
+  if (calendar && !self->meeting_removed && stamp_meeting_details_is_cancelled (self->calendar, calendar->method))
+    start_meeting_operation (self, I_CAL_PARTSTAT_NONE, TRUE);
 }
 
 static void
@@ -673,19 +981,23 @@ on_rsvp_response (GtkWidget *dialog,
   }
 
   if (stat != I_CAL_PARTSTAT_NONE)
-    stamp_message_list_item_send_rsvp (self, stat);
+    start_meeting_operation (self, stat, FALSE);
 }
 
 static void
-on_rsvp (AdwBanner *banner,
+on_rsvp (GtkButton *button,
          gpointer   user_data)
 {
   StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
   AdwDialog *dialog;
   const gchar *sender = camel_message_info_get_from (self->message_info);
-  g_autofree char *body = g_strdup_printf (_("%s wants to know whether you can join this meeting"), sender);
+  const gchar *email = NULL;
+  g_autofree char *body = NULL;
 
-  dialog = adw_alert_dialog_new (_("RVSP"), body);
+  camel_internet_address_get (stamp_account_get_address (self->account), 0, NULL, &email);
+  body = stamp_meeting_response_wants_reply (self->calendar, email) ? g_strdup_printf (_("%s wants to know whether you can join this meeting"), sender) : g_strdup (_("Your choice will be saved in the calendar without notifying the organizer."));
+
+  dialog = adw_alert_dialog_new (_("Respond to Meeting"), body);
 
   adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", _("Cancel"));
   adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "decline", _("Decline"));
@@ -696,7 +1008,7 @@ on_rsvp (AdwBanner *banner,
 
   adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "cancel");
   adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
-  g_signal_connect (dialog, "response", G_CALLBACK (on_rsvp_response), self);
+  g_signal_connect_object (dialog, "response", G_CALLBACK (on_rsvp_response), self, G_CONNECT_DEFAULT);
 
   adw_dialog_present (dialog, GTK_WIDGET (self));
 }
@@ -716,6 +1028,10 @@ stamp_message_list_item_dispose (GObject *object)
   g_clear_pointer (&self->signature_details, g_free);
   g_clear_pointer (&self->disposition_notification_to, g_free);
   g_clear_pointer (&self->save_img, g_free);
+
+  cancel_meeting_operation (&self->meeting_send);
+
+  cancel_meeting_operation (&self->meeting_lookup);
 
   g_clear_object (&self->message);
   g_clear_object (&self->calendar);
@@ -799,17 +1115,22 @@ stamp_message_list_item_class_init (StampMessageListItemClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, disposition_banner);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, signature_banner);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, encryption_banner);
-  gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, vcard_banner);
+  gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, meeting_card);
+  gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, meeting_details);
+  gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, meeting_rsvp);
+  gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, meeting_remove);
+  gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, meeting_removed_label);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, web_view_box);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, secondary_revealer);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, attachment_flow_box);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, attachment_info_label);
   gtk_widget_class_bind_template_child (widget_class, StampMessageListItem, save_all_button);
 
-  gtk_widget_class_bind_template_callback (widget_class, on_row_clicked);
+  gtk_widget_class_bind_template_callback (widget_class, on_header_clicked);
   gtk_widget_class_bind_template_callback (widget_class, on_show_images);
   gtk_widget_class_bind_template_callback (widget_class, on_show_signatures);
   gtk_widget_class_bind_template_callback (widget_class, on_rsvp);
+  gtk_widget_class_bind_template_callback (widget_class, on_remove_meeting);
   gtk_widget_class_bind_template_callback (widget_class, on_image_load_blocked);
   gtk_widget_class_bind_template_callback (widget_class, on_mouse_target_changed);
   gtk_widget_class_bind_template_callback (widget_class, on_send_disposition);
@@ -1010,7 +1331,6 @@ on_forward (GSimpleAction *action,
 
   stamp_message_list_item_compose (self, STAMP_COMPOSER_FORWARD);
 }
-
 
 static void
 on_unsubscribe_response (GtkWidget *dialog,

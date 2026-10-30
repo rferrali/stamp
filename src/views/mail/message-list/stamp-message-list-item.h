@@ -80,6 +80,9 @@ stamp_message_list_item_search (StampMessageListItem           *self,
 StampWebView *
 stamp_message_list_item_get_web_view (StampMessageListItem *self);
 
+void stamp_message_list_item_set_mobile_mode (StampMessageListItem *self,
+                                               gboolean mobile);
+
 G_END_DECLS
 
 

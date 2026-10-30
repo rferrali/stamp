@@ -27,6 +27,7 @@
     <file preprocess="xml-stripblanks">views/mail/message-list/stamp-message-header.ui</file>
     <file preprocess="xml-stripblanks">views/mail/message-list/stamp-message-list.ui</file>
     <file preprocess="xml-stripblanks">views/mail/message-list/stamp-message-list-item.ui</file>
+    <file preprocess="xml-stripblanks">views/mail/message-list/stamp-meeting-details.ui</file>
     <file alias="blank-message-template.html" compressed="true">resources/blank-message-template.html</file>
     <file alias="stamp-composer.js" compressed="true">resources/stamp-composer.js</file>
     <file alias="stamp-quote-collapse.js" compressed="true">resources/stamp-quote-collapse.js</file>

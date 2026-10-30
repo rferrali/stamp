@@ -65,3 +65,10 @@ row.card.expanded .message-list-item-clickable {
 .message-list-item-clickable:hover {
   background-color: alpha(currentColor, 0.05);
 }
+
+.meeting-card {
+  background-color: alpha(var(--accent-bg-color), 0.06);
+  border: 1px solid alpha(currentColor, 0.12);
+  border-radius: 12px;
+  padding: 12px;
+}

@@ -1,0 +1,213 @@
+using Gtk 4.0;
+
+template $StampMeetingDetails: Box {
+  orientation: vertical;
+  spacing: 6;
+
+  Label heading {
+    xalign: 0;
+    wrap: true;
+    wrap-mode: word_char;
+    selectable: true;
+
+    styles [
+      "heading",
+      "caption",
+    ]
+  }
+
+  Label summary {
+    xalign: 0;
+    wrap: true;
+    wrap-mode: word_char;
+    selectable: true;
+
+    styles [
+      "title-3",
+    ]
+  }
+
+  Box {
+    visible: false;
+    spacing: 12;
+
+    styles [
+      "meeting-detail-row",
+    ]
+
+    Label {
+      label: _("When");
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      width-chars: 12;
+      valign: start;
+
+      styles [
+        "dim-label",
+        "caption",
+      ]
+    }
+
+    Label when {
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      selectable: true;
+      hexpand: true;
+    }
+  }
+
+  Box {
+    visible: false;
+    spacing: 12;
+
+    styles [
+      "meeting-detail-row",
+    ]
+
+    Label {
+      label: _("Recurrence");
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      width-chars: 12;
+      valign: start;
+
+      styles [
+        "dim-label",
+        "caption",
+      ]
+    }
+
+    Label recurrence {
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      selectable: true;
+      hexpand: true;
+    }
+  }
+
+  Box {
+    visible: false;
+    spacing: 12;
+
+    styles [
+      "meeting-detail-row",
+    ]
+
+    Label {
+      label: _("Applies to");
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      width-chars: 12;
+      valign: start;
+
+      styles [
+        "dim-label",
+        "caption",
+      ]
+    }
+
+    Label applies {
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      selectable: true;
+      hexpand: true;
+    }
+  }
+
+  Box {
+    visible: false;
+    spacing: 12;
+
+    styles [
+      "meeting-detail-row",
+    ]
+
+    Label {
+      label: _("Location");
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      width-chars: 12;
+      valign: start;
+
+      styles [
+        "dim-label",
+        "caption",
+      ]
+    }
+
+    Label location {
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      selectable: true;
+      hexpand: true;
+    }
+  }
+
+  Box {
+    visible: false;
+    spacing: 12;
+
+    styles [
+      "meeting-detail-row",
+    ]
+
+    Label {
+      label: _("Organizer");
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      width-chars: 12;
+      valign: start;
+
+      styles [
+        "dim-label",
+        "caption",
+      ]
+    }
+
+    Box organizer {
+      hexpand: true;
+      halign: start;
+      valign: start;
+    }
+  }
+
+  Box {
+    visible: false;
+    spacing: 12;
+
+    styles [
+      "meeting-detail-row",
+    ]
+
+    Label {
+      label: _("Your response");
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      width-chars: 12;
+      valign: start;
+
+      styles [
+        "dim-label",
+        "caption",
+      ]
+    }
+
+    Label response {
+      xalign: 0;
+      wrap: true;
+      wrap-mode: word_char;
+      selectable: true;
+      hexpand: true;
+    }
+  }
+}

@@ -52,6 +52,8 @@ src/views/mail/message-list/stamp-message-list.blp
 src/views/mail/message-list/stamp-message-list.c
 src/views/mail/message-list/stamp-message-list-item.blp
 src/views/mail/message-list/stamp-message-list-item.c
+src/views/mail/message-list/stamp-meeting-details.c
+src/views/mail/message-list/stamp-meeting-details.blp
 src/views/mail/stamp-mail-view.blp
 src/views/mail/stamp-mail-view.c
 src/views/stamp-header-bar.blp
@@ -76,3 +78,5 @@ src/stamp-webview.c
 src/stamp-window.blp
 src/stamp-window.c
 
+src/backend/stamp-meeting-response.c
+src/backend/stamp-m365-calendar.c

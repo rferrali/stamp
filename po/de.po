@@ -958,3 +958,23 @@ msgstr "%d. %b %H:%M"
 #: src/stamp-time-helpers.c:290
 msgid "%b %d %Y"
 msgstr "%d. %b %Y"
+
+#: src/views/mail/message-list/stamp-meeting-details.c
+#, c-format
+msgid "%u hour"
+msgid_plural "%u hours"
+msgstr[0] "%u Stunde"
+msgstr[1] "%u Stunden"
+
+#: src/views/mail/message-list/stamp-meeting-details.c
+#, c-format
+msgid "%u minute"
+msgid_plural "%u minutes"
+msgstr[0] "%u Minute"
+msgstr[1] "%u Minuten"
+
+#. Translators: hours followed by the remaining minutes.
+#: src/views/mail/message-list/stamp-meeting-details.c
+#, c-format
+msgid "%s %s"
+msgstr "%s %s"

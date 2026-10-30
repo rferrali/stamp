@@ -11,11 +11,11 @@ template $StampMessageListItem: ListBoxRow {
   child: Box {
     orientation: vertical;
 
-    GestureClick {
-      released => $on_row_clicked();
-    }
-
     $StampMessageHeader header {
+      GestureClick {
+        released => $on_header_clicked();
+      }
+
       styles [
         "message-list-item-clickable",
       ]
@@ -76,14 +76,54 @@ template $StampMessageListItem: ListBoxRow {
           ]
         }
 
-        Adw.Banner vcard_banner {
-          button-label: _("RSVP");
-          button-clicked => $on_rsvp();
-          revealed: false;
+        Box meeting_card {
+          visible: false;
+          orientation: vertical;
+          spacing: 6;
+          margin-start: 12;
+          margin-end: 12;
+          margin-top: 6;
+          margin-bottom: 12;
 
           styles [
-            "message-header-banner",
+            "meeting-card",
           ]
+
+          Box meeting_details {
+            orientation: vertical;
+          }
+
+          Button meeting_remove {
+            visible: false;
+            label: _("Remove from Calendar");
+            halign: start;
+            clicked => $on_remove_meeting();
+
+            styles [
+              "destructive-action",
+            ]
+          }
+
+          Label meeting_removed_label {
+            visible: false;
+            label: _("Removed from calendar");
+            xalign: 0;
+            wrap: true;
+
+            styles [
+              "dim-label",
+            ]
+          }
+
+          Button meeting_rsvp {
+            label: _("Respond…");
+            halign: start;
+            clicked => $on_rsvp();
+
+            styles [
+              "suggested-action",
+            ]
+          }
         }
 
         Box {

@@ -257,6 +257,11 @@ stamp_message_list_set_mobile_mode (StampMessageList *self,
 {
   self->mobile_mode = mobile;
 
+  for (GtkWidget *row = gtk_widget_get_first_child (self->list_box); row; row = gtk_widget_get_next_sibling (row)) {
+    if (STAMP_IS_MESSAGE_LIST_ITEM (row))
+      stamp_message_list_item_set_mobile_mode (STAMP_MESSAGE_LIST_ITEM (row), mobile);
+  }
+
   if (mobile) {
     update_mobile_toolbar (self, gtk_widget_get_width (GTK_WIDGET (self)));
   } else {
