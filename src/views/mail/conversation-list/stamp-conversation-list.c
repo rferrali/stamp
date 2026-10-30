@@ -68,6 +68,7 @@ struct _StampConversationList {
   GtkWidget *selection_label;
   GtkWidget *spinner;
   GtkAdjustment *vadj;
+  gboolean keep_scroll;
   GtkWidget *sort_or_filter_button;
   GtkWidget *mail_list_stack;
   GtkBitset *selected;
@@ -111,7 +112,7 @@ struct _StampConversationList {
   guint cache_tick;
   GtkFilterListModel *filter_model;
   guint anchor_position;
-  GHashTable *position_to_check;
+  GHashTable *bound_list_items;
   GPtrArray *trash_array;
   GList *trash_entries;
 
@@ -176,6 +177,9 @@ static void
 load_folder_idle (gpointer user_data);
 
 static void
+update_folder_idle (gpointer user_data);
+
+static void
 load_collection_idle (gpointer user_data);
 
 static void
@@ -214,7 +218,7 @@ on_conversation_list_folder_changed (CamelFolder           *folder,
 
   if ((changes->uid_added && changes->uid_added->len > 0) || (changes->uid_removed && changes->uid_removed->len > 0)) {
     g_clear_handle_id (&self->load_folder_handler, g_source_remove);
-    self->load_folder_handler = g_idle_add_once (load_folder_idle, self);
+    self->load_folder_handler = g_idle_add_once (update_folder_idle, self);
   }
 }
 
@@ -772,6 +776,48 @@ cache_thread (StampConversationList *self,
   g_hash_table_insert (self->thread_cache, g_strdup (full_name), entry);
 }
 
+static gboolean
+items_match (StampConversationItem *a,
+             StampConversationItem *b)
+{
+  return g_strcmp0 (stamp_conversation_item_get_uid (a), stamp_conversation_item_get_uid (b)) == 0 &&
+         stamp_conversation_item_get_num_messages (a) == stamp_conversation_item_get_num_messages (b) &&
+         stamp_conversation_item_get_timestamp (a) == stamp_conversation_item_get_timestamp (b);
+}
+
+/* Only replaces the differing range so the list view keeps its scroll position */
+static void
+splice_keeping_unchanged (StampConversationList *self,
+                          GPtrArray             *array)
+{
+  GListModel *model = G_LIST_MODEL (self->list_store);
+  guint old_n = g_list_model_get_n_items (model);
+  guint prefix = 0;
+  guint suffix = 0;
+
+  while (prefix < old_n && prefix < array->len) {
+    g_autoptr (StampConversationItem) old_item = g_list_model_get_item (model, prefix);
+
+    if (!items_match (old_item, g_ptr_array_index (array, prefix)))
+      break;
+    prefix++;
+  }
+
+  while (suffix < old_n - prefix && suffix < array->len - prefix) {
+    g_autoptr (StampConversationItem) old_item = g_list_model_get_item (model, old_n - 1 - suffix);
+
+    if (!items_match (old_item, g_ptr_array_index (array, array->len - 1 - suffix)))
+      break;
+    suffix++;
+  }
+
+  if (prefix + suffix == old_n && old_n == array->len)
+    return;
+
+  g_list_store_splice (self->list_store, prefix, old_n - prefix - suffix,
+                       array->len > prefix ? array->pdata + prefix : NULL, array->len - prefix - suffix);
+}
+
 static void
 display_thread (StampConversationList *self,
                 CamelFolderThread     *thread,
@@ -781,13 +827,19 @@ display_thread (StampConversationList *self,
   CamelFolder *folder = self->folder;
   const gchar *service_uid;
 
+  gboolean keep_scroll = self->keep_scroll;
+
+  self->keep_scroll = TRUE;
   g_set_object (&self->thread, thread);
 
   mail_service = stamp_account_get_mail_service (self->account);
   service_uid = camel_service_get_uid (stamp_mail_service_get_service (mail_service));
   g_hash_table_insert (self->folders, g_strdup (service_uid), g_object_ref (folder));
 
-  g_list_store_splice (self->list_store, 0, g_list_model_get_n_items (G_LIST_MODEL (self->list_store)), (gpointer *)array->pdata, array->len);
+  if (keep_scroll)
+    splice_keeping_unchanged (self, array);
+  else
+    g_list_store_splice (self->list_store, 0, g_list_model_get_n_items (G_LIST_MODEL (self->list_store)), (gpointer *)array->pdata, array->len);
 
   if (self->window_title) {
     adw_window_title_set_title (ADW_WINDOW_TITLE (self->window_title), camel_folder_get_display_name (folder));
@@ -797,7 +849,7 @@ display_thread (StampConversationList *self,
   gtk_widget_set_visible (self->spinner, FALSE);
   gtk_widget_set_margin_top (self->spinner, 12);
 
-  if (g_list_model_get_n_items (G_LIST_MODEL (gtk_list_view_get_model (GTK_LIST_VIEW (self->listview)))) > 0)
+  if (!keep_scroll && g_list_model_get_n_items (G_LIST_MODEL (gtk_list_view_get_model (GTK_LIST_VIEW (self->listview)))) > 0)
     gtk_list_view_scroll_to (GTK_LIST_VIEW (self->listview), 0, GTK_LIST_SCROLL_FOCUS, NULL);
 
   rebuild_move_menu (self);
@@ -816,7 +868,8 @@ on_thread_built (GObject      *source_object,
 
   built = g_task_propagate_pointer (task, &error);
 
-  if (error || data->folder != self->folder) {
+  if (error || data->folder != self->folder ||
+      g_task_get_cancellable (task) != self->thread_cancellable) {
     g_clear_pointer (&built, thread_result_free);
 
     if (g_task_get_cancellable (task) == self->thread_cancellable)
@@ -879,7 +932,8 @@ on_folder_refreshed (GObject      *source,
   if (!camel_folder_refresh_info_finish (folder, res, &error))
     g_warning ("Could not refresh folder %s: %s", camel_folder_get_display_name (folder), error->message);
 
-  rebuild_list (self);
+  if (folder == self->folder && !self->is_collection)
+    rebuild_list (self);
 }
 
 static void
@@ -930,6 +984,7 @@ stamp_conversation_list_load_folder (StampConversationList *self,
   }
 
   g_clear_handle_id (&self->load_folder_handler, g_source_remove);
+  self->keep_scroll = FALSE;
 
   if (!account)
     return;
@@ -954,6 +1009,7 @@ stamp_conversation_list_refresh (StampConversationList *self)
   if (!self->folder)
     return;
 
+  self->keep_scroll = TRUE;
   camel_folder_refresh_info (self->folder, G_PRIORITY_DEFAULT, self->cancellable, on_folder_refreshed, self);
 }
 
@@ -1457,16 +1513,30 @@ on_selection_changed (GtkCheckButton *check,
 static void
 refresh_checkboxes (StampConversationList *self)
 {
+  g_autoptr (GPtrArray) items = g_ptr_array_new_with_free_func (g_object_unref);
   GHashTableIter iter;
-  gpointer key, value;
+  gpointer key;
 
-  g_hash_table_iter_init (&iter, self->position_to_check);
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
-    guint pos = GPOINTER_TO_UINT (key);
-    GtkWidget *check = GTK_WIDGET (value);
+  g_hash_table_iter_init (&iter, self->bound_list_items);
+  while (g_hash_table_iter_next (&iter, &key, NULL))
+    g_ptr_array_add (items, g_object_ref (key));
 
-    gtk_check_button_set_active (GTK_CHECK_BUTTON (check),
-                                 gtk_bitset_contains (self->selected, pos));
+  for (guint i = 0; i < items->len; i++) {
+    GtkListItem *list_item = g_ptr_array_index (items, i);
+    GtkWidget *row;
+    g_autoptr (GtkCheckButton) check = NULL;
+    guint position;
+
+    if (!g_hash_table_contains (self->bound_list_items, list_item))
+      continue;
+
+    position = gtk_list_item_get_position (list_item);
+    if (position == GTK_INVALID_LIST_POSITION)
+      continue;
+
+    row = gtk_list_item_get_child (list_item);
+    check = g_object_ref (stamp_conversation_row_get_check_button (STAMP_CONVERSATION_ROW (row)));
+    gtk_check_button_set_active (check, gtk_bitset_contains (self->selected, position));
   }
 }
 
@@ -1833,7 +1903,6 @@ on_bind_list_item (GtkListItemFactory *factory,
   GtkWidget *row;
   StampConversationItem *model;
   GtkCheckButton *check_button;
-  guint pos = gtk_list_item_get_position (list_item);
 
   row = gtk_list_item_get_child (list_item);
   model = STAMP_CONVERSATION_ITEM (gtk_list_item_get_item (list_item));
@@ -1845,7 +1914,7 @@ on_bind_list_item (GtkListItemFactory *factory,
   gtk_check_button_set_active (check_button, gtk_list_item_get_selected (list_item));
   g_signal_connect (check_button, "toggled", G_CALLBACK (on_check_toggled), list_item);
 
-  g_hash_table_insert (self->position_to_check, GUINT_TO_POINTER (pos), check_button);
+  g_hash_table_add (self->bound_list_items, list_item);
 
   g_signal_connect_swapped (list_item, "notify::selected", G_CALLBACK (on_selection_changed), check_button);
 }
@@ -1859,14 +1928,14 @@ on_unbind_list_item (GtkListItemFactory *factory,
   GtkWidget *row;
   GtkCheckButton *check_button;
   StampConversationItem *model;
-  guint pos = gtk_list_item_get_position (list_item);
-  g_hash_table_remove (self->position_to_check, GUINT_TO_POINTER (pos));
+  g_hash_table_remove (self->bound_list_items, list_item);
 
   row = gtk_list_item_get_child (list_item);
   model = STAMP_CONVERSATION_ITEM (gtk_list_item_get_item (list_item));
 
   stamp_conversation_row_unbind_mail (STAMP_CONVERSATION_ROW (row), model);
   check_button = stamp_conversation_row_get_check_button (STAMP_CONVERSATION_ROW (row));
+  g_signal_handlers_disconnect_by_func (check_button, on_check_toggled, list_item);
   g_signal_handlers_disconnect_by_func (list_item, on_selection_changed, check_button);
 }
 
@@ -2041,11 +2110,11 @@ stamp_conversation_list_dispose (GObject *object)
   g_list_free_full (g_steal_pointer (&self->collection_folders), g_object_unref);
 
   g_clear_pointer (&self->selected, gtk_bitset_unref);
-  g_clear_pointer (&self->position_to_check, g_hash_table_unref);
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
   g_clear_list (&self->trash_entries, trash_entry_free);
 
   gtk_widget_dispose_template (GTK_WIDGET (self), STAMP_TYPE_CONVERSATION_LIST);
+  g_clear_pointer (&self->bound_list_items, g_hash_table_unref);
 
   G_OBJECT_CLASS (stamp_conversation_list_parent_class)->dispose (object);
 }
@@ -2206,6 +2275,15 @@ on_drag_update (GtkGesturePan   *gesture,
   }
 
   self->is_pulling = TRUE;
+}
+
+static void
+update_folder_idle (gpointer user_data)
+{
+  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+
+  self->load_folder_handler = 0;
+  rebuild_list (self);
 }
 
 static void
@@ -2717,7 +2795,7 @@ stamp_conversation_list_init (StampConversationList *self)
 
   self->selected = gtk_bitset_new_empty ();
   self->anchor_position = 0;
-  self->position_to_check = g_hash_table_new (g_direct_hash, g_direct_equal);
+  self->bound_list_items = g_hash_table_new (g_direct_hash, g_direct_equal);
 }
 
 GtkWidget *
@@ -2979,11 +3057,26 @@ collect_trash_entries (StampConversationList *self,
   return entries;
 }
 
+static void
+set_item_hidden (StampConversationList *self,
+                 StampConversationItem *item,
+                 gboolean               hidden)
+{
+  guint position;
+
+  if (stamp_conversation_item_get_hidden (item) == hidden)
+    return;
+
+  stamp_conversation_item_set_hidden (item, hidden);
+  if (g_list_store_find (self->list_store, item, &position))
+    g_list_model_items_changed (G_LIST_MODEL (self->list_store), position, 1, 1);
+}
+
 gboolean
 stamp_conversation_list_trash (StampConversationList *self,
                                StampConversationItem *item)
 {
-  g_autoptr (GPtrArray) node_array = g_ptr_array_new ();
+  g_autoptr (GPtrArray) node_array = g_ptr_array_new_with_free_func (g_object_unref);
   CamelFolder *folder;
   CamelFolder *trash_folder;
   gboolean has_uid = FALSE;
@@ -2998,7 +3091,7 @@ stamp_conversation_list_trash (StampConversationList *self,
     while (gtk_bitset_iter_is_valid (&iter)) {
       g_autoptr (StampConversationItem) child_item = STAMP_CONVERSATION_ITEM (g_list_model_get_item (G_LIST_MODEL (self->multi_selection), current_item_position));
 
-      g_ptr_array_add (node_array, child_item);
+      g_ptr_array_add (node_array, g_object_ref (child_item));
       gtk_bitset_iter_next (&iter, &current_item_position);
     }
 
@@ -3012,7 +3105,7 @@ stamp_conversation_list_trash (StampConversationList *self,
     if (!item)
       return FALSE;
 
-    g_ptr_array_add (node_array, item);
+    g_ptr_array_add (node_array, g_object_ref (item));
   }
 
   if (!self->is_collection) {
@@ -3050,12 +3143,7 @@ stamp_conversation_list_trash (StampConversationList *self,
         g_warning ("%s: Could not synchronize folder: %s", G_STRFUNC, error->message);
 
       for (gint idx = 0; idx < node_array->len; idx++)
-        stamp_conversation_item_set_hidden (STAMP_CONVERSATION_ITEM (node_array->pdata[idx]), TRUE);
-
-      g_list_model_items_changed (G_LIST_MODEL (self->list_store),
-                                  0,
-                                  g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
-                                  g_list_model_get_n_items (G_LIST_MODEL (self->list_store)));
+        set_item_hidden (self, STAMP_CONVERSATION_ITEM (node_array->pdata[idx]), TRUE);
 
       stamp_conversation_list_unselect (self);
       return FALSE;
@@ -3111,12 +3199,7 @@ stamp_conversation_list_trash (StampConversationList *self,
   }
 
   for (gint idx = 0; idx < node_array->len; idx++)
-    stamp_conversation_item_set_hidden (STAMP_CONVERSATION_ITEM (node_array->pdata[idx]), TRUE);
-
-  g_list_model_items_changed (G_LIST_MODEL (self->list_store),
-                              0,
-                              g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
-                              g_list_model_get_n_items (G_LIST_MODEL (self->list_store)));
+    set_item_hidden (self, STAMP_CONVERSATION_ITEM (node_array->pdata[idx]), TRUE);
 
   return TRUE;
 }
@@ -3162,10 +3245,20 @@ void
 stamp_conversation_list_finalize_trash (StampConversationList *self,
                                         gboolean               select_next)
 {
+  StampConversationItem *selected_item;
+  gboolean keep_selection;
+
   if (!self->trash_array || !self->trash_entries)
     return;
 
+  selected_item = gtk_single_selection_get_selected_item (self->single_selection);
+  keep_selection = !self->selection_mode && selected_item &&
+                   !g_ptr_array_find (self->trash_array, selected_item, NULL);
+
   stamp_conversation_list_commit_trash (self);
+
+  if (keep_selection)
+    return;
 
   if (self->selection_mode || !select_next)
     stamp_conversation_list_unselect (self);
@@ -3190,13 +3283,8 @@ stamp_conversation_list_undo_trash (StampConversationList *self)
   for (gint idx = 0; idx < self->trash_array->len; idx++) {
     StampConversationItem *item = STAMP_CONVERSATION_ITEM (self->trash_array->pdata[idx]);
 
-    stamp_conversation_item_set_hidden (item, FALSE);
+    set_item_hidden (self, item, FALSE);
   }
-
-  g_list_model_items_changed (G_LIST_MODEL (self->list_store),
-                              0,
-                              g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
-                              g_list_model_get_n_items (G_LIST_MODEL (self->list_store)));
 
   g_clear_pointer (&self->trash_array, g_ptr_array_unref);
   g_clear_list (&self->trash_entries, trash_entry_free);
