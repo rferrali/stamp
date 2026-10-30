@@ -39,5 +39,8 @@ stamp_contact_row_bind_mail (StampContactRow  *self,
                              StampContactItem *item,
                              StampContactList *list);
 
+void
+stamp_contact_row_unbind (StampContactRow *self);
+
 G_END_DECLS
 

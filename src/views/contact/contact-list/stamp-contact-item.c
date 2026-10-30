@@ -33,7 +33,9 @@ G_DEFINE_FINAL_TYPE (StampContactItem, stamp_contact_item, G_TYPE_OBJECT);
 static void
 stamp_contact_item_dispose (GObject *object)
 {
-  /* StampContactItem *self = STAMP_CONTACT_ITEM (object); */
+  StampContactItem *self = STAMP_CONTACT_ITEM (object);
+
+  g_clear_object (&self->contact);
 
   G_OBJECT_CLASS (stamp_contact_item_parent_class)->dispose (object);
 }

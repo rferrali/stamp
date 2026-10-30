@@ -233,6 +233,14 @@ on_setup_list_item (GtkListItemFactory *factory,
 }
 
 static void
+on_unbind_list_item (GtkListItemFactory *factory,
+                     GtkListItem        *list_item,
+                     gpointer            user_data)
+{
+  stamp_contact_row_unbind (STAMP_CONTACT_ROW (gtk_list_item_get_child (list_item)));
+}
+
+static void
 on_bind_list_item (GtkListItemFactory *factory,
                    GtkListItem        *list_item,
                    gpointer            user_data)
@@ -497,6 +505,7 @@ stamp_contact_list_class_init (StampContactListClass *klass)
 
   gtk_widget_class_bind_template_callback (widget_class, on_setup_list_item);
   gtk_widget_class_bind_template_callback (widget_class, on_bind_list_item);
+  gtk_widget_class_bind_template_callback (widget_class, on_unbind_list_item);
   gtk_widget_class_bind_template_callback (widget_class, on_selection_changed);
   gtk_widget_class_bind_template_callback (widget_class, on_contact_search_entry_changed);
   gtk_widget_class_bind_template_callback (widget_class, on_items_changed);

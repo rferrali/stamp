@@ -26,6 +26,7 @@ struct _StampBookRow {
   GtkWidget *image;
   GtkWidget *inscription;
   GtkWidget *spinner;
+  GBinding *loading_binding;
 };
 
 G_DEFINE_FINAL_TYPE (StampBookRow, stamp_book_row, GTK_TYPE_BOX);
@@ -37,9 +38,19 @@ stamp_book_row_init (StampBookRow *self)
 }
 
 static void
+stamp_book_row_dispose (GObject *object)
+{
+  stamp_book_row_unbind (STAMP_BOOK_ROW (object));
+  gtk_widget_dispose_template (GTK_WIDGET (object), STAMP_TYPE_BOOK_ROW);
+  G_OBJECT_CLASS (stamp_book_row_parent_class)->dispose (object);
+}
+
+static void
 stamp_book_row_class_init (StampBookRowClass *klass)
 {
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+
+  G_OBJECT_CLASS (klass)->dispose = stamp_book_row_dispose;
 
   gtk_widget_class_set_template_from_resource (widget_class, "/org/tabos/stamp/views/contact/book-list/stamp-book-row.ui");
 
@@ -55,12 +66,22 @@ stamp_book_row_new (void)
 }
 
 void
+stamp_book_row_unbind (StampBookRow *self)
+{
+  if (self->loading_binding) {
+    g_binding_unbind (self->loading_binding);
+    g_clear_object (&self->loading_binding);
+  }
+}
+
+void
 stamp_book_row_bind (StampBookRow *self,
                      StampItem    *item)
 {
   const gchar *icon_name = stamp_item_get_icon_name (item);
   const gchar *name = stamp_item_get_name (item);
 
+  stamp_book_row_unbind (self);
   /* Image */
   gtk_image_set_from_icon_name (GTK_IMAGE (self->image), icon_name);
   gtk_widget_set_visible (self->image, icon_name != NULL);
@@ -79,5 +100,5 @@ stamp_book_row_bind (StampBookRow *self,
     gtk_inscription_set_text (GTK_INSCRIPTION (self->inscription), name);
   }
 
-  g_object_bind_property (item, "loading", self->spinner, "visible", G_BINDING_DEFAULT);
+  self->loading_binding = g_object_ref (g_object_bind_property (item, "loading", self->spinner, "visible", G_BINDING_SYNC_CREATE));
 }

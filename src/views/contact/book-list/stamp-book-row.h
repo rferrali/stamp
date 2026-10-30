@@ -35,5 +35,8 @@ void
 stamp_book_row_bind (StampBookRow *self,
                      StampItem    *item);
 
+void
+stamp_book_row_unbind (StampBookRow *self);
+
 G_END_DECLS
 

@@ -23,6 +23,7 @@ template $StampBookList: Adw.Bin {
     factory: SignalListItemFactory {
       setup => $on_setup_folder();
       bind => $on_bind_folder();
+      unbind => $on_unbind_folder();
     };
   }
 }

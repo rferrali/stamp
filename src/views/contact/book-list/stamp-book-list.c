@@ -65,6 +65,14 @@ on_setup_folder (GtkListItemFactory *factory,
 }
 
 static void
+on_unbind_folder (GtkListItemFactory *factory,
+                  GtkListItem        *list_item,
+                  gpointer            user_data)
+{
+  stamp_book_row_unbind (STAMP_BOOK_ROW (gtk_tree_expander_get_child (GTK_TREE_EXPANDER (gtk_list_item_get_child (list_item)))));
+}
+
+static void
 on_bind_folder (GtkListItemFactory *factory,
                 GtkListItem        *list_item,
                 gpointer            user_data)
@@ -161,6 +169,7 @@ stamp_book_list_class_init (StampBookListClass *klass)
   gtk_widget_class_bind_template_callback (widget_class, on_selection_changed);
   gtk_widget_class_bind_template_callback (widget_class, on_setup_folder);
   gtk_widget_class_bind_template_callback (widget_class, on_bind_folder);
+  gtk_widget_class_bind_template_callback (widget_class, on_unbind_folder);
 
   signals[BOOK_SELECTED] = g_signal_new ("book-selected", G_OBJECT_CLASS_TYPE (klass),
                                          G_SIGNAL_RUN_FIRST | G_SIGNAL_RUN_LAST,

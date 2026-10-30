@@ -131,11 +131,21 @@ init_context_set_error (InitContext *ctx,
 }
 
 static void
+stamp_contacts_service_free (gpointer data)
+{
+  StampContactsService *service = data;
+
+  g_clear_object (&service->client);
+  g_clear_object (&service->source);
+  g_free (service);
+}
+
+static void
 stamp_account_init (StampAccount *self)
 {
   self->cancellable = g_cancellable_new ();
 
-  self->address_books = g_ptr_array_new_with_free_func (g_free);
+  self->address_books = g_ptr_array_new_with_free_func (stamp_contacts_service_free);
 }
 
 static void

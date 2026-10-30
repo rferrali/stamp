@@ -83,6 +83,7 @@ stamp_book_item_constructed (GObject *object)
 static void
 stamp_book_item_dispose (GObject *object)
 {
+  g_clear_object (&STAMP_BOOK_ITEM (object)->client);
   G_OBJECT_CLASS (stamp_book_item_parent_class)->dispose (object);
 }
 

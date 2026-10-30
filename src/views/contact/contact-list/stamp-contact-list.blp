@@ -101,7 +101,7 @@ template $StampContactList: Adw.BreakpointBin {
             factory: SignalListItemFactory {
               setup => $on_setup_list_item();
               bind => $on_bind_list_item();
-              // unbind => $on_unbind_list_item();
+              unbind => $on_unbind_list_item();
             };
 
             model: SingleSelection selection {

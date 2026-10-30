@@ -26,6 +26,7 @@ struct _StampContactRow {
 
   GtkWidget *avatar;
   GtkWidget *name;
+  GBinding *name_binding;
 };
 
 G_DEFINE_FINAL_TYPE (StampContactRow, stamp_contact_row, ADW_TYPE_BIN);
@@ -41,6 +42,7 @@ stamp_contact_row_dispose (GObject *object)
 {
   StampContactRow *self = STAMP_CONTACT_ROW (object);
 
+  stamp_contact_row_unbind (self);
   gtk_widget_dispose_template (GTK_WIDGET (self), STAMP_TYPE_CONTACT_ROW);
 
   G_OBJECT_CLASS (stamp_contact_row_parent_class)->dispose (object);
@@ -163,6 +165,15 @@ transfer_sort_mode_to (GBinding     *binding,
 }
 
 void
+stamp_contact_row_unbind (StampContactRow *self)
+{
+  if (self->name_binding) {
+    g_binding_unbind (self->name_binding);
+    g_clear_object (&self->name_binding);
+  }
+}
+
+void
 stamp_contact_row_bind_mail (StampContactRow  *self,
                              StampContactItem *item,
                              StampContactList *list)
@@ -171,12 +182,15 @@ stamp_contact_row_bind_mail (StampContactRow  *self,
   const gchar *name = stamp_contact_item_get_name (item);
   g_autoptr (GdkTexture) photo = NULL;
 
+  stamp_contact_row_unbind (self);
   photo = stamp_contact_item_get_photo (item);
   adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), photo ? GDK_PAINTABLE (photo) : NULL);
 
   if (!name || strlen (name) == 0)
     name = mail;
 
-  g_object_bind_property_full (list, "sort-mode", self->name, "text", G_BINDING_SYNC_CREATE, transfer_sort_mode_to, NULL, item, NULL);
+  self->name_binding = g_object_ref (g_object_bind_property_full (list, "sort-mode", self->name, "text",
+                                                                  G_BINDING_SYNC_CREATE, transfer_sort_mode_to,
+                                                                  NULL, g_object_ref (item), g_object_unref));
   adw_avatar_set_text (ADW_AVATAR (self->avatar), name);
 }
