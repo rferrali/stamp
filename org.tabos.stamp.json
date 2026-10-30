@@ -208,9 +208,9 @@
       ],
       "sources": [
         {
-          "type": "archive",
-          "url": "https://download.gnome.org/sources/evolution-ews/3.62/evolution-ews-3.62.0.tar.xz",
-          "sha256": "85b8e7089582d9d5ea6dc1a82325b3e5c4b0396924f7a6e0f743a9128cad73d4"
+          "type": "git",
+          "url": "https://gitlab.gnome.org/jbrummer/evolution-ews.git",
+          "branch": "priority"
         }
       ],
       "post-install": [

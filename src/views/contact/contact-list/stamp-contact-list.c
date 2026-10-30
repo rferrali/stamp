@@ -374,7 +374,7 @@ on_search_contact (GObject      *source,
   g_autoptr (GError) error = NULL;
   g_autoslist (EContact) list = NULL;
 
-  e_book_client_get_contacts_finish (E_BOOK_CLIENT (source), res, &list, &error);
+  list = stamp_account_search_contacts_finish (self->account, E_BOOK_CLIENT (source), res, &error);
   if (g_cancellable_is_cancelled (request->cancellable))
     return;
 

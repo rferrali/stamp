@@ -174,6 +174,10 @@ stamp_account_get_photo_finish (StampAccount  *self,
                                 GAsyncResult  *result,
                                 GError       **error);
 
+/* Search words are matched independently. Search-only directories require a
+ * word of at least three characters and complete within ten seconds.
+ * Results must be consumed with stamp_account_search_contacts_finish().
+ */
 void
 stamp_account_search_contacts (StampAccount        *self,
                                EBookClient         *client,

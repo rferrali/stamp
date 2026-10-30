@@ -486,6 +486,119 @@ stamp_account_get_photo_finish (StampAccount  *session,
   return ptr;
 }
 
+static void
+free_contact_slist (gpointer data)
+{
+  g_slist_free_full (data, g_object_unref);
+}
+
+typedef struct {
+  GCancellable *cancellable;
+  GCancellable *parent;
+  gulong cancelled_id;
+  guint timeout_id;
+  gboolean completed;
+} ContactSearch;
+
+static void
+contact_search_free (ContactSearch *search)
+{
+  g_clear_handle_id (&search->timeout_id, g_source_remove);
+  if (search->parent && search->cancelled_id)
+    g_cancellable_disconnect (search->parent, search->cancelled_id);
+  g_clear_object (&search->parent);
+  g_clear_object (&search->cancellable);
+  g_free (search);
+}
+
+static void
+on_contact_search_cancelled (GCancellable *parent,
+                             gpointer      user_data)
+{
+  g_cancellable_cancel (G_CANCELLABLE (user_data));
+}
+
+static gboolean
+on_contact_search_timeout (gpointer user_data)
+{
+  GTask *task = G_TASK (user_data);
+  ContactSearch *search = g_task_get_task_data (task);
+  ESource *source = e_client_get_source (E_CLIENT (g_task_get_source_object (task)));
+
+  search->timeout_id = 0;
+  search->completed = TRUE;
+  g_cancellable_cancel (search->cancellable);
+  g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_TIMED_OUT,
+                           "Searching address book '%s' timed out after 10 seconds",
+                           e_source_get_display_name (source));
+  return G_SOURCE_REMOVE;
+}
+
+static void
+on_contact_search_ready (GObject      *source,
+                         GAsyncResult *res,
+                         gpointer      user_data)
+{
+  g_autoptr (GTask) task = user_data;
+  ContactSearch *search = g_task_get_task_data (task);
+  g_autoptr (GError) error = NULL;
+  GSList *contacts = NULL;
+
+  e_book_client_get_contacts_finish (E_BOOK_CLIENT (source), res, &contacts, &error);
+  if (search->completed) {
+    free_contact_slist (contacts);
+    return;
+  }
+
+  search->completed = TRUE;
+  g_clear_handle_id (&search->timeout_id, g_source_remove);
+  if (error) {
+    free_contact_slist (contacts);
+    g_task_return_error (task, g_steal_pointer (&error));
+  } else {
+    g_task_return_pointer (task, contacts, free_contact_slist);
+  }
+}
+
+static gchar *
+build_contact_search_query (const gchar *search_text,
+                            gboolean     directory)
+{
+  g_auto (GStrv) words = NULL;
+  g_autoptr (GPtrArray) conditions = g_ptr_array_new ();
+  g_autoptr (EBookQuery) query = NULL;
+  guint longest = 0;
+
+  if (!search_text || !*search_text)
+    return NULL;
+  words = g_strsplit_set (search_text, " \t\r\n", -1);
+  for (guint i = 1; words[i]; i++) {
+    if (g_utf8_strlen (words[i], -1) > g_utf8_strlen (words[longest], -1))
+      longest = i;
+  }
+
+  /* The Microsoft 365 backend uses the first term for its server query.
+   * Short prefixes can fetch many pages and a photo per organizational user.
+   */
+  if (!*words[longest] || (directory && g_utf8_strlen (words[longest], -1) < 3))
+    return NULL;
+
+  g_ptr_array_add (conditions, e_book_query_field_exists (E_CONTACT_EMAIL));
+  for (guint i = 0; words[i]; i++) {
+    guint index = i == 0 ? longest : (i == longest ? 0 : i);
+    EBookQuery *fields[2];
+
+    if (!*words[index])
+      continue;
+    fields[0] = e_book_query_field_test (E_CONTACT_FULL_NAME, E_BOOK_QUERY_CONTAINS, words[index]);
+    fields[1] = e_book_query_field_test (E_CONTACT_EMAIL, E_BOOK_QUERY_CONTAINS, words[index]);
+    g_ptr_array_add (conditions, e_book_query_or (G_N_ELEMENTS (fields), fields, TRUE));
+  }
+
+  query = e_book_query_and (conditions->len, (EBookQuery **)conditions->pdata, TRUE);
+  return e_book_query_to_string (query);
+}
+
 void
 stamp_account_search_contacts (StampAccount        *self,
                                EBookClient         *client,
@@ -494,32 +607,39 @@ stamp_account_search_contacts (StampAccount        *self,
                                GAsyncReadyCallback  callback,
                                gpointer             user_data)
 {
-  g_autoptr (GError) error = NULL;
-  g_autofree char *sexp = NULL;
-  EBookQuery *query[2];
-  EBookQuery *exists_query;
-  EBookQuery *or_query;
-  EBookQuery *final_query;
-  EBookClient *book_client;
+  EBookClient *book_client = client ? client : stamp_account_get_book_client (self);
+  g_autoptr (GTask) task = g_task_new (book_client, cancellable, callback, user_data);
+  g_autofree gchar *sexp = NULL;
+  ContactSearch *search;
+  gboolean directory;
 
-  if (client)
-    book_client = client;
-  else
-    book_client = stamp_account_get_book_client (self);
-
-  if (!book_client)
+  g_task_set_source_tag (task, stamp_account_search_contacts);
+  if (!book_client) {
+    g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED, "No address book is connected");
     return;
+  }
 
-  g_debug ("%s: Query for %s in %s", G_STRFUNC, search_text, e_source_get_display_name (e_client_get_source (E_CLIENT (book_client))));
+  directory = stamp_account_address_book_is_search_only (self, E_CLIENT (book_client));
+  sexp = build_contact_search_query (search_text, directory);
+  if (!sexp) {
+    g_task_return_pointer (task, NULL, free_contact_slist);
+    return;
+  }
 
-  query[0] = e_book_query_field_test (E_CONTACT_EMAIL, E_BOOK_QUERY_CONTAINS, search_text);
-  query[1] = e_book_query_field_test (E_CONTACT_FULL_NAME, E_BOOK_QUERY_CONTAINS, search_text);
-
-  exists_query = e_book_query_field_exists (E_CONTACT_EMAIL);
-  or_query = e_book_query_or (2, query, TRUE);
-  final_query = e_book_query_andv (exists_query, or_query, NULL);
-  sexp = e_book_query_to_string (final_query);
-  e_book_client_get_contacts (book_client, sexp, cancellable, callback, user_data);
+  search = g_new0 (ContactSearch, 1);
+  search->cancellable = g_cancellable_new ();
+  if (cancellable) {
+    search->parent = g_object_ref (cancellable);
+    search->cancelled_id = g_cancellable_connect (cancellable,
+                                                  G_CALLBACK (on_contact_search_cancelled),
+                                                  g_object_ref (search->cancellable), g_object_unref);
+  }
+  g_task_set_task_data (task, search, (GDestroyNotify)contact_search_free);
+  /* if (directory) */
+  /*   search->timeout_id = g_timeout_add_seconds_full (G_PRIORITY_DEFAULT, 10, on_contact_search_timeout, */
+  /*                                                   g_object_ref (task), g_object_unref); */
+  e_book_client_get_contacts (book_client, sexp, search->cancellable,
+                              on_contact_search_ready, g_object_ref (task));
 }
 
 GSList *
@@ -528,28 +648,9 @@ stamp_account_search_contacts_finish (StampAccount  *self,
                                       GAsyncResult  *res,
                                       GError       **error)
 {
-  GSList *contacts = NULL;
-  g_autoptr (GError) local_error = NULL;
-  EBookClient *book_client;
+  g_return_val_if_fail (g_async_result_is_tagged (res, stamp_account_search_contacts), NULL);
 
-  if (client)
-    book_client = client;
-  else
-    book_client = stamp_account_get_book_client (self);
-
-  e_book_client_get_contacts_finish (book_client, res, &contacts, &local_error);
-  if (local_error) {
-    g_warning ("Could not get contacts: %s", local_error->message);
-    return NULL;
-  }
-
-  return contacts;
-}
-
-static void
-free_contact_slist (gpointer data)
-{
-  g_slist_free_full ((GSList *)data, (GDestroyNotify)g_object_unref);
+  return g_task_propagate_pointer (G_TASK (res), error);
 }
 
 static void

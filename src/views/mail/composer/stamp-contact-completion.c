@@ -25,7 +25,6 @@
 #include <libpsl.h>
 
 #include "stamp-account.h"
-#include "stamp-session.h"
 #include "stamp-tag.h"
 
 struct _StampContactCompletion {
@@ -37,6 +36,7 @@ struct _StampContactCompletion {
   GtkWidget *view;
 
   GCancellable *cancellable;
+  guint search_timeout_id;
   GtkSingleSelection *model;
   GListStore *store;
   GtkFilter *filter;
@@ -78,7 +78,7 @@ on_activate (GtkListView *view,
 {
   StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
   g_autoptr (EContact) contact = g_list_model_get_item (G_LIST_MODEL (self->model), position);
-  GSList *emails = e_contact_get (contact, E_CONTACT_EMAIL);
+  GList *emails = e_contact_get (contact, E_CONTACT_EMAIL);
   GtkWidget *tag = stamp_tag_new (self->account);
   const gchar *name = e_contact_get_const (contact, E_CONTACT_FULL_NAME);
 
@@ -88,6 +88,7 @@ on_activate (GtkListView *view,
   stamp_tag_set_mail (STAMP_TAG (tag), emails->data);
 
   stamp_contact_completion_add_tag (self, STAMP_TAG (tag));
+  g_list_free_full (emails, g_free);
 
   gtk_popover_popdown (GTK_POPOVER (self->popover));
 }
@@ -138,7 +139,13 @@ on_focus_leave (GtkEventControllerFocus *controller,
                 gpointer                 user_data)
 {
   StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
-  GtkWidget *focus_widget = gtk_root_get_focus (gtk_widget_get_root (GTK_WIDGET (self)));
+  GtkRoot *root = gtk_widget_get_root (GTK_WIDGET (self));
+  GtkWidget *focus_widget;
+
+  if (!root)
+    return;
+
+  focus_widget = gtk_root_get_focus (root);
 
   if (focus_widget && gtk_widget_has_focus (self->entry) && gtk_widget_is_ancestor (focus_widget, GTK_WIDGET (self->entry)))
     return;
@@ -161,14 +168,15 @@ on_items_changed (GListModel *model,
   gint items = g_list_model_get_n_items (G_LIST_MODEL (self->model));
   const gchar *text = gtk_editable_get_text (GTK_EDITABLE (self->entry));
 
+  if (!self->popover || !gtk_widget_get_root (GTK_WIDGET (self)))
+    return;
   if (items > 0 && text && strlen (text) > 0) {
-    GdkRectangle rect = { 0, 0, 1, gtk_widget_get_height (self->wrap_box) };
+    GdkRectangle rect = { 0, 0, 1, gtk_widget_get_height (GTK_WIDGET (self)) };
 
     gtk_popover_set_position (GTK_POPOVER (pop), GTK_POS_BOTTOM);
 
     gtk_widget_set_halign (GTK_WIDGET (pop), GTK_ALIGN_START);
     gtk_popover_set_pointing_to (GTK_POPOVER (pop), &rect);
-    gtk_popover_present (pop);
     gtk_popover_popup (pop);
   } else {
     gtk_popover_popdown (pop);
@@ -290,32 +298,92 @@ on_entry_activate (GtkWidget *widget,
   gtk_popover_popdown (GTK_POPOVER (self->popover));
 }
 
+typedef struct {
+  GWeakRef owner;
+  GCancellable *cancellable;
+  GHashTable *emails;
+  GPtrArray *contacts;
+  guint pending;
+  guint published;
+} CompletionSearch;
+
+static void
+completion_search_add (CompletionSearch *search,
+                       GSList           *contacts)
+{
+  for (GSList *iter = contacts; iter; iter = iter->next) {
+    EContact *contact = iter->data;
+    GList *emails = e_contact_get (contact, E_CONTACT_EMAIL);
+
+    for (GList *email = emails; email; email = email->next) {
+      const gchar *address = email->data;
+      g_autofree gchar *key = NULL;
+      EContact *copy;
+      GList single = { (gpointer)address, NULL, NULL };
+
+      if (!address || !*address)
+        continue;
+
+      key = g_utf8_casefold (address, -1);
+      if (g_hash_table_contains (search->emails, key))
+        continue;
+
+      g_hash_table_add (search->emails, g_steal_pointer (&key));
+
+      copy = e_contact_duplicate (contact);
+      e_contact_set (copy, E_CONTACT_EMAIL, &single);
+      g_ptr_array_add (search->contacts, copy);
+    }
+
+    g_list_free_full (emails, g_free);
+  }
+}
+
+static void
+completion_search_done (CompletionSearch *search)
+{
+  g_autoptr (StampContactCompletion) self = NULL;
+
+  self = g_weak_ref_get (&search->owner);
+  if (self && self->cancellable == search->cancellable && !g_cancellable_is_cancelled (search->cancellable)) {
+    if (search->contacts->len > search->published ||
+        (search->published == 0 && search->pending == 1)) {
+      g_list_store_splice (self->store, 0, g_list_model_get_n_items (G_LIST_MODEL (self->store)), search->contacts->pdata, search->contacts->len);
+      gtk_filter_changed (self->filter, GTK_FILTER_CHANGE_DIFFERENT);
+      search->published = search->contacts->len;
+    }
+  }
+
+  if (--search->pending != 0)
+    return;
+
+  g_weak_ref_clear (&search->owner);
+  g_object_unref (search->cancellable);
+  g_hash_table_unref (search->emails);
+  g_ptr_array_unref (search->contacts);
+  g_free (search);
+}
+
 static void
 on_search_contacts (GObject      *source,
                     GAsyncResult *res,
                     gpointer      user_data)
 {
-  StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
+  CompletionSearch *search = user_data;
   g_autoptr (GError) error = NULL;
-  g_autoptr (GPtrArray) array = NULL;
   g_autoslist (EContact) contacts = NULL;
 
-  contacts = stamp_account_search_contacts_finish (self->account, NULL, res, &error);
-  if (error) {
-    g_warning ("%s: Could not search contacts: %s", G_STRFUNC, error->message);
-    return;
+  contacts = stamp_account_search_contacts_finish (NULL, E_BOOK_CLIENT (source), res, &error);
+  if (!error) {
+    if (!g_cancellable_is_cancelled (search->cancellable))
+      completion_search_add (search, contacts);
+  } else if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+    ESource *book = e_client_get_source (E_CLIENT (source));
+
+    g_warning ("Could not search address book '%s': %s", e_source_get_display_name (book), error->message);
   }
 
-  array = g_ptr_array_new ();
-  for (GSList *iter = contacts; iter && iter->data; iter = g_slist_next (iter)) {
-    EContact *contact = E_CONTACT (iter->data);
-
-    g_ptr_array_add (array, contact);
-  }
-
-  g_list_store_splice (self->store, 0, g_list_model_get_n_items (G_LIST_MODEL (self->store)), array->pdata, array->len);
-
-  gtk_filter_changed (self->filter, GTK_FILTER_CHANGE_DIFFERENT);
+  completion_search_done (search);
 }
 
 static void
@@ -323,28 +391,67 @@ on_search_conversations (GObject      *source,
                          GAsyncResult *res,
                          gpointer      user_data)
 {
-  StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
+  CompletionSearch *search = user_data;
   g_autoptr (GError) error = NULL;
-  g_autoptr (GPtrArray) array = NULL;
-  g_autoslist (EContact) contacts = NULL;
+  g_autoslist (EContact) contacts = stamp_account_search_conversations_finish (STAMP_ACCOUNT (source), res, &error);
 
-  contacts = stamp_account_search_conversations_finish (self->account, res, &error);
-  if (error) {
-    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-      g_warning ("%s: Could not search conversations: %s", G_STRFUNC, error->message);
-    return;
+  if (!g_cancellable_is_cancelled (search->cancellable) && !error)
+    completion_search_add (search, contacts);
+
+  completion_search_done (search);
+}
+
+static gboolean
+start_completion_search (gpointer user_data)
+{
+  StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
+  CompletionSearch *search;
+  g_autoptr (GHashTable) seen_books = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  GPtrArray *books;
+  const gchar *text = gtk_editable_get_text (GTK_EDITABLE (self->entry));
+
+  self->search_timeout_id = 0;
+  if (!self->account || !*text)
+    return G_SOURCE_REMOVE;
+
+  self->cancellable = g_cancellable_new ();
+
+  search = g_new0 (CompletionSearch, 1);
+  g_weak_ref_init (&search->owner, self);
+  search->cancellable = g_object_ref (self->cancellable);
+  search->emails = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+  search->contacts = g_ptr_array_new_with_free_func (g_object_unref);
+  search->pending = 1;
+
+  books = stamp_account_get_books (self->account);
+  for (guint i = 0; books && i < books->len; i++) {
+    StampContactsService *service = g_ptr_array_index (books, i);
+    EBookClient *client = stamp_contacts_service_get_client (service);
+    ESource *source;
+    const gchar *uid;
+
+    if (!stamp_contacts_service_get_enabled (service) || !client)
+      continue;
+
+    source = e_client_get_source (E_CLIENT (client));
+    uid = e_source_get_uid (source);
+
+    if (!e_source_get_enabled (source) || g_hash_table_contains (seen_books, uid))
+      continue;
+
+    g_hash_table_add (seen_books, g_strdup (uid));
+    search->pending++;
+
+    stamp_account_search_contacts (self->account, client, text, self->cancellable, on_search_contacts, search);
   }
 
-  array = g_ptr_array_new ();
-  for (GSList *iter = contacts; iter && iter->data; iter = g_slist_next (iter)) {
-    EContact *contact = E_CONTACT (iter->data);
-
-    g_ptr_array_add (array, contact);
+  if (search->pending == 1) {
+    search->pending++;
+    stamp_account_search_conversations (self->account, text, self->cancellable, on_search_conversations, search);
   }
 
-  g_list_store_splice (self->store, 0, g_list_model_get_n_items (G_LIST_MODEL (self->store)), array->pdata, array->len);
-
-  gtk_filter_changed (self->filter, GTK_FILTER_CHANGE_DIFFERENT);
+  completion_search_done (search);
+  return G_SOURCE_REMOVE;
 }
 
 static void
@@ -353,18 +460,15 @@ on_changed (GtkEditable *ed,
 {
   StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
   g_autofree char *text = NULL;
-  GPtrArray *books;
-
   if (self->block)
     return;
 
   text = g_strdup (gtk_editable_get_text (GTK_EDITABLE (self->entry)));
   self->block = TRUE;
+  g_clear_handle_id (&self->search_timeout_id, g_source_remove);
 
-  if (self->cancellable) {
-    g_cancellable_cancel (self->cancellable);
-    g_clear_object (&self->cancellable);
-  }
+  g_cancellable_cancel (self->cancellable);
+  g_clear_object (&self->cancellable);
 
   if (text) {
     g_auto (GStrv) split = g_strsplit (g_strstrip (text), ",", -1);
@@ -391,13 +495,14 @@ on_changed (GtkEditable *ed,
       gtk_editable_set_position (GTK_EDITABLE (self->entry), -1);
     }
 
-    self->cancellable = g_cancellable_new ();
+    if (new_string->len == 0 || !self->account)
+      g_list_store_remove_all (self->store);
+    gtk_filter_changed (self->filter, GTK_FILTER_CHANGE_DIFFERENT);
 
-    books = stamp_account_get_books (self->account);
-    if (books && books->len > 0)
-      stamp_account_search_contacts (self->account, NULL, new_string->str, self->cancellable, on_search_contacts, self);
-    else
-      stamp_account_search_conversations (self->account, new_string->str, self->cancellable, on_search_conversations, self);
+    if (new_string->len > 0 && self->account)
+      self->search_timeout_id = g_timeout_add (300, start_completion_search, self);
+
+    g_string_free (new_string, TRUE);
   }
 
   self->block = FALSE;
@@ -436,6 +541,34 @@ stamp_contact_completion_get_property (GObject    *object,
 
 
 static void
+stamp_contact_completion_dispose (GObject *object)
+{
+  StampContactCompletion *self = STAMP_CONTACT_COMPLETION (object);
+
+  self->block = TRUE;
+
+  g_clear_handle_id (&self->search_timeout_id, g_source_remove);
+  g_cancellable_cancel (self->cancellable);
+  g_clear_object (&self->cancellable);
+
+  if (self->popover) {
+    gtk_widget_unparent (self->popover);
+    self->popover = NULL;
+  }
+
+  g_clear_object (&self->model);
+  g_clear_object (&self->filter);
+  g_clear_object (&self->store);
+  g_clear_object (&self->account);
+  g_clear_pointer (&self->receivers, g_list_free);
+
+  adw_bin_set_child (ADW_BIN (self), NULL);
+  gtk_widget_dispose_template (GTK_WIDGET (self), STAMP_TYPE_CONTACT_COMPLETION);
+
+  G_OBJECT_CLASS (stamp_contact_completion_parent_class)->dispose (object);
+}
+
+static void
 stamp_contact_completion_class_init (StampContactCompletionClass *klass)
 {
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
@@ -451,6 +584,7 @@ stamp_contact_completion_class_init (StampContactCompletionClass *klass)
   gtk_widget_class_bind_template_callback (widget_class, on_focus_leave);
   gtk_widget_class_bind_template_callback (widget_class, on_key_pressed);
 
+  object_class->dispose = stamp_contact_completion_dispose;
   object_class->set_property = stamp_contact_completion_set_property;
   object_class->get_property = stamp_contact_completion_get_property;
 
@@ -472,28 +606,28 @@ match (gpointer item,
   const gchar *name = e_contact_get_const (contact, E_CONTACT_FULL_NAME);
   const gchar *text = gtk_editable_get_text (GTK_EDITABLE (self->entry));
   g_autofree char *lower_text = NULL;
+  g_autofree char *lower_contact = NULL;
+  g_autoptr (GString) contact_text = g_string_new (name ? name : "");
+  g_auto (GStrv) words = NULL;
+  GList *emails;
 
   if (!text)
     return 0;
 
-  lower_text = g_ascii_strdown (text, -1);
+  lower_text = g_utf8_casefold (text, -1);
+  emails = e_contact_get (contact, E_CONTACT_EMAIL);
+  for (GList *iter = emails; iter; iter = iter->next)
+    g_string_append_printf (contact_text, "\n%s", (const gchar *)iter->data);
+  g_list_free_full (emails, g_free);
 
-  if (name) {
-    g_autofree char *lower_name = g_ascii_strdown (name, -1);
-
-    if (g_strstr_len (lower_name, -1, lower_text) != NULL)
-      return 1;
+  lower_contact = g_utf8_casefold (contact_text->str, -1);
+  words = g_strsplit_set (lower_text, " \t\r\n", -1);
+  for (guint i = 0; words[i]; i++) {
+    if (*words[i] && !strstr (lower_contact, words[i]))
+      return 0;
   }
 
-  if (e_contact_field_is_string (E_CONTACT_EMAIL)) {
-    const gchar *mail = e_contact_get_const (contact, E_CONTACT_EMAIL);
-    g_autofree char *lower_mail = g_ascii_strdown (mail, -1);
-
-    if (g_strstr_len (lower_mail, -1, lower_text) != NULL)
-      return 1;
-  }
-
-  return 0;
+  return 1;
 }
 
 static gint
@@ -515,23 +649,58 @@ on_setup (GtkSignalListItemFactory *f,
           GtkListItem              *item,
           gpointer                  data)
 {
-  GtkWidget *row = adw_action_row_new ();
+  GtkWidget *row = gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 12);
   GtkWidget *avatar = adw_avatar_new (32, "", TRUE);
+  GtkWidget *labels = gtk_box_new (GTK_ORIENTATION_VERTICAL, 2);
+  GtkWidget *title = gtk_label_new (NULL);
+  GtkWidget *subtitle = gtk_label_new (NULL);
 
   gtk_widget_set_hexpand (row, TRUE);
-  adw_action_row_add_prefix (ADW_ACTION_ROW (row), avatar);
+  gtk_widget_set_margin_start (row, 12);
+  gtk_widget_set_margin_end (row, 12);
+  gtk_widget_set_margin_top (row, 8);
+  gtk_widget_set_margin_bottom (row, 8);
+  gtk_widget_set_valign (avatar, GTK_ALIGN_CENTER);
+  gtk_widget_set_hexpand (labels, TRUE);
+  gtk_label_set_xalign (GTK_LABEL (title), 0);
+  gtk_label_set_xalign (GTK_LABEL (subtitle), 0);
+  gtk_label_set_ellipsize (GTK_LABEL (title), PANGO_ELLIPSIZE_END);
+  gtk_label_set_ellipsize (GTK_LABEL (subtitle), PANGO_ELLIPSIZE_END);
+  gtk_widget_add_css_class (subtitle, "dim-label");
+  gtk_widget_add_css_class (subtitle, "caption");
+  gtk_box_append (GTK_BOX (labels), title);
+  gtk_box_append (GTK_BOX (labels), subtitle);
+  gtk_box_append (GTK_BOX (row), avatar);
+  gtk_box_append (GTK_BOX (row), labels);
   g_object_set_data (G_OBJECT (row), "avatar", avatar);
+  g_object_set_data (G_OBJECT (row), "title", title);
+  g_object_set_data (G_OBJECT (row), "subtitle", subtitle);
   gtk_list_item_set_child (item, row);
 }
 
 static void
-on_get_photo (gpointer photo,
-              gpointer user_data)
+set_contact_photo (AdwAvatar *avatar,
+                   EContact  *contact)
 {
-  GtkWidget *avatar = GTK_WIDGET (user_data);
+  EContactPhoto *photo = e_contact_get (contact, E_CONTACT_PHOTO);
+  g_autoptr (GdkTexture) texture = NULL;
 
-  if (photo)
-    adw_avatar_set_custom_image (ADW_AVATAR (avatar), GDK_PAINTABLE (photo));
+  /* Binding suggestions must not start another search through every book. */
+  if (photo) {
+    if (photo->type == E_CONTACT_PHOTO_TYPE_INLINED) {
+      g_autoptr (GBytes) bytes = g_bytes_new (photo->data.inlined.data, photo->data.inlined.length);
+
+      texture = gdk_texture_new_from_bytes (bytes, NULL);
+    } else if (photo->type == E_CONTACT_PHOTO_TYPE_URI && photo->data.uri &&
+               g_str_has_prefix (photo->data.uri, "file://")) {
+      g_autoptr (GFile) file = g_file_new_for_uri (photo->data.uri);
+
+      texture = gdk_texture_new_from_file (file, NULL);
+    }
+    e_contact_photo_free (photo);
+  }
+
+  adw_avatar_set_custom_image (avatar, texture ? GDK_PAINTABLE (texture) : NULL);
 }
 
 static void
@@ -541,25 +710,21 @@ on_bind (GtkSignalListItemFactory *f,
 {
   EContact *contact = gtk_list_item_get_item (item);
   GtkWidget *row = gtk_list_item_get_child (item);
-  g_autofree char *tmp = NULL;
   GtkWidget *avatar = g_object_get_data (G_OBJECT (row), "avatar");
   const gchar *name = e_contact_get_const (contact, E_CONTACT_FULL_NAME);
-  GSList *emails = e_contact_get (contact, E_CONTACT_EMAIL);
-  StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
+  GList *emails = e_contact_get (contact, E_CONTACT_EMAIL);
 
-  adw_preferences_row_set_use_markup (ADW_PREFERENCES_ROW (row), TRUE);
+  if (!emails)
+    return;
 
-  tmp = g_markup_escape_text (name, -1);
-  adw_avatar_set_text (ADW_AVATAR (avatar), tmp);
+  adw_avatar_set_text (ADW_AVATAR (avatar), name ? name : (const gchar *)emails->data);
+  set_contact_photo (ADW_AVATAR (avatar), contact);
 
-  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), tmp);
-  adw_action_row_set_subtitle (ADW_ACTION_ROW (row), emails->data);
+  gtk_label_set_text (GTK_LABEL (g_object_get_data (G_OBJECT (row), "title")),
+                      name ? name : (const gchar *)emails->data);
+  gtk_label_set_text (GTK_LABEL (g_object_get_data (G_OBJECT (row), "subtitle")), emails->data);
 
-  stamp_account_get_photo (self->account,
-                           emails->data,
-                           NULL,
-                           on_get_photo,
-                           avatar);
+  g_list_free_full (emails, g_free);
 }
 
 static void
@@ -576,7 +741,7 @@ stamp_contact_completion_init (StampContactCompletion *self)
   self->store = g_list_store_new (E_TYPE_CONTACT);
 
   self->filter = GTK_FILTER (gtk_custom_filter_new (match, self, NULL));
-  filtered = gtk_filter_list_model_new (G_LIST_MODEL (self->store), GTK_FILTER (self->filter));
+  filtered = gtk_filter_list_model_new (G_LIST_MODEL (g_object_ref (self->store)), GTK_FILTER (g_object_ref (self->filter)));
 
   sorter = GTK_SORTER (gtk_custom_sorter_new (sort, NULL, NULL));
   sorted = gtk_sort_list_model_new (G_LIST_MODEL (filtered), GTK_SORTER (sorter));
@@ -585,7 +750,7 @@ stamp_contact_completion_init (StampContactCompletion *self)
   gtk_widget_set_hexpand (self->popover, TRUE);
   gtk_widget_add_css_class (self->popover, "menu");
   gtk_widget_add_css_class (self->popover, "contact-completion-popover");
-  gtk_widget_set_parent (self->popover, self->wrap_box);
+  gtk_widget_set_parent (self->popover, GTK_WIDGET (self));
   gtk_widget_set_can_focus (self->popover, FALSE);
   gtk_popover_set_has_arrow (GTK_POPOVER (self->popover), FALSE);
   gtk_popover_set_autohide (GTK_POPOVER (self->popover), FALSE);
@@ -596,13 +761,12 @@ stamp_contact_completion_init (StampContactCompletion *self)
 
   scrolled_window = gtk_scrolled_window_new ();
   gtk_widget_set_hexpand (scrolled_window, TRUE);
-  /* gtk_widget_set_halign(scrolled_window, GTK_ALIGN_START); */
   gtk_scrolled_window_set_max_content_height (GTK_SCROLLED_WINDOW (scrolled_window), 400);
   gtk_scrolled_window_set_propagate_natural_width (GTK_SCROLLED_WINDOW (scrolled_window), TRUE);
   gtk_scrolled_window_set_propagate_natural_height (GTK_SCROLLED_WINDOW (scrolled_window), TRUE);
   self->model = gtk_single_selection_new (G_LIST_MODEL (sorted));
   g_signal_connect_object (self->model, "items-changed", G_CALLBACK (on_items_changed), self, G_CONNECT_DEFAULT);
-  self->view = gtk_list_view_new (GTK_SELECTION_MODEL (self->model), factory);
+  self->view = gtk_list_view_new (GTK_SELECTION_MODEL (g_object_ref (self->model)), factory);
   gtk_widget_set_size_request (self->view, 300, -1);
   gtk_scrolled_window_set_policy (
     GTK_SCROLLED_WINDOW (scrolled_window),
@@ -610,7 +774,6 @@ stamp_contact_completion_init (StampContactCompletion *self)
     GTK_POLICY_AUTOMATIC
     );
   gtk_widget_set_hexpand (self->view, TRUE);
-  gtk_widget_set_halign (self->view, GTK_ALIGN_START);
   gtk_list_view_set_single_click_activate (GTK_LIST_VIEW (self->view), TRUE);
   gtk_scrolled_window_set_child (GTK_SCROLLED_WINDOW (scrolled_window), self->view);
   gtk_popover_set_child (GTK_POPOVER (self->popover), scrolled_window);
@@ -648,7 +811,13 @@ void
 stamp_contact_completion_set_account (StampContactCompletion *self,
                                       StampAccount           *account)
 {
-  self->account = account;
+  g_clear_handle_id (&self->search_timeout_id, g_source_remove);
+  g_cancellable_cancel (self->cancellable);
+  g_clear_object (&self->cancellable);
+  g_set_object (&self->account, account);
+  g_list_store_remove_all (self->store);
+
+  on_changed (GTK_EDITABLE (self->entry), self);
 }
 
 gboolean
