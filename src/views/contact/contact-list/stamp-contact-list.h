@@ -49,6 +49,9 @@ stamp_contact_list_unselect (StampContactList *self);
 StampAccount *
 stamp_contact_list_get_account (StampContactList *self);
 
+EClient *
+stamp_contact_list_get_client (StampContactList *self);
+
 GtkWidget *
 stamp_contact_list_get_sidebar_button (StampContactList *self);
 

@@ -4,114 +4,125 @@ using Adw 1;
 template $StampContactDetails: Box {
   orientation: vertical;
 
-  Stack stack {
+  Adw.ToastOverlay toast_overlay {
     vexpand: true;
 
-    StackPage {
-      name: "empty";
+    child: Stack stack {
+      vexpand: true;
 
-      child: Adw.ToolbarView {
-        [top]
-        Adw.HeaderBar {
-          show-title: false;
-        }
+      StackPage {
+        name: "empty";
 
-        Adw.StatusPage {
-          title: _("No Contact Selected");
-          icon-name: "avatar-default-symbolic";
-        }
-      };
-    }
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {
+            show-title: false;
+          }
 
-    StackPage {
-      name: "content";
+          Adw.StatusPage {
+            title: _("No Contact Selected");
+            icon-name: "avatar-default-symbolic";
+          }
+        };
+      }
 
-      child: Adw.ToolbarView {
-        [top]
-        Adw.HeaderBar {
-          show-title: false;
-        }
+      StackPage {
+        name: "content";
 
-        ScrolledWindow {
-          hscrollbar-policy: never;
-          can-focus: false;
+        child: Adw.ToolbarView {
+          [top]
+          Adw.HeaderBar {
+            show-title: false;
 
-          child: Adw.Bin {
-            child: Adw.Clamp {
-              margin-top: 12;
-              margin-start: 12;
-              margin-end: 12;
+            [end]
+            Button copy_button {
+              icon-name: "edit-copy-symbolic";
+              tooltip-text: _("Copy to Address Book…");
+              clicked => $on_copy_contact();
+            }
+          }
 
-              child: Box {
-                orientation: vertical;
-                spacing: 24;
+          ScrolledWindow {
+            hscrollbar-policy: never;
+            can-focus: false;
 
-                Adw.Avatar avatar {
-                  show-initials: true;
-                  size: 128;
+            child: Adw.Bin {
+              child: Adw.Clamp {
+                margin-top: 12;
+                margin-start: 12;
+                margin-end: 12;
 
-                  styles [
-                    "icon-dropshadow",
-                  ]
-                }
+                child: Box {
+                  orientation: vertical;
+                  spacing: 24;
 
-                Label name {
-                  wrap: true;
-                  wrap-mode: word_char;
-                  justify: center;
+                  Adw.Avatar avatar {
+                    show-initials: true;
+                    size: 128;
 
-                  styles [
-                    "title-1",
-                  ]
+                    styles [
+                      "icon-dropshadow",
+                    ]
+                  }
 
-                  margin-bottom: 6;
-                  xalign: 0.5;
-                }
+                  Label name {
+                    wrap: true;
+                    wrap-mode: word_char;
+                    justify: center;
 
-                ListBox mail {
-                  selection-mode: none;
+                    styles [
+                      "title-1",
+                    ]
 
-                  styles [
-                    "content",
-                  ]
+                    margin-bottom: 6;
+                    xalign: 0.5;
+                  }
 
-                  visible: false;
-                }
+                  ListBox mail {
+                    selection-mode: none;
 
-                ListBox phone {
-                  selection-mode: none;
+                    styles [
+                      "content",
+                    ]
 
-                  styles [
-                    "content",
-                  ]
+                    visible: false;
+                  }
 
-                  visible: false;
-                }
+                  ListBox phone {
+                    selection-mode: none;
 
-                ListBox address {
-                  selection-mode: none;
+                    styles [
+                      "content",
+                    ]
 
-                  styles [
-                    "content",
-                  ]
+                    visible: false;
+                  }
 
-                  visible: false;
-                }
+                  ListBox address {
+                    selection-mode: none;
 
-                ListBox birthday {
-                  selection-mode: none;
+                    styles [
+                      "content",
+                    ]
 
-                  styles [
-                    "content",
-                  ]
+                    visible: false;
+                  }
 
-                  visible: false;
-                }
+                  ListBox birthday {
+                    selection-mode: none;
+
+                    styles [
+                      "content",
+                    ]
+
+                    visible: false;
+                  }
+                };
               };
             };
-          };
-        }
-      };
-    }
+          }
+        };
+      }
+    };
   }
 }

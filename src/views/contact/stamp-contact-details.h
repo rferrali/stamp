@@ -34,6 +34,7 @@ G_DECLARE_FINAL_TYPE (StampContactDetails, stamp_contact_details, STAMP, CONTACT
 void
 stamp_contact_details_show (StampContactDetails *self,
                             StampAccount        *account,
+                            EClient             *client,
                             StampContactItem    *contact);
 
 G_END_DECLS

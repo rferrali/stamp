@@ -600,6 +600,12 @@ stamp_contact_list_get_sidebar_button (StampContactList *self)
   return self->sidebar_button;
 }
 
+EClient *
+stamp_contact_list_get_client (StampContactList *self)
+{
+  return self->client;
+}
+
 void
 stamp_contact_list_search_contact (StampContactList *self,
                                    const gchar      *mail)

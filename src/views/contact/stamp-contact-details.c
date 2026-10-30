@@ -24,6 +24,7 @@
 #include <glib/gi18n.h>
 
 #include "stamp-account.h"
+#include "stamp-session.h"
 
 struct _StampContactDetails {
   GtkBox parent_instance;
@@ -36,11 +37,202 @@ struct _StampContactDetails {
   GtkWidget *phone;
   GtkWidget *birthday;
   GtkWidget *address;
+  GtkWidget *copy_button;
+  GtkWidget *toast_overlay;
+
+  EContact *contact;
+  EClient *source_client;
+  gboolean copying;
 
   GCancellable *cancellable;
 };
 
 G_DEFINE_FINAL_TYPE (StampContactDetails, stamp_contact_details, GTK_TYPE_BOX);
+
+typedef struct {
+  EContact *contact;
+  GPtrArray *targets;
+  AdwComboRow *row;
+} CopySelection;
+
+static void
+copy_selection_free (gpointer data)
+{
+  CopySelection *selection = data;
+
+  g_object_unref (selection->contact);
+  g_ptr_array_unref (selection->targets);
+  g_free (selection);
+}
+
+typedef struct {
+  StampContactDetails *self;
+  gchar *target_name;
+} CopyRequest;
+
+static void
+show_copy_message (StampContactDetails *self,
+                   const gchar         *title,
+                   const gchar         *body)
+{
+  AdwDialog *dialog;
+
+  if (!gtk_widget_get_root (GTK_WIDGET (self)))
+    return;
+
+  dialog = adw_alert_dialog_new (title, body);
+
+  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "close", _("Close"));
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "close");
+  adw_dialog_present (dialog, GTK_WIDGET (self));
+}
+
+static void
+on_contact_copied (GObject      *source,
+                   GAsyncResult *result,
+                   gpointer      user_data)
+{
+  CopyRequest *request = user_data;
+  StampContactDetails *self = request->self;
+  g_autoptr (GError) error = NULL;
+  g_autofree gchar *uid = NULL;
+
+  self->copying = FALSE;
+  gtk_widget_set_sensitive (self->copy_button, self->contact != NULL);
+
+  if (e_book_client_add_contact_finish (E_BOOK_CLIENT (source), result, &uid, &error)) {
+    g_autofree gchar *message = g_strdup_printf (_("Contact copied to %s"), request->target_name);
+    AdwToast *toast = adw_toast_new (message);
+
+    adw_toast_set_use_markup (toast, FALSE);
+    adw_toast_overlay_add_toast (ADW_TOAST_OVERLAY (self->toast_overlay), toast);
+  } else if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+    show_copy_message (self, _("Could Not Copy Contact"), error->message);
+  }
+
+  g_object_unref (self);
+  g_free (request->target_name);
+  g_free (request);
+}
+
+static void
+on_copy_response (AdwAlertDialog *dialog,
+                  const gchar    *response,
+                  gpointer        user_data)
+{
+  StampContactDetails *self = STAMP_CONTACT_DETAILS (user_data);
+  CopySelection *selection = g_object_get_data (G_OBJECT (dialog), "copy-selection");
+  EBookClient *target;
+  guint selected;
+  CopyRequest *request;
+
+  if (!g_str_equal (response, "copy") || self->copying)
+    return;
+
+  selected = adw_combo_row_get_selected (selection->row);
+  if (selected >= selection->targets->len)
+    return;
+
+  target = g_ptr_array_index (selection->targets, selected);
+  if (e_client_is_readonly (E_CLIENT (target)) ||
+      !e_source_get_enabled (e_client_get_source (E_CLIENT (target)))) {
+    show_copy_message (self, _("Could Not Copy Contact"), _("The selected address book is no longer writable."));
+    return;
+  }
+
+  request = g_new0 (CopyRequest, 1);
+  request->self = g_object_ref (self);
+  request->target_name = g_strdup (e_source_get_display_name (e_client_get_source (E_CLIENT (target))));
+  self->copying = TRUE;
+  gtk_widget_set_sensitive (self->copy_button, FALSE);
+  e_book_client_add_contact (target, selection->contact, E_BOOK_OPERATION_FLAG_NONE,
+                             self->cancellable, on_contact_copied, request);
+}
+
+static EContact *
+contact_duplicate_for_copy (EContact *contact)
+{
+  EContact *copy = e_contact_duplicate (contact);
+  const gchar *metadata[] = {
+    "X-EWS-ORIGINAL-VCARD", "X-EWS-CHANGEKEY", "X-EWS-GAL-SHA1", "X-EWS-PHOTO-CHECK-DATE",
+  };
+
+  /* The destination creates its own identity and server-side revision. */
+  e_contact_set (copy, E_CONTACT_UID, NULL);
+  e_contact_set (copy, E_CONTACT_REV, NULL);
+  for (guint i = 0; i < G_N_ELEMENTS (metadata); i++)
+    e_vcard_remove_attributes (E_VCARD (copy), NULL, metadata[i]);
+
+  return copy;
+}
+
+static void
+on_copy_contact (GtkButton *button,
+                 gpointer   user_data)
+{
+  StampContactDetails *self = STAMP_CONTACT_DETAILS (user_data);
+  CopySelection *selection;
+  g_autoptr (GtkStringList) names = gtk_string_list_new (NULL);
+  GList *accounts = stamp_session_get_accounts (stamp_session_get_default ());
+  AdwDialog *dialog;
+  GtkWidget *list;
+  const gchar *source_uid;
+
+  if (!self->contact || !self->source_client || self->copying)
+    return;
+
+  selection = g_new0 (CopySelection, 1);
+  selection->contact = contact_duplicate_for_copy (self->contact);
+  selection->targets = g_ptr_array_new_with_free_func (g_object_unref);
+  source_uid = e_source_get_uid (e_client_get_source (self->source_client));
+
+  for (GList *iter = accounts; iter; iter = iter->next) {
+    StampAccount *account = iter->data;
+    GPtrArray *books = stamp_account_get_books (account);
+
+    for (guint i = 0; books && i < books->len; i++) {
+      StampContactsService *service = g_ptr_array_index (books, i);
+      EBookClient *client = stamp_contacts_service_get_client (service);
+      ESource *source;
+      g_autofree gchar *label = NULL;
+
+      if (!stamp_contacts_service_get_enabled (service) || !client || e_client_is_readonly (E_CLIENT (client)))
+        continue;
+
+      source = e_client_get_source (E_CLIENT (client));
+      if (!e_source_get_enabled (source) || g_strcmp0 (source_uid, e_source_get_uid (source)) == 0)
+        continue;
+
+      label = g_strdup_printf ("%s — %s", stamp_account_get_name (account), e_source_get_display_name (source));
+      gtk_string_list_append (names, label);
+      g_ptr_array_add (selection->targets, g_object_ref (client));
+    }
+  }
+
+  if (selection->targets->len == 0) {
+    copy_selection_free (selection);
+    show_copy_message (self, _("No Writable Address Book"), _("There is no other writable address book available."));
+    return;
+  }
+
+  dialog = adw_alert_dialog_new (_("Copy to Address Book"), _("Choose where to copy this contact."));
+  list = gtk_list_box_new ();
+  gtk_list_box_set_selection_mode (GTK_LIST_BOX (list), GTK_SELECTION_NONE);
+  gtk_widget_add_css_class (list, "boxed-list");
+  selection->row = ADW_COMBO_ROW (adw_combo_row_new ());
+  adw_preferences_row_set_title (ADW_PREFERENCES_ROW (selection->row), _("Address Book"));
+  adw_combo_row_set_use_subtitle (selection->row, TRUE);
+  adw_combo_row_set_model (selection->row, G_LIST_MODEL (names));
+  gtk_list_box_append (GTK_LIST_BOX (list), GTK_WIDGET (selection->row));
+  adw_alert_dialog_set_extra_child (ADW_ALERT_DIALOG (dialog), list);
+  adw_alert_dialog_add_responses (ADW_ALERT_DIALOG (dialog), "cancel", _("Cancel"), "copy", _("Copy"), NULL);
+  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "copy", ADW_RESPONSE_SUGGESTED);
+  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "copy");
+  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
+  g_object_set_data_full (G_OBJECT (dialog), "copy-selection", selection, copy_selection_free);
+  g_signal_connect_object (dialog, "response", G_CALLBACK (on_copy_response), self, G_CONNECT_DEFAULT);
+  adw_dialog_present (dialog, GTK_WIDGET (self));
+}
 
 static void
 stamp_contact_details_init (StampContactDetails *self)
@@ -55,8 +247,11 @@ stamp_contact_details_dispose (GObject *object)
 {
   StampContactDetails *self = STAMP_CONTACT_DETAILS (object);
 
-  g_cancellable_cancel (self->cancellable);
+  if (self->cancellable)
+    g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
+  g_clear_object (&self->contact);
+  g_clear_object (&self->source_client);
 
   gtk_widget_dispose_template (GTK_WIDGET (self), STAMP_TYPE_CONTACT_DETAILS);
 
@@ -80,6 +275,9 @@ stamp_contact_details_class_init (StampContactDetailsClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampContactDetails, phone);
   gtk_widget_class_bind_template_child (widget_class, StampContactDetails, birthday);
   gtk_widget_class_bind_template_child (widget_class, StampContactDetails, address);
+  gtk_widget_class_bind_template_child (widget_class, StampContactDetails, copy_button);
+  gtk_widget_class_bind_template_child (widget_class, StampContactDetails, toast_overlay);
+  gtk_widget_class_bind_template_callback (widget_class, on_copy_contact);
 }
 
 static void
@@ -199,6 +397,7 @@ add_org_row (GtkWidget   *list_box,
 void
 stamp_contact_details_show (StampContactDetails *self,
                             StampAccount        *account,
+                            EClient             *client,
                             StampContactItem    *contact)
 {
   g_autofree char *mail = NULL;
@@ -207,11 +406,15 @@ stamp_contact_details_show (StampContactDetails *self,
   g_autoptr (EContactDate) birthdate = NULL;
   g_autoptr (EContactAddress) address = NULL;
   const gchar *item_mail;
-  EContact *e_contact;
+  EContact *e_contact = contact ? stamp_contact_item_get_contact (contact) : NULL;
   GList *mails;
   gboolean mail_added = FALSE;
   gboolean phone_added = FALSE;
   gboolean org_added = FALSE;
+
+  g_set_object (&self->source_client, client);
+  g_set_object (&self->contact, e_contact);
+  gtk_widget_set_sensitive (self->copy_button, self->contact != NULL && !self->copying);
 
   if (!contact) {
     gtk_stack_set_visible_child_name (GTK_STACK (self->stack), "empty");

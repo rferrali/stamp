@@ -108,7 +108,8 @@ on_contact_selected (GtkWidget        *object,
     }
   }
 
-  stamp_contact_details_show (STAMP_CONTACT_DETAILS (self->contact_details), account, item);
+  stamp_contact_details_show (STAMP_CONTACT_DETAILS (self->contact_details), account,
+                              stamp_contact_list_get_client (STAMP_CONTACT_LIST (self->contact_list)), item);
 }
 
 static void
