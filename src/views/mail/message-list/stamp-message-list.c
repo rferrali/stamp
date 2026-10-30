@@ -24,6 +24,7 @@
 #include "stamp-conversation-item.h"
 #include "stamp-conversation-list.h"
 #include "stamp-mail-view.h"
+#include "stamp-message-header.h"
 #include "stamp-message-list-item.h"
 #include "stamp-mime-parser.h"
 #include "stamp-session.h"
@@ -189,13 +190,23 @@ on_drag_begin (GtkGestureDrag *gesture,
                gdouble         start_y,
                gpointer        user_data)
 {
+  StampMessageList *self = STAMP_MESSAGE_LIST (user_data);
+  GtkWidget *bin = gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture));
+  GtkWidget *picked = gtk_widget_pick (bin, start_x, start_y, GTK_PICK_DEFAULT);
   gboolean at_left_edge = start_x < 50;
+  gboolean on_header = FALSE;
+
+  for (GtkWidget *w = picked; w && w != bin; w = gtk_widget_get_parent (w)) {
+    if (STAMP_IS_MESSAGE_HEADER (w)) {
+      on_header = TRUE;
+      break;
+    }
+  }
+
+  adw_carousel_set_interactive (ADW_CAROUSEL (self->carousel), on_header && !at_left_edge);
 
   g_object_set_data (G_OBJECT (gesture), "triggered", GINT_TO_POINTER (FALSE));
-  g_object_set_data (G_OBJECT (gesture), "edge-left", GINT_TO_POINTER (at_left_edge));
-
-  if (!at_left_edge)
-    gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_DENIED);
+  g_object_set_data (G_OBJECT (gesture), "back-swipe", GINT_TO_POINTER (!on_header || at_left_edge));
 }
 
 static void
@@ -209,7 +220,7 @@ on_drag_update (GtkGestureDrag *gesture,
   if (g_object_get_data (G_OBJECT (gesture), "triggered"))
     return;
 
-  if (g_object_get_data (G_OBJECT (gesture), "edge-left") && offset_x > 20) {
+  if (g_object_get_data (G_OBJECT (gesture), "back-swipe") && offset_x > 20 && offset_x > 2 * ABS (offset_y)) {
     g_object_set_data (G_OBJECT (gesture), "triggered", GINT_TO_POINTER (TRUE));
     g_clear_handle_id (&self->navigate_back_handler, g_source_remove);
     self->navigate_back_handler = g_idle_add_once (emit_navigate_back_idle, self);

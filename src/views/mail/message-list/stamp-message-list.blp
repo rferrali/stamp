@@ -6,6 +6,7 @@ template $StampMessageList: Adw.BreakpointBin {
   height-request: 300;
 
   GestureDrag {
+    propagation-phase: capture;
     drag-begin => $on_drag_begin();
     drag-update => $on_drag_update();
   }
