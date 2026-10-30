@@ -42,13 +42,8 @@ struct _StampApplication {
   gboolean quit_pending_confirmed;
   StampComposer *quit_composer;
   guint quit_source_id;
+  GThread *main_thread;
 };
-
-typedef struct {
-  GMainLoop *loop;
-  GtkWidget *entry;
-  gchar *password;
-} PasswordPromptData;
 
 G_DEFINE_FINAL_TYPE (StampApplication, stamp_application, ADW_TYPE_APPLICATION);
 
@@ -226,40 +221,65 @@ stamp_application_command_line (GApplication            *app,
   return 0;
 }
 
+typedef struct {
+  StampApplication *application;
+  PK11SlotInfo *slot;
+  GCancellable *cancellable;
+  GtkWidget *entry;
+  gchar *password;
+  GMutex mutex;
+  GCond condition;
+  gboolean done;
+  GMainLoop *loop;
+} PasswordRequest;
+
 static void
-on_password_dialog_response (AdwAlertDialog *dialog,
-                             const gchar    *response,
-                             gpointer        user_data)
+complete_password_request (PasswordRequest *request)
 {
-  PasswordPromptData *data = user_data;
-
-  if (g_strcmp0 (response, "decrypt") == 0)
-    data->password = g_strdup (gtk_editable_get_text (GTK_EDITABLE (data->entry)));
-
-  g_main_loop_quit (data->loop);
+  g_mutex_lock (&request->mutex);
+  request->done = TRUE;
+  if (request->loop)
+    g_main_loop_quit (request->loop);
+  g_cond_signal (&request->condition);
+  g_mutex_unlock (&request->mutex);
 }
 
 static void
-on_pk11_password (StampSession  *session,
-                  PK11SlotInfo  *slot,
-                  PRBool         retry,
-                  gchar        **password,
-                  gpointer       user_data)
+on_password_chosen (GObject      *source,
+                    GAsyncResult *result,
+                    gpointer      user_data)
 {
-  StampApplication *self = STAMP_APPLICATION (user_data);
+  PasswordRequest *request = user_data;
+  const gchar *response = adw_alert_dialog_choose_finish (ADW_ALERT_DIALOG (source), result);
+
+  if (g_strcmp0 (response, "decrypt") == 0 &&
+      !g_cancellable_is_cancelled (request->cancellable))
+    request->password = g_strdup (gtk_editable_get_text (GTK_EDITABLE (request->entry)));
+
+  adw_dialog_force_close (ADW_DIALOG (source));
+  complete_password_request (request);
+}
+
+static gboolean
+show_password_request (gpointer user_data)
+{
+  PasswordRequest *request = user_data;
   g_autofree char *prompt = NULL;
-  g_autofree char *slot_name = g_strdup (PK11_GetSlotName (slot));
-  g_autofree char *token_name = g_strdup (PK11_GetTokenName (slot));
+  g_autofree char *slot_name = NULL;
+  g_autofree char *token_name = NULL;
   g_autoptr (AdwAlertDialog) dialog = NULL;
-  g_autoptr (GMainLoop) loop = g_main_loop_new (NULL, FALSE);
-  PasswordPromptData data = { .loop = loop };
-  GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (self));
-  gulong response_handler;
+  GtkWindow *window;
 
-  *password = NULL;
+  if (g_cancellable_is_cancelled (request->cancellable)) {
+    complete_password_request (request);
+    return G_SOURCE_REMOVE;
+  }
 
-  g_strchomp (slot_name);
-
+  window = gtk_application_get_active_window (GTK_APPLICATION (request->application));
+  slot_name = g_strdup (PK11_GetSlotName (request->slot));
+  token_name = g_strdup (PK11_GetTokenName (request->slot));
+  if (slot_name)
+    g_strchomp (slot_name);
   if (token_name)
     g_strchomp (token_name);
 
@@ -273,20 +293,62 @@ on_pk11_password (StampSession  *session,
   adw_alert_dialog_add_response (dialog, "decrypt", _("Decrypt"));
   adw_alert_dialog_set_default_response (dialog, "decrypt");
   adw_alert_dialog_set_close_response (dialog, "cancel");
-  response_handler = g_signal_connect (dialog, "response", G_CALLBACK (on_password_dialog_response), &data);
 
-  data.entry = gtk_entry_new ();
-  gtk_entry_set_activates_default (GTK_ENTRY (data.entry), TRUE);
-  gtk_entry_set_visibility (GTK_ENTRY (data.entry), FALSE);
-  adw_alert_dialog_set_extra_child (dialog, data.entry);
+  request->entry = gtk_entry_new ();
+  gtk_entry_set_activates_default (GTK_ENTRY (request->entry), TRUE);
+  gtk_entry_set_visibility (GTK_ENTRY (request->entry), FALSE);
+  adw_alert_dialog_set_extra_child (dialog, request->entry);
+  adw_alert_dialog_choose (dialog, GTK_WIDGET (window), request->cancellable, on_password_chosen, request);
+  gtk_widget_grab_focus (request->entry);
 
-  adw_dialog_present (ADW_DIALOG (dialog), GTK_WIDGET (window));
-  gtk_widget_grab_focus (data.entry);
+  return G_SOURCE_REMOVE;
+}
 
-  g_main_loop_run (loop);
+static void
+on_pk11_password (StampSession  *session,
+                  PK11SlotInfo  *slot,
+                  PRBool         retry,
+                  gchar        **password,
+                  gpointer       user_data)
+{
+  g_autoptr (StampApplication) self = g_object_ref (STAMP_APPLICATION (user_data));
+  g_autoptr (GCancellable) cancellable = NULL;
+  g_autoptr (GMainLoop) loop = NULL;
+  PasswordRequest request = { 0 };
 
-  g_signal_handler_disconnect (dialog, response_handler);
-  *password = g_steal_pointer (&data.password);
+  *password = NULL;
+  if (g_cancellable_get_current ())
+    cancellable = g_object_ref (g_cancellable_get_current ());
+  if (g_cancellable_is_cancelled (cancellable))
+    return;
+
+  request.application = self;
+  request.slot = slot;
+  request.cancellable = cancellable;
+  g_mutex_init (&request.mutex);
+  g_cond_init (&request.condition);
+
+  if (g_thread_self () == self->main_thread) {
+    loop = g_main_loop_new (NULL, FALSE);
+    request.loop = loop;
+    show_password_request (&request);
+    if (!request.done)
+      g_main_loop_run (loop);
+  } else {
+    g_autoptr (GSource) source = g_idle_source_new ();
+
+    g_source_set_callback (source, show_password_request, &request, NULL);
+    g_source_attach (source, g_main_context_default ());
+
+    g_mutex_lock (&request.mutex);
+    while (!request.done)
+      g_cond_wait (&request.condition, &request.mutex);
+    g_mutex_unlock (&request.mutex);
+  }
+
+  g_cond_clear (&request.condition);
+  g_mutex_clear (&request.mutex);
+  *password = g_steal_pointer (&request.password);
 }
 
 static void
@@ -573,6 +635,7 @@ static const GActionEntry app_actions[] = {
 static void
 stamp_application_init (StampApplication *self)
 {
+  self->main_thread = g_thread_self ();
   self->pending_mailto = g_queue_new ();
   g_signal_connect (self, "window-removed", G_CALLBACK (on_quit_window_removed), NULL);
 

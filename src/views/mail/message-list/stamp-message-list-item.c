@@ -378,16 +378,18 @@ lookup_meeting_response (StampMessageListItem *self,
 }
 
 static void
-open_message (StampMessageListItem *self)
+open_message (StampMessageListItem *self,
+              CamelMimeMessage     *message,
+              StampMimeParser      *parser)
 {
   StampMimeBody *body;
   const GList *signatures;
   const GList *encryptions;
   StampMimeCalendar *calendar;
   GList *list_unsubscribe;
-  const gchar *address = camel_medium_get_header (CAMEL_MEDIUM (self->message), "Disposition-Notification-To");
-  const gchar *auth_as = camel_medium_get_header (CAMEL_MEDIUM (self->message), "X-MS-Exchange-Organization-AuthAs");
-  const gchar *sender = camel_medium_get_header (CAMEL_MEDIUM (self->message), "Sender");
+  const gchar *address = camel_medium_get_header (CAMEL_MEDIUM (message), "Disposition-Notification-To");
+  const gchar *auth_as = camel_medium_get_header (CAMEL_MEDIUM (message), "X-MS-Exchange-Organization-AuthAs");
+  const gchar *sender = camel_medium_get_header (CAMEL_MEDIUM (message), "Sender");
   GList *attachments;
   StampMessageList *message_list = STAMP_MESSAGE_LIST (gtk_widget_get_ancestor (GTK_WIDGET (self), STAMP_TYPE_MESSAGE_LIST));
 
@@ -396,7 +398,8 @@ open_message (StampMessageListItem *self)
 
   ensure_web_view (self);
   self->web_view_loaded = FALSE;
-  g_clear_object (&self->parser);
+  g_set_object (&self->parser, parser);
+  g_set_object (&self->message, message);
 
   if (!address)
     address = camel_medium_get_header (CAMEL_MEDIUM (self->message), "Return-Receipt-To");
@@ -429,9 +432,6 @@ open_message (StampMessageListItem *self)
   }
 
   stamp_message_header_set_sender (STAMP_MESSAGE_HEADER (self->header), sender);
-
-  self->parser = stamp_mime_parser_new (CAMEL_SESSION (stamp_session_get_default ()));
-  stamp_mime_parser_parse (self->parser, self->message, self->cancellable, NULL);
 
   signatures = stamp_mime_parser_get_signatures (self->parser);
   encryptions = stamp_mime_parser_get_encryptions (self->parser);
@@ -530,27 +530,67 @@ open_message (StampMessageListItem *self)
   update_actions (self);
 }
 
+typedef struct {
+  GWeakRef item;
+  GCancellable *cancellable;
+  CamelMimeMessage *message;
+} MessageLoad;
+
+static void
+message_load_free (MessageLoad *load)
+{
+  g_weak_ref_clear (&load->item);
+  g_clear_object (&load->cancellable);
+  g_clear_object (&load->message);
+  g_free (load);
+}
+
+static void
+on_parse_message (GObject      *source,
+                  GAsyncResult *result,
+                  gpointer      user_data)
+{
+  MessageLoad *load = user_data;
+  g_autoptr (StampMessageListItem) self = g_weak_ref_get (&load->item);
+  g_autoptr (GError) error = NULL;
+
+  stamp_mime_parser_parse_finish (STAMP_MIME_PARSER (source), result, &error);
+
+  if (self && self->cancellable == load->cancellable && !g_cancellable_is_cancelled (load->cancellable)) {
+    if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      g_warning ("Could not parse message: %s", error->message);
+
+    open_message (self, load->message, STAMP_MIME_PARSER (source));
+  }
+
+  message_load_free (load);
+}
+
 static void
 on_get_message (GObject      *source,
                 GAsyncResult *res,
                 gpointer      user_data)
 {
-  StampMessageListItem *self;
+  MessageLoad *load = user_data;
+  g_autoptr (StampMessageListItem) self = g_weak_ref_get (&load->item);
   g_autoptr (GError) error = NULL;
-  CamelFolder *folder;
-  g_autoptr (CamelMimeMessage) message = NULL;
+  g_autoptr (StampMimeParser) parser = NULL;
+  CamelFolder *folder = CAMEL_FOLDER (source);
 
-  folder = CAMEL_FOLDER (source);
-  message = camel_folder_get_message_finish (folder, res, &error);
-  if (error) {
-    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-      g_warning ("%s: Could not get message: %s", G_STRFUNC, error->message);
+  load->message = camel_folder_get_message_finish (folder, res, &error);
+  if (!self || self->cancellable != load->cancellable ||
+      g_cancellable_is_cancelled (load->cancellable)) {
+    message_load_free (load);
     return;
   }
 
-  self = STAMP_MESSAGE_LIST_ITEM (user_data);
-  if (!self->message_loaded)
+  if (error || !load->message) {
+    if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      g_warning ("%s: Could not get message: %s", G_STRFUNC, error->message);
+    self->message_loaded = FALSE;
+    message_load_free (load);
     return;
+  }
 
   ensure_web_view (self);
 
@@ -559,10 +599,8 @@ on_get_message (GObject      *source,
       g_settings_get_boolean (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_ALWAYS_SHOW_IMAGES))
     stamp_web_view_load_images (self->web_view);
 
-  g_set_object (&self->message, message);
-
-  if (self->message)
-    open_message (self);
+  parser = stamp_mime_parser_new (CAMEL_SESSION (stamp_session_get_default ()));
+  stamp_mime_parser_parse_async (parser, load->message, load->cancellable, on_parse_message, load);
 }
 
 static void
@@ -570,8 +608,9 @@ start_get_message (StampMessageListItem *self,
                    GAsyncReadyCallback   callback,
                    gpointer              user_data)
 {
-  CamelFolderSummary *summary;
+  g_autoptr (CamelFolderSummary) summary = NULL;
   CamelFolder *folder;
+  MessageLoad *load;
 
   if (self->cancellable) {
     g_cancellable_cancel (self->cancellable);
@@ -584,7 +623,10 @@ start_get_message (StampMessageListItem *self,
 
   folder = camel_folder_summary_get_folder (summary);
 
-  camel_folder_get_message (folder, camel_message_info_get_uid (self->message_info), G_PRIORITY_DEFAULT, self->cancellable, on_get_message, self);
+  load = g_new0 (MessageLoad, 1);
+  g_weak_ref_init (&load->item, self);
+  load->cancellable = g_object_ref (self->cancellable);
+  camel_folder_get_message (folder, camel_message_info_get_uid (self->message_info), G_PRIORITY_DEFAULT, self->cancellable, on_get_message, load);
 }
 
 void
@@ -1340,13 +1382,8 @@ on_unsubscribe_response (GtkWidget *dialog,
   StampMessageListItem *self = STAMP_MESSAGE_LIST_ITEM (user_data);
 
   if (g_strcmp0 (response, "confirm") == 0) {
-    g_autoptr (StampMimeParser) parser = NULL;
-
-    parser = stamp_mime_parser_new (CAMEL_SESSION (stamp_session_get_default ()));
-    stamp_mime_parser_parse (parser, self->message, self->cancellable, NULL);
-
     if (self->unsubscribe->method == STAMP_MIME_UNSUBSCRIBE_HTTP) {
-      stamp_mime_parser_send_unsubscribe (parser, self->unsubscribe, self->cancellable);
+      stamp_mime_parser_send_unsubscribe (self->parser, self->unsubscribe, self->cancellable);
     } else {
       GtkWidget *composer = stamp_composer_new (self->account);
 

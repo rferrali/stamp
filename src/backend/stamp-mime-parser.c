@@ -246,6 +246,7 @@ convert_newlines_to_br (gchar **content)
 
 static GByteArray *
 decode_part_to_bytes (CamelMimePart  *part,
+                      GCancellable   *cancellable,
                       GError        **error)
 {
   CamelDataWrapper *data_wrapper = camel_medium_get_content (CAMEL_MEDIUM (part));
@@ -257,7 +258,7 @@ decode_part_to_bytes (CamelMimePart  *part,
     return NULL;
 
   out = camel_stream_mem_new ();
-  ok = camel_data_wrapper_decode_to_stream_sync (data_wrapper, out, NULL, error) >= 0;
+  ok = camel_data_wrapper_decode_to_stream_sync (data_wrapper, out, cancellable, error) >= 0;
   if (ok) {
     GByteArray *internal = camel_stream_mem_get_byte_array (CAMEL_STREAM_MEM (out));
 
@@ -654,7 +655,7 @@ handle_text_part (StampMimeParser *self,
 {
   CamelContentType *content_type = camel_mime_part_get_content_type (part);
   const gchar *charset = camel_content_type_param (content_type, "charset");
-  GByteArray *ba = decode_part_to_bytes (part, NULL);
+  GByteArray *ba = decode_part_to_bytes (part, cancellable, NULL);
   gsize raw_len;
   guint8 *raw;
   gsize text_len = 0;
@@ -786,7 +787,8 @@ create_calendar (StampMimeParser     *self,
 
 static void
 handle_attachment (StampMimeParser *self,
-                   CamelMimePart   *part)
+                   CamelMimePart   *part,
+                   GCancellable    *cancellable)
 {
   CamelContentType *content_type = camel_mime_part_get_content_type (part);
   const gchar *type = content_type->type;
@@ -818,7 +820,7 @@ handle_attachment (StampMimeParser *self,
   if (g_strcmp0 (type_lc, "application") == 0 && (g_strcmp0 (sub_lc, "pgp-encrypted") == 0 || g_strcmp0 (sub_lc, "pgp-signature") == 0 || g_strcmp0 (sub_lc, "pkcs7-signature") == 0 || g_strcmp0 (sub_lc, "x-pkcs7-signature") == 0))
     return;
 
-  ba = decode_part_to_bytes (part, NULL);
+  ba = decode_part_to_bytes (part, cancellable, NULL);
   if (!ba)
     return;
 
@@ -888,7 +890,10 @@ handle_multipart_alternative (StampMimeParser  *self,
     if (!child)
       continue;
 
-    if (!dispatch_part (self, child, cancellable, &child_err))
+    if (g_cancellable_set_error_if_cancelled (cancellable, error))
+      return FALSE;
+
+    if (!dispatch_part (self, child, cancellable, &child_err) && !g_error_matches (child_err, G_IO_ERROR, G_IO_ERROR_CANCELLED))
       g_warning ("%s: Error in multipart/alternative part %u: %s", G_STRFUNC, idx, child_err ? child_err->message : "(unknown)");
   }
 
@@ -910,7 +915,10 @@ handle_multipart_generic (StampMimeParser  *self,
     if (!child)
       continue;
 
-    if (!dispatch_part (self, child, cancellable, &child_err))
+    if (g_cancellable_set_error_if_cancelled (cancellable, error))
+      return FALSE;
+
+    if (!dispatch_part (self, child, cancellable, &child_err) && !g_error_matches (child_err, G_IO_ERROR, G_IO_ERROR_CANCELLED))
       g_warning ("%s: Error in multipart part %u: %s", G_STRFUNC, idx, child_err ? child_err->message : "(unknown)");
   }
 
@@ -1010,7 +1018,7 @@ dispatch_text (StampMimeParser  *self,
 
   PARSER_LOG ("disposition %s", disposition ? disposition : "NONE");
   if (g_strcmp0 (disposition, "attachment") == 0) {
-    handle_attachment (self, part);
+    handle_attachment (self, part, cancellable);
     return TRUE;
   }
 
@@ -1026,7 +1034,7 @@ dispatch_attachment (StampMimeParser  *self,
                      GCancellable     *cancellable,
                      GError          **error)
 {
-  handle_attachment (self, part);
+  handle_attachment (self, part, cancellable);
   return TRUE;
 }
 
@@ -1198,7 +1206,7 @@ dispatch_smime (StampMimeParser  *self,
   if (g_strcmp0 (smime_type, "signed-data") == 0)
     return handle_smime_signed_opaque (self, part, cancellable, error);
 
-  handle_attachment (self, part);
+  handle_attachment (self, part, cancellable);
 
   return TRUE;
 }
@@ -1213,7 +1221,7 @@ dispatch_rfc822 (StampMimeParser  *self,
   CamelDataWrapper *data_wrapper = camel_medium_get_content (CAMEL_MEDIUM (part));
 
   if (CAMEL_IS_MIME_MESSAGE (data_wrapper)) {
-    handle_attachment (self, part);
+    handle_attachment (self, part, cancellable);
 
     return dispatch_part (self, CAMEL_MIME_PART (data_wrapper), cancellable, error);
   }
@@ -1242,6 +1250,9 @@ dispatch_part (StampMimeParser  *self,
 {
   CamelContentType *content_type = camel_mime_part_get_content_type (part);
   gboolean ret;
+
+  if (g_cancellable_set_error_if_cancelled (cancellable, error))
+    return FALSE;
 
   if (!content_type)
     return TRUE;
@@ -1338,6 +1349,64 @@ stamp_mime_parser_parse (StampMimeParser   *self,
 
   /* Walk tree */
   return dispatch_part (self, CAMEL_MIME_PART (message), cancellable, error);
+}
+
+static void
+parse_message_thread (GTask        *task,
+                      gpointer      source_object,
+                      gpointer      task_data,
+                      GCancellable *cancellable)
+{
+  g_autoptr (GError) error = NULL;
+  gboolean success;
+
+  if (g_task_return_error_if_cancelled (task))
+    return;
+
+  if (cancellable)
+    g_cancellable_push_current (cancellable);
+
+  success = stamp_mime_parser_parse (STAMP_MIME_PARSER (source_object), CAMEL_MIME_MESSAGE (task_data), cancellable, &error);
+
+  if (cancellable)
+    g_cancellable_pop_current (cancellable);
+
+  if (g_task_return_error_if_cancelled (task))
+    return;
+
+  if (error)
+    g_task_return_error (task, g_steal_pointer (&error));
+  else
+    g_task_return_boolean (task, success);
+}
+
+void
+stamp_mime_parser_parse_async (StampMimeParser     *self,
+                               CamelMimeMessage    *message,
+                               GCancellable        *cancellable,
+                               GAsyncReadyCallback  callback,
+                               gpointer             user_data)
+{
+  g_autoptr (GTask) task = NULL;
+
+  g_return_if_fail (STAMP_IS_MIME_PARSER (self));
+  g_return_if_fail (CAMEL_IS_MIME_MESSAGE (message));
+
+  task = g_task_new (self, cancellable, callback, user_data);
+  g_task_set_source_tag (task, stamp_mime_parser_parse_async);
+  g_task_set_task_data (task, g_object_ref (message), g_object_unref);
+  g_task_run_in_thread (task, parse_message_thread);
+}
+
+gboolean
+stamp_mime_parser_parse_finish (StampMimeParser  *self,
+                                GAsyncResult     *result,
+                                GError          **error)
+{
+  g_return_val_if_fail (g_task_is_valid (result, self), FALSE);
+  g_return_val_if_fail (g_async_result_is_tagged (result, stamp_mime_parser_parse_async), FALSE);
+
+  return g_task_propagate_boolean (G_TASK (result), error);
 }
 
 StampMimeBody *

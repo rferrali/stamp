@@ -147,6 +147,18 @@ stamp_mime_parser_parse (StampMimeParser   *self,
                          GCancellable      *cancellable,
                          GError           **error);
 
+void
+stamp_mime_parser_parse_async (StampMimeParser     *self,
+                               CamelMimeMessage    *message,
+                               GCancellable        *cancellable,
+                               GAsyncReadyCallback  callback,
+                               gpointer             user_data);
+
+gboolean
+stamp_mime_parser_parse_finish (StampMimeParser  *self,
+                                GAsyncResult     *result,
+                                GError          **error);
+
 StampMimeBody *
 stamp_mime_parser_get_body (StampMimeParser *self);
 
