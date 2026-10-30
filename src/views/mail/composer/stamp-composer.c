@@ -23,6 +23,7 @@
 
 #include <camel/camel.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <gdesktop-enums.h>
 #include <glib/gi18n.h>
 #include <libebook-contacts/libebook-contacts.h>
 #include <libebook/libebook.h>
@@ -918,6 +919,35 @@ on_schedule_get_body_html (GObject      *source_object,
   }
 }
 
+static char *
+schedule_format_ampm (GDateTime *dt)
+{
+  char *str = g_date_time_format (dt, "%p");
+
+  if (str[0] == '\0') {
+    g_free (str);
+    str = g_strdup (g_date_time_get_hour (dt) < 12 ? "AM" : "PM");
+  }
+
+  return str;
+}
+
+static char *
+schedule_format_time (GDateTime *dt,
+                      gboolean   twelve_hour)
+{
+  g_autofree char *clock = NULL;
+  g_autofree char *ampm = NULL;
+
+  if (!twelve_hour)
+    return g_date_time_format (dt, "%H:%M");
+
+  clock = g_date_time_format (dt, "%l:%M");
+  ampm = schedule_format_ampm (dt);
+
+  return g_strdup_printf ("%s %s", g_strstrip (clock), ampm);
+}
+
 static void
 on_date_day_selected (GtkCalendar *calendar,
                       gpointer     user_data)
@@ -950,7 +980,7 @@ on_time_value_changed (GtkSpinButton *spin G_GNUC_UNUSED,
   }
 
   dt = g_date_time_new_local (2000, 1, 1, hour, minute, 0);
-  time_str = g_date_time_format (dt, g_object_get_data (G_OBJECT (time_row), "twelve-hour") ? "%-l:%M %p" : "%H:%M");
+  time_str = schedule_format_time (dt, GPOINTER_TO_INT (g_object_get_data (G_OBJECT (time_row), "twelve-hour")));
 
   gtk_editable_set_text (GTK_EDITABLE (time_row), time_str);
 }
@@ -964,6 +994,57 @@ on_ampm_selected (GObject          *drop_down,
   guint selected = gtk_drop_down_get_selected (GTK_DROP_DOWN (drop_down));
 
   g_object_set_data (G_OBJECT (time_row), "am-pm", GINT_TO_POINTER (selected == 1));
+  on_time_value_changed (NULL, time_row);
+}
+
+static gboolean
+schedule_use_twelve_hour (GSettings *settings)
+{
+  return g_settings_get_enum (settings, "clock-format") != G_DESKTOP_CLOCK_FORMAT_24H;
+}
+
+static void
+on_clock_format_changed (GSettings       *settings,
+                         const gchar *key G_GNUC_UNUSED,
+                         gpointer         user_data)
+{
+  GtkWidget *time_row = GTK_WIDGET (user_data);
+  GtkWidget *page = g_object_get_data (G_OBJECT (time_row), "page");
+  GtkWidget *hour_spin = g_object_get_data (G_OBJECT (time_row), "hour-spin");
+  GtkWidget *dropdown = g_object_get_data (G_OBJECT (time_row), "ampm-dropdown");
+  gboolean was_twelve = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (time_row), "twelve-hour"));
+  gboolean twelve = schedule_use_twelve_hour (settings);
+  gint hour = gtk_spin_button_get_value_as_int (GTK_SPIN_BUTTON (hour_spin));
+  gboolean is_pm = GPOINTER_TO_INT (g_object_get_data (G_OBJECT (time_row), "am-pm"));
+  gint hour24;
+
+  if (twelve == was_twelve)
+    return;
+
+  if (was_twelve) {
+    hour24 = hour % 12 + (is_pm ? 12 : 0);
+  } else {
+    hour24 = hour;
+    is_pm = hour24 >= 12;
+  }
+
+  g_object_set_data (G_OBJECT (time_row), "twelve-hour", GINT_TO_POINTER (twelve));
+  g_object_set_data (G_OBJECT (page), "twelve-hour", GINT_TO_POINTER (twelve));
+  g_object_set_data (G_OBJECT (time_row), "am-pm", GINT_TO_POINTER (is_pm));
+  g_object_set_data (G_OBJECT (page), "am-pm", GINT_TO_POINTER (is_pm));
+
+  if (twelve) {
+    gtk_spin_button_set_range (GTK_SPIN_BUTTON (hour_spin), 1, 12);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (hour_spin), hour24 % 12 ? hour24 % 12 : 12);
+    g_signal_handlers_block_by_func (dropdown, on_ampm_selected, time_row);
+    gtk_drop_down_set_selected (GTK_DROP_DOWN (dropdown), is_pm ? 1 : 0);
+    g_signal_handlers_unblock_by_func (dropdown, on_ampm_selected, time_row);
+  } else {
+    gtk_spin_button_set_range (GTK_SPIN_BUTTON (hour_spin), 0, 23);
+    gtk_spin_button_set_value (GTK_SPIN_BUTTON (hour_spin), hour24);
+  }
+  gtk_widget_set_visible (dropdown, twelve);
+
   on_time_value_changed (NULL, time_row);
 }
 
@@ -1072,19 +1153,24 @@ on_schedule_activated (GSimpleAction *action,
   GtkWidget *hour_spin;
   GtkWidget *minute_spin;
   g_autoptr (GDateTime) now = g_date_time_new_now_local ();
-  g_autofree char *ampm = NULL;
+  g_autoptr (GSettings) interface_settings = g_settings_new ("org.gnome.desktop.interface");
   gboolean use_twelve_hour;
   gint hour24;
   g_autofree char *date_str = NULL;
   g_autofree char *time_str = NULL;
   gboolean is_pm = FALSE;
+  GtkWidget *ampm_dropdown;
+  const gchar *ampm_strings[3];
+  g_autoptr (GDateTime) midnight = g_date_time_new_local (2000, 1, 1, 0, 0, 0);
+  g_autoptr (GDateTime) noon = g_date_time_new_local (2000, 1, 1, 12, 0, 0);
+  g_autofree char *am_str = schedule_format_ampm (midnight);
+  g_autofree char *pm_str = schedule_format_ampm (noon);
 
   set_send_action_enabled (self, FALSE);
 
   ensure_large_spinbutton_style ();
 
-  ampm = g_date_time_format (now, "%p");
-  use_twelve_hour = ampm[0] != '\0';
+  use_twelve_hour = schedule_use_twelve_hour (interface_settings);
 
   hour24 = (g_date_time_get_hour (now) + 1) % 24;
 
@@ -1157,26 +1243,19 @@ on_schedule_activated (GSimpleAction *action,
 
   g_object_set_data (G_OBJECT (time_row), "twelve-hour", GINT_TO_POINTER (use_twelve_hour));
 
-  if (use_twelve_hour) {
-    GtkWidget *ampm_dropdown;
-    const gchar *ampm_strings[3];
-    g_autoptr (GDateTime) midnight = g_date_time_new_local (2000, 1, 1, 0, 0, 0);
-    g_autoptr (GDateTime) noon = g_date_time_new_local (2000, 1, 1, 12, 0, 0);
-    g_autofree char *am_str = g_date_time_format (midnight, "%p");
-    g_autofree char *pm_str = g_date_time_format (noon, "%p");
+  is_pm = hour24 >= 12;
+  ampm_strings[0] = am_str;
+  ampm_strings[1] = pm_str;
+  ampm_strings[2] = NULL;
+  ampm_dropdown = gtk_drop_down_new_from_strings (ampm_strings);
+  gtk_drop_down_set_selected (GTK_DROP_DOWN (ampm_dropdown), is_pm ? 1 : 0);
+  gtk_widget_set_valign (ampm_dropdown, GTK_ALIGN_CENTER);
+  gtk_widget_set_visible (ampm_dropdown, use_twelve_hour);
+  gtk_box_append (GTK_BOX (time_box), ampm_dropdown);
 
-    is_pm = hour24 >= 12;
-    ampm_strings[0] = am_str;
-    ampm_strings[1] = pm_str;
-    ampm_strings[2] = NULL;
-    ampm_dropdown = gtk_drop_down_new_from_strings (ampm_strings);
-    gtk_drop_down_set_selected (GTK_DROP_DOWN (ampm_dropdown), is_pm ? 1 : 0);
-    gtk_widget_set_valign (ampm_dropdown, GTK_ALIGN_CENTER);
-    gtk_box_append (GTK_BOX (time_box), ampm_dropdown);
-
-    g_object_set_data (G_OBJECT (time_row), "am-pm", GINT_TO_POINTER (is_pm));
-    g_signal_connect (ampm_dropdown, "notify::selected", G_CALLBACK (on_ampm_selected), time_row);
-  }
+  g_object_set_data (G_OBJECT (time_row), "am-pm", GINT_TO_POINTER (is_pm));
+  g_object_set_data (G_OBJECT (time_row), "ampm-dropdown", ampm_dropdown);
+  g_signal_connect (ampm_dropdown, "notify::selected", G_CALLBACK (on_ampm_selected), time_row);
 
   time_popover = gtk_popover_new ();
   gtk_popover_set_child (GTK_POPOVER (time_popover), time_box);
@@ -1188,7 +1267,7 @@ on_schedule_activated (GSimpleAction *action,
   {
     g_autoptr (GDateTime) dt = g_date_time_new_local (2000, 1, 1, hour24, 0, 0);
 
-    time_str = g_date_time_format (dt, use_twelve_hour ? "%-l:%M %p" : "%H:%M");
+    time_str = schedule_format_time (dt, use_twelve_hour);
   }
   gtk_editable_set_text (GTK_EDITABLE (time_row), time_str);
   g_signal_connect (hour_spin, "value-changed", G_CALLBACK (on_time_value_changed), time_row);
@@ -1201,8 +1280,10 @@ on_schedule_activated (GSimpleAction *action,
   g_object_set_data (G_OBJECT (page), "hour-spin", hour_spin);
   g_object_set_data (G_OBJECT (page), "minute-spin", minute_spin);
   g_object_set_data (G_OBJECT (page), "twelve-hour", GINT_TO_POINTER (use_twelve_hour));
-  if (use_twelve_hour)
-    g_object_set_data (G_OBJECT (page), "am-pm", GINT_TO_POINTER (is_pm));
+  g_object_set_data (G_OBJECT (page), "am-pm", GINT_TO_POINTER (is_pm));
+  g_object_set_data (G_OBJECT (time_row), "page", page);
+  g_signal_connect_object (interface_settings, "changed::clock-format", G_CALLBACK (on_clock_format_changed), time_row, 0);
+  g_object_set_data_full (G_OBJECT (page), "interface-settings", g_object_ref (interface_settings), g_object_unref);
 
   adw_alert_dialog_set_extra_child (ADW_ALERT_DIALOG (dialog), page);
 
