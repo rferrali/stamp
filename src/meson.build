@@ -30,6 +30,7 @@ stamp_sources = [
   'views/stamp-header-bar.c',
   'views/stamp-item.c',
   'views/stamp-tag.c',
+  'views/stamp-rich-text-editor.c',
   'views/calendar/stamp-calendar-view.c',
   'views/contact/stamp-contact-details.c',
   'views/contact/stamp-contact-view.c',
@@ -71,6 +72,7 @@ blueprints = custom_target('blueprints',
     'stamp-window.blp',
     'views/stamp-header-bar.blp',
     'views/stamp-tag.blp',
+    'views/stamp-rich-text-editor.blp',
     'views/calendar/stamp-calendar-view.blp',
     'views/contact/stamp-contact-details.blp',
     'views/contact/stamp-contact-view.blp',
@@ -118,11 +120,13 @@ stamp_deps = [
   cc.find_library('m')
 ]
 
-stamp_sources += gnome.compile_resources('stamp-resources',
+stamp_resources = gnome.compile_resources('stamp-resources',
   'stamp.gresource.xml',
   c_name: 'stamp',
   dependencies: [blueprints, appstream_file],
 )
+
+stamp_sources += stamp_resources
 
 stamp_includes = include_directories(
  '.',

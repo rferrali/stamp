@@ -9,6 +9,7 @@
     <file preprocess="xml-stripblanks">stamp-window.ui</file>
     <file preprocess="xml-stripblanks">views/stamp-header-bar.ui</file>
     <file preprocess="xml-stripblanks">views/stamp-tag.ui</file>
+    <file preprocess="xml-stripblanks">views/stamp-rich-text-editor.ui</file>
     <file preprocess="xml-stripblanks">views/calendar/stamp-calendar-view.ui</file>
     <file preprocess="xml-stripblanks">views/contact/stamp-contact-details.ui</file>
     <file preprocess="xml-stripblanks">views/contact/stamp-contact-view.ui</file>
@@ -29,7 +30,7 @@
     <file preprocess="xml-stripblanks">views/mail/message-list/stamp-message-list-item.ui</file>
     <file preprocess="xml-stripblanks">views/mail/message-list/stamp-meeting-details.ui</file>
     <file alias="blank-message-template.html" compressed="true">resources/blank-message-template.html</file>
-    <file alias="stamp-composer.js" compressed="true">resources/stamp-composer.js</file>
+    <file alias="stamp-rich-text-editor.js" compressed="true">resources/stamp-rich-text-editor.js</file>
     <file alias="stamp-quote-collapse.js" compressed="true">resources/stamp-quote-collapse.js</file>
     <file preprocess="xml-stripblanks" alias="icons/scalable/actions/archive-symbolic.svg">resources/icons/scalable/actions/archive-symbolic.svg</file>
     <file preprocess="xml-stripblanks" alias="icons/scalable/actions/birthday-symbolic.svg">resources/icons/scalable/actions/birthday-symbolic.svg</file>

@@ -285,294 +285,151 @@ template $StampComposer: Adw.ApplicationWindow {
       }
 
       Adw.ToastOverlay toast_overlay {
-        child: ScrolledWindow {
-          hscrollbar-policy: never;
-          propagate-natural-height: true;
+        vexpand: true;
 
-          child: Adw.Bin webview_bin {
-            hexpand: true;
-            vexpand: true;
-          };
-        };
-      }
-    };
+        child: $StampRichTextEditor editor {
+          hexpand: true;
+          vexpand: true;
 
-    [bottom]
-    Box {
-      orientation: vertical;
-
-      Adw.WrapBox button_bar {
-        child-spacing: 6;
-        line-spacing: 6;
-        margin-start: 6;
-        margin-end: 6;
-        margin-bottom: 6;
-        margin-top: 6;
-
-        ToggleButton {
-          tooltip-text: _("Bold");
-          action-name: "composer.bold";
-          action-target: "'bold'";
-          icon-name: "format-text-bold-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Bold");
-          }
-        }
-
-        ToggleButton {
-          tooltip-text: _("Italic");
-          action-name: "composer.italic";
-          action-target: "'italic'";
-          icon-name: "format-text-italic-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Italic");
-          }
-        }
-
-        ToggleButton {
-          tooltip-text: _("Underline");
-          action-name: "composer.underline";
-          action-target: "'underline'";
-          icon-name: "format-text-underline-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Underline");
-          }
-        }
-
-        ToggleButton {
-          tooltip-text: _("Strike Through");
-          action-name: "composer.strikethrough";
-          action-target: "'strikethrough'";
-          icon-name: "format-text-strikethrough-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Strike Through");
-          }
-        }
-
-        Separator {
-          styles [
-            "flat",
-          ]
-        }
-
-        ToggleButton {
-          tooltip-text: _("Bullet List");
-          action-name: "composer.bullet-list";
-          action-target: "'insertUnorderedList'";
-          icon-name: "view-list-bullet-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Bullet List");
-          }
-        }
-
-        ToggleButton {
-          tooltip-text: _("Numbered List");
-          action-name: "composer.numbered-list";
-          action-target: "'insertOrderedList'";
-          icon-name: "view-list-ordered-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Numbered List");
-          }
-        }
-
-        Button insert_link_button {
-          action-name: "composer.insert-link";
-          tooltip-text: _("Insert Link");
-          icon-name: "insert-link-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Insert Link");
-          }
-        }
-
-        Separator {
-          styles [
-            "flat",
-          ]
-        }
-
-        Button {
-          action-name: "composer.remove-format";
-          tooltip-text: _("Remove Format");
-          icon-name: "edit-clear-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Remove Format");
-          }
-        }
-
-        MenuButton signature {
-          tooltip-text: _("Insert Signature");
-          icon-name: "signature-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Insert Signature");
-          }
-        }
-
-        Button {
-          action-name: "composer.add-attachment";
-          tooltip-text: _("Add Attachment");
-          icon-name: "mail-attachment-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Add Attachment");
-          }
-        }
-
-        ToggleButton request_disposition {
-          tooltip-text: _("Request Read Receipt");
-          icon-name: "preferences-system-notifications-symbolic";
-
-          styles [
-            "flat",
-          ]
-
-          accessibility {
-            label: _("Request Disposition");
-          }
-        }
-
-        Overlay {
-          [overlay]
-          Box security_is_active {
-            halign: end;
-            valign: start;
-            margin-end: 5;
-            margin-top: 5;
-            can-focus: false;
-            can-target: false;
-            visible: false;
-
-            styles [
-              "circle-overlay",
-            ]
-          }
-
-          child: MenuButton security_menu {
-            icon-name: "shield-safe-symbolic";
-            tooltip-text: _("Security Options");
+          [toolbar]
+          MenuButton signature {
+            tooltip-text: _("Insert Signature");
+            icon-name: "signature-symbolic";
 
             styles [
               "flat",
             ]
 
             accessibility {
-              label: _("Security Options");
+              label: _("Insert Signature");
+            }
+          }
+
+          [toolbar]
+          Button {
+            action-name: "composer.add-attachment";
+            tooltip-text: _("Add Attachment");
+            icon-name: "mail-attachment-symbolic";
+
+            styles [
+              "flat",
+            ]
+
+            accessibility {
+              label: _("Add Attachment");
+            }
+          }
+
+          [toolbar]
+          ToggleButton request_disposition {
+            tooltip-text: _("Request Read Receipt");
+            icon-name: "preferences-system-notifications-symbolic";
+
+            styles [
+              "flat",
+            ]
+
+            accessibility {
+              label: _("Request Disposition");
+            }
+          }
+
+          [toolbar]
+          Overlay {
+            [overlay]
+            Box security_is_active {
+              halign: end;
+              valign: start;
+              margin-end: 5;
+              margin-top: 5;
+              can-focus: false;
+              can-target: false;
+              visible: false;
+
+              styles [
+                "circle-overlay",
+              ]
             }
 
-            popover: Popover security_popover {
-              Box {
-                orientation: vertical;
-                spacing: 6;
+            child: MenuButton security_menu {
+              icon-name: "shield-safe-symbolic";
+              tooltip-text: _("Security Options");
 
-                Label {
-                  label: _("PGP");
-                  halign: start;
+              styles [
+                "flat",
+              ]
 
-                  styles [
-                    "dim-label",
-                  ]
-                }
-
-                CheckButton pgp_sign {
-                  label: _("PGP Sign");
-                  toggled => $on_security_toggle_toggled();
-
-                  accessibility {
-                    label: _("PGP Sign");
-                  }
-                }
-
-                CheckButton pgp_encrypt {
-                  label: _("PGP Encrypt");
-                  toggled => $on_security_toggle_toggled();
-
-                  accessibility {
-                    label: _("PGP Encrypt");
-                  }
-                }
-
-                Separator {}
-
-                Label {
-                  label: _("S/MIME");
-                  halign: start;
-
-                  styles [
-                    "dim-label",
-                  ]
-                }
-
-                CheckButton smime_sign {
-                  label: _("S/MIME Sign");
-                  toggled => $on_security_toggle_toggled();
-
-                  accessibility {
-                    label: _("S/MIME Sign");
-                  }
-                }
-
-                CheckButton smime_encrypt {
-                  label: _("S/MIME Encrypt");
-                  toggled => $on_security_toggle_toggled();
-
-                  accessibility {
-                    label: _("S/MIME Encrypt");
-                  }
-                }
+              accessibility {
+                label: _("Security Options");
               }
+
+              popover: Popover security_popover {
+                Box {
+                  orientation: vertical;
+                  spacing: 6;
+
+                  Label {
+                    label: _("PGP");
+                    halign: start;
+
+                    styles [
+                      "dim-label",
+                    ]
+                  }
+
+                  CheckButton pgp_sign {
+                    label: _("PGP Sign");
+                    toggled => $on_security_toggle_toggled();
+
+                    accessibility {
+                      label: _("PGP Sign");
+                    }
+                  }
+
+                  CheckButton pgp_encrypt {
+                    label: _("PGP Encrypt");
+                    toggled => $on_security_toggle_toggled();
+
+                    accessibility {
+                      label: _("PGP Encrypt");
+                    }
+                  }
+
+                  Separator {}
+
+                  Label {
+                    label: _("S/MIME");
+                    halign: start;
+
+                    styles [
+                      "dim-label",
+                    ]
+                  }
+
+                  CheckButton smime_sign {
+                    label: _("S/MIME Sign");
+                    toggled => $on_security_toggle_toggled();
+
+                    accessibility {
+                      label: _("S/MIME Sign");
+                    }
+                  }
+
+                  CheckButton smime_encrypt {
+                    label: _("S/MIME Encrypt");
+                    toggled => $on_security_toggle_toggled();
+
+                    accessibility {
+                      label: _("S/MIME Encrypt");
+                    }
+                  }
+                }
+              };
             };
-          };
-        }
+          }
+        };
       }
-    }
+    };
   }
 }
 

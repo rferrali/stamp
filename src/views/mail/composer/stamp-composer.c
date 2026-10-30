@@ -41,6 +41,7 @@
 #include "stamp-signature.h"
 #include "stamp-tag.h"
 #include "stamp-webview.h"
+#include "stamp-rich-text-editor.h"
 #include "stamp-window.h"
 
 #define USER_AGENT ("Stamp " PACKAGE_VERSION)
@@ -48,7 +49,7 @@
 struct _StampComposer {
   AdwApplicationWindow parent_instance;
 
-  GtkWidget *webview_bin;
+  StampRichTextEditor *editor;
   StampWebView *webview;
   GtkWidget *emoji_chooser;
   GtkWidget *from;
@@ -69,7 +70,6 @@ struct _StampComposer {
   GtkWidget *security_menu;
   GtkWidget *security_is_active;
   GtkWidget *security_popover;
-  GtkWidget *insert_link_button;
   GtkWidget *scrolled_window;
   StampComposerType type;
   CamelMimeMessage *orig_message;
@@ -154,85 +154,6 @@ send_completed_data_free (gpointer data)
 }
 
 static void
-on_query_command (GObject      *source,
-                  const gchar  *command,
-                  GAsyncResult *res,
-                  gpointer      user_data)
-{
-  StampComposer *self = user_data;
-  g_autoptr (GError) error = NULL;
-  gboolean ret;
-
-  ret = stamp_web_view_query_command_state_finish (source, res, &error);
-  if (error) {
-    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-      g_warning ("Could not query command state: %s", error->message);
-    return;
-  }
-
-  g_action_group_change_action_state (G_ACTION_GROUP (self->actions), command, g_variant_new_string (ret ? command : ""));
-}
-
-static void
-on_query_bold_command (GObject      *source,
-                       GAsyncResult *res,
-                       gpointer      user_data)
-{
-  on_query_command (source, "bold", res, user_data);
-}
-
-static void
-on_query_italic_command (GObject      *source,
-                         GAsyncResult *res,
-                         gpointer      user_data)
-{
-  on_query_command (source, "italic", res, user_data);
-}
-
-static void
-on_query_underline_command (GObject      *source,
-                            GAsyncResult *res,
-                            gpointer      user_data)
-{
-  on_query_command (source, "underline", res, user_data);
-}
-
-static void
-on_query_strikethrough_command (GObject      *source,
-                                GAsyncResult *res,
-                                gpointer      user_data)
-{
-  on_query_command (source, "strikethrough", res, user_data);
-}
-
-static void
-on_query_bullet_list_command (GObject      *source,
-                              GAsyncResult *res,
-                              gpointer      user_data)
-{
-  on_query_command (source, "insertUnorderedList", res, user_data);
-}
-
-static void
-on_query_numbered_list_command (GObject      *source,
-                                GAsyncResult *res,
-                                gpointer      user_data)
-{
-  on_query_command (source, "insertOrderedList", res, user_data);
-}
-
-static void
-update_actions (StampComposer *self)
-{
-  stamp_web_view_query_command_state (self->webview, "bold", self->cancellable, on_query_bold_command, self);
-  stamp_web_view_query_command_state (self->webview, "italic", self->cancellable, on_query_italic_command, self);
-  stamp_web_view_query_command_state (self->webview, "underline", self->cancellable, on_query_underline_command, self);
-  stamp_web_view_query_command_state (self->webview, "strikethrough", self->cancellable, on_query_strikethrough_command, self);
-  stamp_web_view_query_command_state (self->webview, "insertUnorderedList", self->cancellable, on_query_bullet_list_command, self);
-  stamp_web_view_query_command_state (self->webview, "insertOrderedList", self->cancellable, on_query_numbered_list_command, self);
-}
-
-static void
 set_send_action_enabled (StampComposer *self,
                          gboolean       enabled)
 {
@@ -278,18 +199,6 @@ update_save_template_action (StampComposer *self)
   account = stamp_composer_from_get_account (self->composer_from);
   action = g_action_map_lookup_action (G_ACTION_MAP (self->actions), "save-template");
   g_simple_action_set_enabled (G_SIMPLE_ACTION (action), stamp_account_get_mail_templates_folder (account) != NULL);
-}
-
-static void
-on_edit_activate (GSimpleAction *action,
-                  GVariant      *parameter,
-                  gpointer       user_data)
-{
-  StampComposer *self = STAMP_COMPOSER (user_data);
-  const gchar *command = g_variant_get_string (parameter, NULL);
-
-  webkit_web_view_execute_editing_command (WEBKIT_WEB_VIEW (self->webview), command);
-  update_actions (self);
 }
 
 static CamelMimeMessage *
@@ -1380,17 +1289,6 @@ on_save_template_activated (GSimpleAction *action,
 }
 
 static void
-on_remove_format_activated (GSimpleAction *action,
-                            GVariant      *parameter,
-                            gpointer       user_data)
-{
-  StampComposer *self = STAMP_COMPOSER (user_data);
-
-  stamp_web_view_execute_editor_command (self->webview, "removeformat", "");
-  stamp_web_view_execute_editor_command (self->webview, "unlink", "");
-}
-
-static void
 on_insert_signature_finished (GObject      *source,
                               GAsyncResult *res,
                               gpointer      user_data)
@@ -2053,12 +1951,10 @@ mark_dirty (StampComposer *self)
 }
 
 static void
-on_dirty_message (WebKitUserContentManager *manager,
-                  WebKitUserMessage        *message,
-                  gpointer                  user_data)
+on_editor_changed (StampRichTextEditor *editor,
+                   gpointer             user_data)
 {
-  StampComposer *self = STAMP_COMPOSER (user_data);
-  mark_dirty (self);
+  mark_dirty (STAMP_COMPOSER (user_data));
 }
 
 static void
@@ -2067,20 +1963,9 @@ on_load_changed (WebKitWebView   *view,
                  gpointer         user_data)
 {
   StampComposer *self = STAMP_COMPOSER (user_data);
-  g_autoptr (GBytes) js = NULL;
 
   if (load_event != WEBKIT_LOAD_FINISHED)
     return;
-
-  webkit_web_view_evaluate_javascript (view, "document.body.addEventListener('input', () => {"
-                                       "    window.webkit.messageHandlers.dirty.postMessage('');"
-                                       "});",
-                                       -1, NULL, NULL, NULL, NULL, NULL);
-
-  js = g_resources_lookup_data ("/org/tabos/stamp/stamp-composer.js", G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
-  webkit_web_view_evaluate_javascript (view,
-                                       g_bytes_get_data (js, NULL),
-                                       -1, NULL, NULL, NULL, NULL, NULL);
 
   if (self->has_loaded)
     return;
@@ -2109,139 +1994,10 @@ on_load_changed (WebKitWebView   *view,
   }
 }
 
-static void
-undo_cb (GSimpleAction *action,
-         GVariant      *parameter,
-         gpointer       user_data)
-{
-  StampComposer *self = STAMP_COMPOSER (user_data);
-
-  webkit_web_view_evaluate_javascript (WEBKIT_WEB_VIEW (self->webview), "document.execCommand('undo');", -1, NULL, NULL, NULL, NULL, NULL);
-}
-
-static void
-redo_cb (GSimpleAction *action,
-         GVariant      *parameter,
-         gpointer       user_data)
-{
-  StampComposer *self = STAMP_COMPOSER (user_data);
-
-  webkit_web_view_evaluate_javascript (WEBKIT_WEB_VIEW (self->webview), "document.execCommand('redo');", -1, NULL, NULL, NULL, NULL, NULL);
-}
-
-static gboolean
-on_context_menu (WebKitWebView       *web_view,
-                 WebKitContextMenu   *context_menu,
-                 WebKitHitTestResult *hit_test_result,
-                 gpointer             user_data)
-{
-  StampComposer *self = STAMP_COMPOSER (user_data);
-
-  if (webkit_hit_test_result_context_is_editable (hit_test_result)) {
-    WebKitEditorState *state;
-    WebKitContextMenuItem *item;
-    GSimpleAction *action;
-    gboolean can_undo, can_redo;
-
-    state = webkit_web_view_get_editor_state (WEBKIT_WEB_VIEW (self->webview));
-    can_undo = webkit_editor_state_is_undo_available (state);
-    can_redo = webkit_editor_state_is_redo_available (state);
-
-    webkit_context_menu_prepend (context_menu, webkit_context_menu_item_new_separator ());
-
-    action = g_simple_action_new ("redo", NULL);
-    g_signal_connect (action, "activate", G_CALLBACK (redo_cb), self);
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), can_redo);
-    item = webkit_context_menu_item_new_from_gaction (G_ACTION (action), _("Redo"), NULL);
-    webkit_context_menu_prepend (context_menu, item);
-
-    action = g_simple_action_new ("undo", NULL);
-    g_signal_connect (action, "activate", G_CALLBACK (undo_cb), self);
-    g_simple_action_set_enabled (G_SIMPLE_ACTION (action), can_undo);
-    item = webkit_context_menu_item_new_from_gaction (G_ACTION (action), _("Undo"), NULL);
-    webkit_context_menu_prepend (context_menu, item);
-
-    return FALSE;
-  }
-
-  return FALSE;
-}
-
-static void
-on_insert_link_response (AdwAlertDialog *dialog,
-                         const gchar    *response,
-                         gpointer        user_data)
-{
-  StampComposer *self = STAMP_COMPOSER (user_data);
-
-  if (g_strcmp0 (response, "insert") == 0) {
-    GtkWidget *extra_child = adw_alert_dialog_get_extra_child (dialog);
-    GtkWidget *text_entry = g_object_get_data (G_OBJECT (extra_child), "text-entry");
-    GtkWidget *url_entry = g_object_get_data (G_OBJECT (extra_child), "url-entry");
-    const gchar *text = gtk_editable_get_text (GTK_EDITABLE (text_entry));
-    const gchar *url = gtk_editable_get_text (GTK_EDITABLE (url_entry));
-
-    if (url && *url) {
-      if (text && *text) {
-        g_autofree char *html = g_strdup_printf ("<a href=\"%s\">%s</a>", url, text);
-
-        stamp_web_view_execute_editor_command (self->webview, "insertHTML", html);
-      } else {
-        stamp_web_view_execute_editor_command (self->webview, "createLink", url);
-      }
-    }
-  }
-}
-
-static void
-on_insert_link_activated (GSimpleAction *action,
-                          GVariant      *parameter,
-                          gpointer       user_data)
-{
-  StampComposer *self = STAMP_COMPOSER (user_data);
-  GtkWidget *dialog;
-  GtkWidget *box;
-  GtkWidget *text_entry;
-  GtkWidget *url_entry;
-
-  dialog = GTK_WIDGET (adw_alert_dialog_new (_("Insert Link"), NULL));
-
-  box = gtk_box_new (GTK_ORIENTATION_VERTICAL, 6);
-
-  text_entry = gtk_entry_new ();
-  gtk_entry_set_placeholder_text (GTK_ENTRY (text_entry), _("Text"));
-  gtk_box_append (GTK_BOX (box), text_entry);
-
-  url_entry = gtk_entry_new ();
-  gtk_entry_set_placeholder_text (GTK_ENTRY (url_entry), _("URL"));
-  gtk_box_append (GTK_BOX (box), url_entry);
-
-  g_object_set_data (G_OBJECT (box), "text-entry", text_entry);
-  g_object_set_data (G_OBJECT (box), "url-entry", url_entry);
-
-  adw_alert_dialog_set_extra_child (ADW_ALERT_DIALOG (dialog), box);
-  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "cancel", _("_Cancel"));
-  adw_alert_dialog_add_response (ADW_ALERT_DIALOG (dialog), "insert", _("_Insert"));
-  adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "insert", ADW_RESPONSE_SUGGESTED);
-  adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "insert");
-  adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
-
-  g_signal_connect (dialog, "response", G_CALLBACK (on_insert_link_response), self);
-  adw_dialog_present (ADW_DIALOG (dialog), GTK_WIDGET (self));
-}
-
 static const GActionEntry stamp_composer_action_entries[] = {
-  { "bold", on_edit_activate, "s", "''", NULL},
-  { "italic", on_edit_activate, "s", "''", NULL},
-  { "underline", on_edit_activate, "s", "''", NULL},
-  { "strikethrough", on_edit_activate, "s", "''", NULL},
-  { "bullet-list", on_edit_activate, "s", "''", NULL},
-  { "numbered-list", on_edit_activate, "s", "''", NULL},
-  { "insert-link", on_insert_link_activated },
   { "send", on_send_activated },
   { "schedule", on_schedule_activated },
   { "save-template", on_save_template_activated },
-  { "remove-format", on_remove_format_activated },
   { "add-attachment", on_add_attachment_activated },
 };
 
@@ -2421,31 +2177,21 @@ show_emoji_chooser (GtkWidget *widget,
 static void
 stamp_composer_init (StampComposer *self)
 {
-  GBytes *template;
   GtkListItemFactory *factory;
   GtkListItemFactory *selected_factory;
-  WebKitUserContentManager *manager;
   g_autofree char *tmp = NULL;
   GtkShortcut *shortcut;
   GtkEventController *controller;
   GtkDropTarget *drop = gtk_drop_target_new (GDK_TYPE_FILE_LIST, GDK_ACTION_COPY);
   GAction *action;
 
+  g_type_ensure (STAMP_TYPE_RICH_TEXT_EDITOR);
   gtk_widget_init_template (GTK_WIDGET (self));
 
   self->type = STAMP_COMPOSER_NEW;
   self->attachments = NULL;
   self->cancellable = g_cancellable_new ();
-  self->webview = stamp_webview_new ();
-
-  g_signal_connect (self->webview, "context-menu", G_CALLBACK (on_context_menu), self);
-
-  stamp_webview_set_editable (self->webview);
-  gtk_widget_set_focusable (GTK_WIDGET (self->webview), TRUE);
-  adw_bin_set_child (ADW_BIN (self->webview_bin), GTK_WIDGET (self->webview));
-
-  template = g_resources_lookup_data ("/org/tabos/stamp/blank-message-template.html", G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
-  webkit_web_view_load_html (WEBKIT_WEB_VIEW (self->webview), g_bytes_get_data (template, NULL), NULL);
+  self->webview = stamp_rich_text_editor_get_web_view (self->editor);
 
   factory = gtk_signal_list_item_factory_new ();
   g_signal_connect (factory, "setup", G_CALLBACK (on_setup_selected), self);
@@ -2463,9 +2209,7 @@ stamp_composer_init (StampComposer *self)
 
   gtk_widget_grab_focus (self->to);
 
-  manager = webkit_web_view_get_user_content_manager (WEBKIT_WEB_VIEW (self->webview));
-  webkit_user_content_manager_register_script_message_handler (manager, "dirty", NULL);
-  g_signal_connect_object (manager, "script-message-received::dirty", G_CALLBACK (on_dirty_message), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (self->editor, "changed", G_CALLBACK (on_editor_changed), self, G_CONNECT_DEFAULT);
 
   g_signal_connect (self->webview, "load-changed", G_CALLBACK (on_load_changed), self);
 
@@ -2700,7 +2444,7 @@ stamp_composer_class_init (StampComposerClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampComposer, to);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, cc);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, bcc);
-  gtk_widget_class_bind_template_child (widget_class, StampComposer, webview_bin);
+  gtk_widget_class_bind_template_child (widget_class, StampComposer, editor);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, send_button);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, subject);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, window_title);
@@ -2714,7 +2458,6 @@ stamp_composer_class_init (StampComposerClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampComposer, security_menu);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, security_is_active);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, security_popover);
-  gtk_widget_class_bind_template_child (widget_class, StampComposer, insert_link_button);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, toggle);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, toast_overlay);
   gtk_widget_class_bind_template_child (widget_class, StampComposer, signature);

@@ -59,6 +59,8 @@ src/views/mail/stamp-mail-view.c
 src/views/stamp-header-bar.blp
 src/views/stamp-header-bar.c
 src/views/stamp-item.c
+src/views/stamp-rich-text-editor.blp
+src/views/stamp-rich-text-editor.c
 src/views/stamp-tag.blp
 src/views/stamp-tag.c
 src/web-process-extension/extension.c

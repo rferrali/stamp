@@ -29,22 +29,14 @@ template $StampPreferencesSignatureEditor: Adw.NavigationPage {
           }
         }
 
-        Gtk.ScrolledWindow {
+        $StampRichTextEditor editor {
           vexpand: true;
           hexpand: true;
+          height-request: 240;
 
           styles [
             "card",
           ]
-
-          $StampWebView web_view {
-            vexpand: true;
-            hexpand: true;
-            margin-top: 3;
-            margin-bottom: 3;
-            margin-start: 3;
-            margin-end: 3;
-          }
         }
 
         Adw.PreferencesGroup {

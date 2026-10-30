@@ -23,14 +23,14 @@
 
 #include "stamp-session.h"
 #include "stamp-signature.h"
-#include "stamp-webview.h"
+#include "stamp-rich-text-editor.h"
 
 struct _StampPreferencesSignatureEditor {
   AdwNavigationPage parent_instance;
 
   AdwWindowTitle *editor_window_title;
   AdwEntryRow *name_row;
-  StampWebView *web_view;
+  StampRichTextEditor *editor;
   AdwButtonRow *save;
   AdwButtonRow *remove;
 
@@ -45,13 +45,13 @@ on_editor_get_body_html (GObject      *source,
                          GAsyncResult *res,
                          gpointer      user_data)
 {
-  StampPreferencesSignatureEditor *self = STAMP_PREFERENCES_SIGNATURE_EDITOR (user_data);
+  g_autoptr (StampPreferencesSignatureEditor) self = user_data;
   g_autoptr (GError) error = NULL;
   g_autofree char *html = NULL;
   const gchar *name;
   StampSession *session;
 
-  html = stamp_webview_get_body_html_finish (self->web_view, res, NULL, &error);
+  html = stamp_rich_text_editor_get_html_finish (self->editor, res, NULL, &error);
   if (error) {
     g_warning ("%s: Could not load body html: %s", G_STRFUNC, error->message);
     return;
@@ -100,7 +100,7 @@ on_editor_save_clicked (GtkWidget *button,
 
   self->cancellable = g_cancellable_new ();
 
-  stamp_webview_get_body_html (self->web_view, self->cancellable, on_editor_get_body_html, self);
+  stamp_rich_text_editor_get_html_async (self->editor, self->cancellable, on_editor_get_body_html, g_object_ref (self));
 }
 
 static void
@@ -146,7 +146,7 @@ stamp_preferences_signature_editor_class_init (StampPreferencesSignatureEditorCl
 
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesSignatureEditor, editor_window_title);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesSignatureEditor, name_row);
-  gtk_widget_class_bind_template_child (widget_class, StampPreferencesSignatureEditor, web_view);
+  gtk_widget_class_bind_template_child (widget_class, StampPreferencesSignatureEditor, editor);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesSignatureEditor, save);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesSignatureEditor, remove);
 
@@ -157,41 +157,28 @@ stamp_preferences_signature_editor_class_init (StampPreferencesSignatureEditorCl
 static void
 stamp_preferences_signature_editor_setup (StampPreferencesSignatureEditor *self)
 {
-  webkit_web_view_set_editable (WEBKIT_WEB_VIEW (self->web_view), TRUE);
-
   if (self->signature) {
     adw_window_title_set_title (self->editor_window_title, _("Edit Signature"));
     gtk_editable_set_text (GTK_EDITABLE (self->name_row), stamp_signature_get_name (self->signature));
 
     if (g_strcmp0 (stamp_signature_get_mime_type (self->signature), "text/html") == 0)
-      webkit_web_view_load_html (WEBKIT_WEB_VIEW (self->web_view), stamp_signature_get_content (self->signature), NULL);
+      stamp_rich_text_editor_set_html (self->editor, stamp_signature_get_content (self->signature));
     else
-      webkit_web_view_load_plain_text (WEBKIT_WEB_VIEW (self->web_view), stamp_signature_get_content (self->signature));
-
-    gtk_widget_set_visible (GTK_WIDGET (self->save), TRUE);
-    gtk_widget_set_visible (GTK_WIDGET (self->remove), TRUE);
+      stamp_rich_text_editor_set_plain_text (self->editor, stamp_signature_get_content (self->signature));
   } else {
-    g_autoptr (GBytes) template = NULL;
-    g_autoptr (GError) error = NULL;
-
     adw_window_title_set_title (self->editor_window_title, _("New Signature"));
-    gtk_widget_set_visible (GTK_WIDGET (self->save), TRUE);
-    gtk_widget_set_visible (GTK_WIDGET (self->remove), FALSE);
-
-    template = g_resources_lookup_data ("/org/tabos/stamp/blank-message-template.html", G_RESOURCE_LOOKUP_FLAGS_NONE, &error);
-    if (error) {
-      g_warning ("%s: Could not load blank message template: %s", G_STRFUNC, error->message);
-      return;
-    }
-
-    webkit_web_view_load_html (WEBKIT_WEB_VIEW (self->web_view), g_bytes_get_data (template, NULL), NULL);
   }
+
+  gtk_widget_set_visible (GTK_WIDGET (self->save), TRUE);
+  gtk_widget_set_visible (GTK_WIDGET (self->remove), self->signature != NULL);
 }
 
 void
 stamp_preferences_signature_editor_init (StampPreferencesSignatureEditor *self)
 {
+  g_type_ensure (STAMP_TYPE_RICH_TEXT_EDITOR);
   gtk_widget_init_template (GTK_WIDGET (self));
+  g_object_bind_property (self->editor, "ready", self->save, "sensitive", G_BINDING_SYNC_CREATE);
 }
 
 GtkWidget *

@@ -1,0 +1,153 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $StampRichTextEditor: Adw.Bin {
+  Adw.ToolbarView {
+    bottom-bar-style: raised;
+
+    content: ScrolledWindow {
+      hscrollbar-policy: never;
+      propagate-natural-height: true;
+      vexpand: true;
+
+      child: Adw.Bin webview_bin {
+        hexpand: true;
+        vexpand: true;
+      };
+    };
+
+    [bottom]
+    Adw.WrapBox toolbar {
+      child-spacing: 6;
+      line-spacing: 6;
+      margin-start: 6;
+      margin-end: 6;
+      margin-bottom: 6;
+      margin-top: 6;
+
+      ToggleButton {
+        tooltip-text: _("Bold");
+        action-name: "editor.bold";
+        icon-name: "format-text-bold-symbolic";
+
+        styles [
+          "flat",
+        ]
+
+        accessibility {
+          label: _("Bold");
+        }
+      }
+
+      ToggleButton {
+        tooltip-text: _("Italic");
+        action-name: "editor.italic";
+        icon-name: "format-text-italic-symbolic";
+
+        styles [
+          "flat",
+        ]
+
+        accessibility {
+          label: _("Italic");
+        }
+      }
+
+      ToggleButton {
+        tooltip-text: _("Underline");
+        action-name: "editor.underline";
+        icon-name: "format-text-underline-symbolic";
+
+        styles [
+          "flat",
+        ]
+
+        accessibility {
+          label: _("Underline");
+        }
+      }
+
+      ToggleButton {
+        tooltip-text: _("Strike Through");
+        action-name: "editor.strikethrough";
+        icon-name: "format-text-strikethrough-symbolic";
+
+        styles [
+          "flat",
+        ]
+
+        accessibility {
+          label: _("Strike Through");
+        }
+      }
+
+      Separator {
+        styles [
+          "flat",
+        ]
+      }
+
+      ToggleButton {
+        tooltip-text: _("Bullet List");
+        action-name: "editor.bullet-list";
+        icon-name: "view-list-bullet-symbolic";
+
+        styles [
+          "flat",
+        ]
+
+        accessibility {
+          label: _("Bullet List");
+        }
+      }
+
+      ToggleButton {
+        tooltip-text: _("Numbered List");
+        action-name: "editor.numbered-list";
+        icon-name: "view-list-ordered-symbolic";
+
+        styles [
+          "flat",
+        ]
+
+        accessibility {
+          label: _("Numbered List");
+        }
+      }
+
+      Button {
+        action-name: "editor.insert-link";
+        tooltip-text: _("Insert Link");
+        icon-name: "insert-link-symbolic";
+
+        styles [
+          "flat",
+        ]
+
+        accessibility {
+          label: _("Insert Link");
+        }
+      }
+
+      Separator {
+        styles [
+          "flat",
+        ]
+      }
+
+      Button {
+        action-name: "editor.remove-format";
+        tooltip-text: _("Remove Format");
+        icon-name: "edit-clear-symbolic";
+
+        styles [
+          "flat",
+        ]
+
+        accessibility {
+          label: _("Remove Format");
+        }
+      }
+    }
+  }
+}
