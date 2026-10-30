@@ -2756,6 +2756,7 @@ stamp_composer_set_quote_content (StampComposer          *self,
         message_content = g_string_append (message_content, "<br/>");
         g_string_append_printf (message_content, "<blockquote type=\"cite\">%s</blockquote></div>", content_to_quote);
       } else if (type == STAMP_COMPOSER_FORWARD) {
+        g_string_append (message_content, "<div id=\"mail-quote\">");
         g_string_append_printf (message_content, _("---------- Forwarded message ----------"));
         g_string_append_printf (message_content, "<br/><br/>");
         g_string_append_printf (message_content, _("From: %s<br/>"), formatted_from);
@@ -2763,7 +2764,7 @@ stamp_composer_set_quote_content (StampComposer          *self,
         g_string_append_printf (message_content, _("Date: %s<br/>"), date_received);
 
         g_string_append_printf (message_content, "<br/><br/>");
-        g_string_append_printf (message_content, "%s", content_to_quote);
+        g_string_append_printf (message_content, "%s</div>", content_to_quote);
       }
     }
 
