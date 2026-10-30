@@ -456,10 +456,9 @@ start_completion_search (gpointer user_data)
     stamp_account_search_contacts (self->account, client, text, self->cancellable, on_search_contacts, search);
   }
 
-  if (search->pending == 1) {
-    search->pending++;
-    stamp_account_search_conversations (self->account, text, self->cancellable, on_search_conversations, search);
-  }
+  /* Also suggest people from the mail history, address books rarely contain everyone */
+  search->pending++;
+  stamp_account_search_conversations (self->account, text, self->cancellable, on_search_conversations, search);
 
   completion_search_done (search);
   return G_SOURCE_REMOVE;

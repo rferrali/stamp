@@ -654,7 +654,56 @@ stamp_account_search_contacts_finish (StampAccount  *self,
 }
 
 static void
+add_matching_addresses (const gchar *addresses,
+                        const gchar *lower_search,
+                        GHashTable  *unique)
+{
+  g_autoptr (CamelInternetAddress) addr = NULL;
+  gint count;
+
+  if (!addresses)
+    return;
+
+  addr = camel_internet_address_new ();
+  count = camel_address_decode (CAMEL_ADDRESS (addr), addresses);
+
+  for (gint idx = 0; idx < count; idx++) {
+    const gchar *name;
+    const gchar *email;
+    g_autofree char *lower_email = NULL;
+    gboolean matches;
+
+    if (!camel_internet_address_get (addr, idx, &name, &email) || !email)
+      continue;
+
+    lower_email = g_ascii_strdown (email, -1);
+    matches = g_strstr_len (lower_email, -1, lower_search) != NULL;
+
+    if (!matches && name) {
+      g_autofree char *lower_name = g_ascii_strdown (name, -1);
+
+      matches = g_strstr_len (lower_name, -1, lower_search) != NULL;
+    }
+
+    if (matches && !g_hash_table_contains (unique, lower_email)) {
+      EContact *contact = e_contact_new ();
+      GSList email_list;
+
+      email_list.data = (gpointer)lower_email;
+      email_list.next = NULL;
+
+      e_contact_set (contact, E_CONTACT_FULL_NAME, name && *name ? name : lower_email);
+      e_contact_set (contact, E_CONTACT_EMAIL, &email_list);
+
+      g_hash_table_insert (unique, g_strdup (lower_email), contact);
+    }
+  }
+}
+
+/* For sent folders the interesting addresses are the recipients, not the sender (us) */
+static void
 scan_folder_for_contacts (CamelFolder  *folder,
+                          gboolean      recipients,
                           const gchar  *lower_search,
                           GHashTable   *unique,
                           GCancellable *cancellable)
@@ -666,50 +715,20 @@ scan_folder_for_contacts (CamelFolder  *folder,
     return;
 
   for (guint i = 0; i < uids->len; i++) {
-    const gchar *uid;
-    const gchar *from;
     g_autoptr (CamelMessageInfo) info = NULL;
 
     if (g_cancellable_is_cancelled (cancellable))
       break;
 
-    uid = g_ptr_array_index (uids, i);
-    info = camel_folder_summary_get (summary, uid);
+    info = camel_folder_summary_get (summary, g_ptr_array_index (uids, i));
     if (!info)
       continue;
 
-    from = camel_message_info_get_from (info);
-    if (from) {
-      g_autoptr (CamelInternetAddress) addr = camel_internet_address_new ();
-
-      if (camel_address_decode (CAMEL_ADDRESS (addr), from) > 0) {
-        const gchar *name;
-        const gchar *email;
-
-        if (camel_internet_address_get (addr, 0, &name, &email) && email) {
-          g_autofree char *lower_email = g_ascii_strdown (email, -1);
-          gboolean matches = g_strstr_len (lower_email, -1, lower_search) != NULL;
-
-          if (!matches && name) {
-            g_autofree char *lower_name = g_ascii_strdown (name, -1);
-
-            matches = g_strstr_len (lower_name, -1, lower_search) != NULL;
-          }
-
-          if (matches && !g_hash_table_contains (unique, lower_email)) {
-            EContact *contact = e_contact_new ();
-            GSList email_list;
-
-            email_list.data = (gpointer)lower_email;
-            email_list.next = NULL;
-
-            e_contact_set (contact, E_CONTACT_FULL_NAME, name ? name : lower_email);
-            e_contact_set (contact, E_CONTACT_EMAIL, &email_list);
-
-            g_hash_table_insert (unique, g_strdup (lower_email), contact);
-          }
-        }
-      }
+    if (recipients) {
+      add_matching_addresses (camel_message_info_get_to (info), lower_search, unique);
+      add_matching_addresses (camel_message_info_get_cc (info), lower_search, unique);
+    } else {
+      add_matching_addresses (camel_message_info_get_from (info), lower_search, unique);
     }
   }
 }
@@ -731,7 +750,7 @@ search_conversations_thread (GTask        *task,
 
   if (self->mail) {
     if (self->mail->sent_folder)
-      scan_folder_for_contacts (self->mail->sent_folder, search_text, unique, cancellable);
+      scan_folder_for_contacts (self->mail->sent_folder, TRUE, search_text, unique, cancellable);
 
     if (self->mail->service && !g_cancellable_is_cancelled (cancellable)) {
       g_autoptr (GError) error = NULL;
@@ -741,7 +760,7 @@ search_conversations_thread (GTask        *task,
                                            "INBOX", CAMEL_STORE_FOLDER_NONE,
                                            cancellable, &error);
       if (inbox) {
-        scan_folder_for_contacts (inbox, search_text, unique, cancellable);
+        scan_folder_for_contacts (inbox, FALSE, search_text, unique, cancellable);
         g_object_unref (inbox);
       }
     }
