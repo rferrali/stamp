@@ -40,8 +40,6 @@ typedef struct {
   GFunc callback;
   gpointer user_data;
   GCancellable *cancellable;
-  gboolean cancelled;
-  guint id;
 } StampLookupWaiter;
 
 typedef struct {
@@ -50,8 +48,8 @@ typedef struct {
   GSList *waiters;
   GCancellable *cancellable;
   gint pending_books;
-  gboolean contact_found;
   gint ref_count;
+  gboolean contact_found;
 } StampPendingLookup;
 
 typedef struct _StampPhotoCache {
@@ -60,15 +58,9 @@ typedef struct _StampPhotoCache {
   GHashTable *pending;
   StampAccount *account;
   gchar *cache_dir;
-  guint next_waiter_id;
-  GCancellable *cancellable;
+  gint ref_count;
+  gboolean closing;
 } StampPhotoCache;
-
-typedef struct {
-  StampPhotoCache *cache;
-  gchar *email;
-  guint waiter_id;
-} StampCancelData;
 
 typedef struct {
   guint generation;
@@ -83,6 +75,26 @@ typedef enum {
   STAMP_ADDRESS_BOOK_ALL,
   STAMP_ADDRESS_BOOK_SPECIFIC,
 } StampAddressBookMode;
+
+static StampPhotoCache *
+stamp_photo_cache_ref (StampPhotoCache *cache)
+{
+  g_atomic_int_inc (&cache->ref_count);
+  return cache;
+}
+
+static void
+stamp_photo_cache_unref (StampPhotoCache *cache)
+{
+  if (!g_atomic_int_dec_and_test (&cache->ref_count))
+    return;
+
+  g_clear_pointer (&cache->positive_cache, g_hash_table_unref);
+  g_clear_pointer (&cache->negative_cache, g_hash_table_unref);
+  g_clear_pointer (&cache->pending, g_hash_table_unref);
+  g_clear_pointer (&cache->cache_dir, g_free);
+  g_free (cache);
+}
 
 static StampPendingLookup *
 stamp_pending_lookup_ref (StampPendingLookup *pending)
@@ -99,6 +111,7 @@ stamp_pending_lookup_unref (StampPendingLookup *pending)
 
   g_clear_object (&pending->cancellable);
   g_clear_pointer (&pending->email, g_free);
+  stamp_photo_cache_unref (pending->cache);
   g_clear_pointer (&pending, g_free);
 }
 
@@ -228,7 +241,7 @@ stamp_photo_cache_new (StampAccount *account)
   cache->pending = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   cache->account = account;
   cache->cache_dir = g_build_path (G_DIR_SEPARATOR_S, stamp_get_cache_dir (), "avatars", stamp_account_get_uid (account), NULL);
-  cache->next_waiter_id = 1;
+  cache->ref_count = 1;
 
   if (g_mkdir_with_parents (cache->cache_dir, 0700) != 0) {
     g_warning ("%s: Could not create cache directory: %s", G_STRFUNC, g_strerror (errno));
@@ -243,66 +256,16 @@ stamp_photo_cache_free (StampPhotoCache *cache)
   GHashTableIter iter;
   gpointer key, value;
 
+  cache->closing = TRUE;
+  cache->account = NULL;
+
   g_hash_table_iter_init (&iter, cache->pending);
   while (g_hash_table_iter_next (&iter, &key, &value)) {
     StampPendingLookup *p = value;
     g_cancellable_cancel (p->cancellable);
   }
 
-  g_clear_pointer (&cache->positive_cache, g_hash_table_unref);
-  g_clear_pointer (&cache->negative_cache, g_hash_table_unref);
-  g_clear_pointer (&cache->pending, g_hash_table_unref);
-  g_clear_pointer (&cache->cache_dir, g_free);
-  g_clear_pointer (&cache, g_free);
-}
-
-static StampCancelData *
-stamp_cancel_data_new (StampPhotoCache *cache,
-                       const gchar     *email,
-                       guint            waiter_id)
-{
-  StampCancelData *data = g_new0 (StampCancelData, 1);
-
-  data->cache = cache;
-  data->email = g_strdup (email);
-  data->waiter_id = waiter_id;
-  return data;
-}
-
-static void
-stamp_cancel_data_free (StampCancelData *data)
-{
-  g_clear_pointer (&data->email, g_free);
-  g_clear_pointer (&data, g_free);
-}
-
-static gboolean
-stamp_on_waiter_cancelled_mainloop (gpointer user_data)
-{
-  StampCancelData *data = user_data;
-  StampPhotoCache *cache = data->cache;
-  StampPendingLookup *pending = g_hash_table_lookup (cache->pending, data->email);
-
-  if (!pending)
-    return G_SOURCE_REMOVE;
-
-  for (GSList *l = pending->waiters; l; l = l->next) {
-    StampLookupWaiter *waiter = l->data;
-
-    if (waiter->id == data->waiter_id) {
-      waiter->cancelled = TRUE;
-      break;
-    }
-  }
-
-  return G_SOURCE_REMOVE;
-}
-
-static void
-stamp_on_waiter_cancelled (GCancellable *cancellable,
-                           gpointer      user_data)
-{
-  g_main_context_invoke (NULL, stamp_on_waiter_cancelled_mainloop, user_data);
+  stamp_photo_cache_unref (cache);
 }
 
 static GdkTexture *
@@ -358,7 +321,7 @@ stamp_notify_waiters (StampPendingLookup *pending,
 {
   for (GSList *l = pending->waiters; l; l = l->next) {
     StampLookupWaiter *waiter = l->data;
-    gboolean call = !waiter->cancelled && (!waiter->cancellable || !g_cancellable_is_cancelled (waiter->cancellable));
+    gboolean call = !pending->cache->closing && (!waiter->cancellable || !g_cancellable_is_cancelled (waiter->cancellable));
 
     if (call && waiter->callback)
       waiter->callback (texture ? g_object_ref (texture) : NULL, waiter->user_data);
@@ -374,6 +337,119 @@ stamp_notify_waiters (StampPendingLookup *pending,
   stamp_pending_lookup_unref (pending);
 }
 
+static GdkTexture *
+stamp_texture_from_contact (StampPhotoCache *cache,
+                            const gchar     *email,
+                            EContact        *contact)
+{
+  g_autoptr (GdkTexture) texture = NULL;
+  g_autoptr (GError) error = NULL;
+  EContactPhoto *photo = e_contact_get (contact, E_CONTACT_PHOTO);
+
+  if (!photo) {
+    g_debug ("%s: Contact found for '%s' but no photo field", G_STRFUNC, email);
+    return NULL;
+  }
+
+  if (photo->type == E_CONTACT_PHOTO_TYPE_INLINED) {
+    g_autoptr (GBytes) bytes = g_bytes_new (photo->data.inlined.data, photo->data.inlined.length);
+
+    g_debug ("%s: Found inline photo for '%s'", G_STRFUNC, email);
+
+    texture = gdk_texture_new_from_bytes (bytes, NULL);
+    if (texture)
+      stamp_disk_cache_store (cache, email, photo->data.inlined.data, photo->data.inlined.length);
+    else
+      g_warning ("%s: Could not parse inline photo for '%s'", G_STRFUNC, email);
+  } else if (photo->type == E_CONTACT_PHOTO_TYPE_URI) {
+    g_debug ("%s: Found URI photo for '%s': %s", G_STRFUNC, email, photo->data.uri);
+
+    if (g_str_has_prefix (photo->data.uri, "file://")) {
+      g_autoptr (GFile) file = g_file_new_for_uri (photo->data.uri);
+
+      texture = gdk_texture_new_from_file (file, &error);
+      if (texture) {
+        g_autofree char *data = NULL;
+        gsize length = 0;
+
+        g_debug ("%s: Successfully loaded file URI photo for '%s'", G_STRFUNC, email);
+        if (g_file_load_contents (file, NULL, &data, &length, NULL, NULL))
+          stamp_disk_cache_store (cache, email, (guchar *)data, length);
+      } else {
+        g_warning ("%s: Could not load photo from uri '%s': %s", G_STRFUNC, photo->data.uri, error->message);
+      }
+    }
+  }
+
+  e_contact_photo_free (photo);
+
+  return g_steal_pointer (&texture);
+}
+
+static void stamp_start_bimi_lookup (StampPendingLookup *pending);
+
+static void
+stamp_on_contacts_received (GObject      *source,
+                            GAsyncResult *res,
+                            gpointer      user_data)
+{
+  StampPendingLookup *pending = user_data;
+  StampPhotoCache *cache = pending->cache;
+  g_autoslist (EContact) contacts = NULL;
+  g_autoptr (GError) error = NULL;
+  g_autoptr (GdkTexture) texture = NULL;
+
+  if (pending->pending_books == 0) {
+    e_book_client_get_contacts_finish (E_BOOK_CLIENT (source), res, &contacts, &error);
+    stamp_pending_lookup_unref (pending);
+    return;
+  }
+
+  if (e_book_client_get_contacts_finish (E_BOOK_CLIENT (source), res, &contacts, &error) && !cache->closing) {
+    /* Check all matches, the first one might not carry a photo */
+    for (GSList *l = contacts; l && !texture; l = l->next) {
+      pending->contact_found = TRUE;
+      texture = stamp_texture_from_contact (cache, pending->email, E_CONTACT (l->data));
+    }
+  }
+
+  if (texture) {
+    pending->pending_books = 0;
+    g_hash_table_insert (cache->positive_cache, g_strdup (pending->email), g_object_ref (texture));
+    g_hash_table_remove (cache->pending, pending->email);
+    stamp_notify_waiters (pending, texture);
+    stamp_pending_lookup_unref (pending);
+    return;
+  }
+
+  pending->pending_books--;
+  if (pending->pending_books > 0) {
+    stamp_pending_lookup_unref (pending);
+    return;
+  }
+
+  if (cache->closing) {
+    g_hash_table_remove (cache->pending, pending->email);
+    stamp_notify_waiters (pending, NULL);
+    stamp_pending_lookup_unref (pending);
+    return;
+  }
+
+  if (pending->contact_found) {
+    g_debug ("%s: Contact without photo for '%s', creating NEGATIVE cache", G_STRFUNC, pending->email);
+    g_hash_table_insert (cache->negative_cache, g_strdup (pending->email), GINT_TO_POINTER (TRUE));
+    stamp_disk_cache_store_negative (cache, pending->email);
+    g_hash_table_remove (cache->pending, pending->email);
+    stamp_notify_waiters (pending, NULL);
+    stamp_pending_lookup_unref (pending);
+    return;
+  }
+
+  /* No matching contact: try BIMI once, off the main thread */
+  stamp_start_bimi_lookup (pending);
+  stamp_pending_lookup_unref (pending);
+}
+
 static void
 on_bimi (GObject      *source,
          GAsyncResult *res,
@@ -385,20 +461,26 @@ on_bimi (GObject      *source,
   g_autoptr (GError) error = NULL;
 
   texture = g_task_propagate_pointer (task, &error);
-  if (error)
+  if (error || pending->cache->closing) {
+    g_hash_table_remove (pending->cache->pending, pending->email);
+    stamp_notify_waiters (pending, NULL);
     return;
+  }
 
   if (texture) {
     pending->pending_books = 0;
     g_hash_table_insert (pending->cache->positive_cache, g_strdup (pending->email), g_object_ref (texture));
-  } else {
-    g_hash_table_insert (pending->cache->negative_cache,
-                         g_strdup (pending->email), GINT_TO_POINTER (TRUE));
-    stamp_disk_cache_store_negative (pending->cache, pending->email);
+    g_hash_table_remove (pending->cache->pending, pending->email);
+    stamp_notify_waiters (pending, texture);
+    return;
   }
 
+  g_debug ("%s: All sources exhausted, creating NEGATIVE cache for '%s'", G_STRFUNC, pending->email);
+  g_hash_table_insert (pending->cache->negative_cache,
+                       g_strdup (pending->email), GINT_TO_POINTER (TRUE));
+  stamp_disk_cache_store_negative (pending->cache, pending->email);
   g_hash_table_remove (pending->cache->pending, pending->email);
-  stamp_notify_waiters (pending, texture);
+  stamp_notify_waiters (pending, NULL);
 }
 
 static void
@@ -412,116 +494,20 @@ load_bimi (GTask        *task,
 
   texture = check_bimi (pending->cache, pending->email, pending->cancellable);
 
-  g_task_return_pointer (task, texture, texture ? g_object_unref : NULL);
+  if (texture)
+    g_task_return_pointer (task, texture, g_object_unref);
+  else
+    g_task_return_pointer (task, NULL, NULL);
 }
 
 static void
-start_bimi_lookup (StampPendingLookup *pending)
+stamp_start_bimi_lookup (StampPendingLookup *pending)
 {
   g_autoptr (GTask) task = g_task_new (NULL, pending->cancellable, on_bimi, NULL);
 
-  g_task_set_source_tag (task, start_bimi_lookup);
-  stamp_pending_lookup_ref (pending);
-  g_task_set_task_data (task, pending, (GDestroyNotify)stamp_pending_lookup_unref);
+  g_task_set_source_tag (task, stamp_start_bimi_lookup);
+  g_task_set_task_data (task, stamp_pending_lookup_ref (pending), (GDestroyNotify)stamp_pending_lookup_unref);
   g_task_run_in_thread (task, load_bimi);
-}
-
-static void
-stamp_on_contacts_received (GObject      *source,
-                            GAsyncResult *res,
-                            gpointer      user_data)
-{
-  StampPendingLookup *pending = user_data;
-  StampPhotoCache *cache = pending->cache;
-  g_autoslist (EContact) contacts = NULL;
-  g_autoptr (GError) error = NULL;
-  g_autoptr (GdkTexture) texture = NULL;
-  g_autofree char *domain = NULL;
-
-  if (pending->pending_books == 0) {
-    e_book_client_get_contacts_finish (E_BOOK_CLIENT (source), res, &contacts, &error);
-    stamp_pending_lookup_unref (pending);
-    return;
-  }
-
-  if (!e_book_client_get_contacts_finish (E_BOOK_CLIENT (source), res, &contacts, &error)) {
-    goto book_done;
-  }
-
-  if (contacts) {
-    EContact *contact = E_CONTACT (contacts->data);
-    EContactPhoto *photo = e_contact_get (contact, E_CONTACT_PHOTO);
-
-    pending->contact_found = TRUE;
-
-    if (!photo) {
-      g_debug ("%s: Contact found for '%s' but no photo field", G_STRFUNC, pending->email);
-    } else if (photo->type == E_CONTACT_PHOTO_TYPE_INLINED) {
-      g_autoptr (GBytes) bytes = g_bytes_new (photo->data.inlined.data, photo->data.inlined.length);
-
-      g_debug ("%s: Found inline photo for '%s'", G_STRFUNC, pending->email);
-
-      texture = gdk_texture_new_from_bytes (bytes, NULL);
-      if (texture)
-        stamp_disk_cache_store (cache, pending->email, photo->data.inlined.data, photo->data.inlined.length);
-      else
-        g_warning ("%s: Could not parse inline photo for '%s'", G_STRFUNC, pending->email);
-
-      e_contact_photo_free (photo);
-    } else if (photo->type == E_CONTACT_PHOTO_TYPE_URI) {
-      g_debug ("%s: Found URI photo for '%s': %s", G_STRFUNC, pending->email, photo->data.uri);
-
-      if (g_str_has_prefix (photo->data.uri, "file://")) {
-        g_autoptr (GFile) file = g_file_new_for_uri (photo->data.uri);
-
-        texture = gdk_texture_new_from_file (file, &error);
-        if (texture) {
-          g_autofree char *data = NULL;
-          gsize length = 0;
-
-          g_debug ("%s: Successfully loaded file URI photo for '%s'", G_STRFUNC, pending->email);
-          if (g_file_load_contents (file, NULL, &data, &length, NULL, NULL))
-            stamp_disk_cache_store (cache, pending->email, (guchar *)data, length);
-        } else {
-          g_warning ("%s: Could not load photo from uri '%s': %s", G_STRFUNC, photo->data.uri, error->message);
-        }
-      }
-
-      e_contact_photo_free (photo);
-    }
-  }
-
-  if (texture) {
-    pending->pending_books = 0;
-    g_hash_table_insert (cache->positive_cache, g_strdup (pending->email), g_object_ref (texture));
-    g_hash_table_remove (cache->pending, pending->email);
-    stamp_notify_waiters (pending, texture);
-    stamp_pending_lookup_unref (pending);
-    return;
-  }
-
-book_done:
-
-  pending->pending_books--;
-  if (pending->pending_books > 0) {
-    stamp_pending_lookup_unref (pending);
-    return;
-  }
-
-  /* BIMI is only used for senders which are not part of any address book */
-  if (!pending->contact_found) {
-    start_bimi_lookup (pending);
-    stamp_pending_lookup_unref (pending);
-    return;
-  }
-
-  g_debug ("%s: All books exhausted, creating NEGATIVE cache for '%s'", G_STRFUNC, pending->email);
-  g_hash_table_insert (cache->negative_cache,
-                       g_strdup (pending->email), GINT_TO_POINTER (TRUE));
-  stamp_disk_cache_store_negative (cache, pending->email);
-  g_hash_table_remove (cache->pending, pending->email);
-  stamp_notify_waiters (pending, NULL);
-  stamp_pending_lookup_unref (pending);
 }
 
 /**
@@ -601,14 +587,10 @@ stamp_photo_cache_lookup_async (StampPhotoCache *self,
   waiter->callback = callback;
   waiter->user_data = user_data;
   waiter->cancellable = cancellable ? g_object_ref (cancellable) : NULL;
-  waiter->cancelled = FALSE;
-  waiter->id = self->next_waiter_id++;
 
   pending = g_hash_table_lookup (self->pending, search_string);
   if (pending) {
     pending->waiters = g_slist_append (pending->waiters, waiter);
-    if (cancellable)
-      g_cancellable_connect (cancellable, G_CALLBACK (stamp_on_waiter_cancelled), stamp_cancel_data_new (self, search_string, waiter->id), (GDestroyNotify)stamp_cancel_data_free);
     return;
   }
 
@@ -629,7 +611,7 @@ stamp_photo_cache_lookup_async (StampPhotoCache *self,
     g_debug ("%s: No enabled books for '%s', trying BIMI only", G_STRFUNC, search_string);
 
     pending = g_new0 (StampPendingLookup, 1);
-    pending->cache = self;
+    pending->cache = stamp_photo_cache_ref (self);
     pending->email = g_strdup (search_string);
     pending->waiters = g_slist_append (NULL, waiter);
     pending->cancellable = g_cancellable_new ();
@@ -638,15 +620,12 @@ stamp_photo_cache_lookup_async (StampPhotoCache *self,
 
     g_hash_table_insert (self->pending, g_strdup (search_string), pending);
 
-    if (cancellable)
-      g_cancellable_connect (cancellable, G_CALLBACK (stamp_on_waiter_cancelled), stamp_cancel_data_new (self, search_string, waiter->id), (GDestroyNotify)stamp_cancel_data_free);
-
-    start_bimi_lookup (pending);
+    stamp_start_bimi_lookup (pending);
     return;
   }
 
   pending = g_new0 (StampPendingLookup, 1);
-  pending->cache = self;
+  pending->cache = stamp_photo_cache_ref (self);
   pending->email = g_strdup (search_string);
   pending->waiters = g_slist_append (NULL, waiter);
   pending->cancellable = g_cancellable_new ();
@@ -654,9 +633,6 @@ stamp_photo_cache_lookup_async (StampPhotoCache *self,
   pending->pending_books = g_slist_length (books);
 
   g_hash_table_insert (self->pending, g_strdup (search_string), pending);
-
-  if (cancellable)
-    g_cancellable_connect (cancellable, G_CALLBACK (stamp_on_waiter_cancelled), stamp_cancel_data_new (self, search_string, waiter->id), (GDestroyNotify)stamp_cancel_data_free);
 
   /* We might have contacts in our address book which do not contain a mail address, so we need to check full name as well... */
   query[0] = e_book_query_field_test (E_CONTACT_EMAIL, E_BOOK_QUERY_IS, search_string);

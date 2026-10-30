@@ -539,6 +539,8 @@ stamp_conversation_row_unbind_mail (StampConversationRow  *self,
     g_clear_object (&self->cancellable);
   }
 
+  adw_avatar_set_custom_image (self->avatar, NULL);
+
   if (self->account_color_class) {
     gtk_widget_remove_css_class (GTK_WIDGET (self->account_pill), self->account_color_class);
     self->account_color_class = NULL;

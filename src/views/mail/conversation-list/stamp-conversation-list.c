@@ -892,12 +892,16 @@ on_get_folder (GObject      *source,
   g_autoptr (CamelFolder) folder = NULL;
   g_autoptr (GError) error = NULL;
 
+  folder = camel_store_get_folder_finish (store, res, &error);
+
+  if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    return;
+
   if (self->folder) {
     g_signal_handlers_disconnect_by_func (self->folder, on_conversation_list_folder_changed, self);
     g_clear_object (&self->folder);
   }
 
-  folder = camel_store_get_folder_finish (store, res, &error);
   if (error) {
     g_warning ("Could not get folder: %s", error->message);
     gtk_widget_set_visible (self->spinner, FALSE);
