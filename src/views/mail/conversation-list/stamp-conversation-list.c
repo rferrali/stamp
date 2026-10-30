@@ -1662,22 +1662,54 @@ on_conversation_drag_begin (GtkDragSource *source,
                             GtkWidget     *row)
 {
   GtkWidget *parent;
+  GdkRGBA background_color;
+  const float shadow_padding = 16;
+  const float content_padding = 12;
+  const float vertical_padding = 6;
+  const GdkRGBA shadow_color = { 0, 0, 0, 0.2 };
+  float card_width;
+  float content_scale;
+  GskRoundedRect card;
   graphene_size_t size;
   g_autoptr (GtkSnapshot) snapshot = NULL;
   g_autoptr (GdkPaintable) paintable = NULL;
+  g_autoptr (GtkWidget) color_probe = NULL;
 
   parent = gtk_widget_get_parent (row);
   if (!parent)
     return;
 
-  size = GRAPHENE_SIZE_INIT (gtk_widget_get_width (row),
-                             gtk_widget_get_height (row));
+  card_width = MIN (gtk_widget_get_width (row), 360);
+  if (card_width <= 2 * content_padding)
+    return;
+
+  content_scale = (card_width - 2 * content_padding) / gtk_widget_get_width (row);
+  size = GRAPHENE_SIZE_INIT (card_width, gtk_widget_get_height (row) * content_scale + 2 * vertical_padding);
+  gsk_rounded_rect_init_from_rect (&card, &GRAPHENE_RECT_INIT (0, 0, size.width, size.height), 12);
+
   snapshot = gtk_snapshot_new ();
+  gtk_snapshot_translate (snapshot, &GRAPHENE_POINT_INIT (shadow_padding, shadow_padding));
+  gtk_snapshot_append_outset_shadow (snapshot, &card, &shadow_color, 0, 2, 0, 8);
+  gtk_snapshot_push_rounded_clip (snapshot, &card);
+
+  color_probe = g_object_ref_sink (gtk_box_new (GTK_ORIENTATION_HORIZONTAL, 0));
+  gtk_widget_add_css_class (color_probe, "conversation-drag-background");
+  gtk_widget_get_color (color_probe, &background_color);
+  gtk_snapshot_append_color (snapshot, &background_color, &card.bounds);
+  gtk_snapshot_save (snapshot);
+
+  gtk_snapshot_translate (snapshot, &GRAPHENE_POINT_INIT (content_padding, vertical_padding));
+  gtk_snapshot_scale (snapshot, content_scale, content_scale);
   gtk_widget_snapshot_child (parent, row, snapshot);
+  gtk_snapshot_restore (snapshot);
+  gtk_snapshot_pop (snapshot);
+
+  size.width += 2 * shadow_padding;
+  size.height += 2 * shadow_padding;
   paintable = gtk_snapshot_free_to_paintable (g_steal_pointer (&snapshot), &size);
 
   if (paintable)
-    gtk_drag_source_set_icon (source, paintable, 0, 0);
+    gtk_drag_source_set_icon (source, paintable, shadow_padding + content_padding, shadow_padding + vertical_padding);
 }
 
 static void

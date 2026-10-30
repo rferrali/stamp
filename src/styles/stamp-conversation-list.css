@@ -7,3 +7,6 @@
   background-color: grey;
 }
 
+.conversation-drag-background {
+  color: var(--secondary-sidebar-bg-color);
+}
