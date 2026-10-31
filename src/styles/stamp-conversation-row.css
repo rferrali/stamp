@@ -7,6 +7,60 @@
   border-spacing: 6px;
 }
 
+.navigation-sidebar > row.swipe-active {
+  background-color: transparent;
+}
+
+.navigation-sidebar > row.swipe-active .conversation-row {
+  background-color: var(--secondary-sidebar-bg-color);
+  border-radius: 6px;
+}
+
+.navigation-sidebar > row.swipe-active:selected .conversation-row {
+  background-color: color-mix(in srgb, var(--secondary-sidebar-bg-color), currentColor 10%);
+}
+
+.swipe-action {
+  border-radius: 6px;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+
+.swipe-action.accent {
+  background-color: alpha(var(--accent-bg-color), 0.18);
+  color: var(--accent-color);
+}
+
+.swipe-action.error {
+  background-color: alpha(var(--destructive-bg-color), 0.18);
+  color: var(--destructive-color);
+}
+
+.swipe-action.accent.ready {
+  background-color: var(--accent-bg-color);
+  color: var(--accent-fg-color);
+}
+
+.swipe-action.error.ready {
+  background-color: var(--destructive-bg-color);
+  color: var(--destructive-fg-color);
+}
+
+.swipe-action.accent.ready image {
+  color: var(--accent-fg-color);
+}
+
+.swipe-action.error.ready image {
+  color: var(--destructive-fg-color);
+}
+
+.swipe-action image {
+  transition: transform 120ms ease-out;
+}
+
+.swipe-action.ready image {
+  transform: scale(1.15);
+}
+
 .category-pill {
   border-radius: 999px;
   padding-left: 6px;

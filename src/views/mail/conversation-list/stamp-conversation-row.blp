@@ -4,69 +4,92 @@ using Adw 1;
 template $StampConversationRow: Box {
   orientation: vertical;
 
-  Overlay {
+  Overlay swipe_overlay {
     vexpand: true;
+    overflow: hidden;
 
     [overlay]
-    Box left_action {
-      orientation: vertical;
+    ScrolledWindow left_action {
       halign: start;
+      visible: false;
       opacity: 0;
-      valign: center;
-      spacing: 6;
-      margin-start: 6;
-      margin-end: 6;
+      hscrollbar-policy: external;
+      vscrollbar-policy: never;
+      can-target: false;
+      overflow: hidden;
 
       styles [
+        "swipe-action",
         "accent",
       ]
 
-      Image left_action_image {
-        accessibility {
-          label: _("Mark Read");
+      child: Box {
+        orientation: vertical;
+        valign: center;
+        hexpand: true;
+        spacing: 6;
+        margin-start: 8;
+        margin-end: 8;
+
+        Image left_action_image {
+          icon-name: "mail-read-symbolic";
+          pixel-size: 24;
         }
 
-        icon-name: 'mark-read-symbolic';
-      }
+        Label left_action_label {
+          label: _("Mark Read");
+          ellipsize: end;
+          max-width-chars: 12;
+          justify: center;
+          opacity: 0;
 
-      Label left_action_label {
-        label: _("Mark Read");
-
-        styles [
-          "heading",
-        ]
-      }
+          styles [
+            "caption-heading",
+          ]
+        }
+      };
     }
 
     [overlay]
-    Box right_action {
-      orientation: vertical;
+    ScrolledWindow right_action {
       halign: end;
+      visible: false;
       opacity: 0;
-      valign: center;
-      spacing: 6;
-      margin-start: 6;
-      margin-end: 6;
+      hscrollbar-policy: external;
+      vscrollbar-policy: never;
+      can-target: false;
+      overflow: hidden;
 
       styles [
+        "swipe-action",
         "error",
       ]
 
-      Image right_action_image {
-        accessibility {
-          label: _("Move to Trash");
+      child: Box {
+        orientation: vertical;
+        valign: center;
+        hexpand: true;
+        spacing: 6;
+        margin-start: 8;
+        margin-end: 8;
+
+        Image right_action_image {
+          icon-name: "user-trash-symbolic";
+          pixel-size: 24;
         }
 
-        icon-name: 'user-trash-symbolic';
-      }
+        Label right_action_label {
+          label: _("Trash");
+          ellipsize: end;
+          max-width-chars: 12;
+          justify: center;
+          opacity: 0;
 
-      Label right_action_label {
-        label: _("Trash");
-
-        styles [
-          "heading",
-        ]
-      }
+          styles [
+            "caption-heading",
+          ]
+        }
+      };
     }
 
     child: Grid row {
@@ -228,6 +251,7 @@ template $StampConversationRow: Box {
       touch-only: true;
       drag-update => $on_drag_update();
       drag-end => $on_drag_end();
+      cancel => $on_drag_cancel();
       propagation-phase: capture;
     }
   }

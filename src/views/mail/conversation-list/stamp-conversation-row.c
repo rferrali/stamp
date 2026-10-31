@@ -34,6 +34,9 @@ typedef enum {
   SWIPE_ACTION_TRASH,
 } SwipeAction;
 
+#define SWIPE_DISTANCE 96
+#define SWIPE_THRESHOLD 90
+
 struct _StampConversationRow {
   GtkBox parent_instance;
 
@@ -46,10 +49,10 @@ struct _StampConversationRow {
   GtkInscription *body;
   GtkLabel *counter;
   GtkImage *flagged_icon;
-  GtkBox *left_action;
+  GtkScrolledWindow *left_action;
   GtkLabel *left_action_label;
   GtkImage *left_action_image;
-  GtkBox *right_action;
+  GtkScrolledWindow *right_action;
   GtkLabel *right_action_label;
   GtkImage *right_action_image;
   GtkGrid *row;
@@ -64,6 +67,8 @@ struct _StampConversationRow {
   GCancellable *cancellable;
   gboolean selected;
   gboolean claimed;
+  AdwAnimation *swipe_animation;
+  gdouble swipe_offset;
   StampConversationItem *item;
   GPtrArray *bindings;
   guint instance_id;
@@ -97,9 +102,66 @@ enum {
 static gint signals[LAST_SIGNAL] = { 0 };
 
 static void
+set_swipe_offset (gdouble  offset,
+                  gpointer user_data)
+{
+  StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
+  GtkWidget *left = GTK_WIDGET (self->left_action);
+  GtkWidget *right = GTK_WIDGET (self->right_action);
+  GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
+  gboolean left_ready = offset > SWIPE_THRESHOLD;
+  gboolean right_ready = offset < -SWIPE_THRESHOLD;
+
+  self->swipe_offset = offset;
+  gtk_widget_set_margin_start (GTK_WIDGET (self->row), offset);
+  gtk_widget_set_margin_end (GTK_WIDGET (self->row), -offset);
+
+  gtk_widget_set_size_request (left, MAX (1, (gint)offset), -1);
+  gtk_widget_set_size_request (right, MAX (1, (gint) - offset), -1);
+  gtk_widget_set_visible (left, offset > 0);
+  gtk_widget_set_visible (right, offset < 0);
+  gtk_widget_set_opacity (left, CLAMP (offset / 32.0, 0, 1));
+  gtk_widget_set_opacity (right, CLAMP (-offset / 32.0, 0, 1));
+
+  gtk_widget_set_opacity (GTK_WIDGET (self->left_action_label), CLAMP ((offset - 64) / 24.0, 0, 1));
+  gtk_widget_set_opacity (GTK_WIDGET (self->right_action_label), CLAMP ((-offset - 64) / 24.0, 0, 1));
+
+  if (parent && g_strcmp0 (gtk_widget_get_css_name (parent), "row") == 0) {
+    if (offset != 0)
+      gtk_widget_add_css_class (parent, "swipe-active");
+    else
+      gtk_widget_remove_css_class (parent, "swipe-active");
+  }
+
+  if (left_ready)
+    gtk_widget_add_css_class (left, "ready");
+  else
+    gtk_widget_remove_css_class (left, "ready");
+
+  if (right_ready)
+    gtk_widget_add_css_class (right, "ready");
+  else
+    gtk_widget_remove_css_class (right, "ready");
+}
+
+static void
+reset_swipe (StampConversationRow *self)
+{
+  if (self->swipe_animation) {
+    adw_animation_pause (self->swipe_animation);
+    g_clear_object (&self->swipe_animation);
+  }
+
+  self->claimed = FALSE;
+  set_swipe_offset (0, self);
+}
+
+static void
 stamp_conversation_row_dispose (GObject *object)
 {
   StampConversationRow *self = STAMP_CONVERSATION_ROW (object);
+
+  reset_swipe (self);
 
   g_ptr_array_remove_range (self->bindings, 0, self->bindings->len);
   g_clear_pointer (&self->bindings, g_ptr_array_unref);
@@ -147,6 +209,29 @@ get_swipe_action (const gchar *key)
 }
 
 static void
+set_action_label (GtkLabel    *label,
+                  const gchar *text)
+{
+  g_autoptr (PangoLayout) layout = gtk_widget_create_pango_layout (GTK_WIDGET (label), text);
+  g_autoptr (GString) wrapped = g_string_new (NULL);
+
+  pango_layout_set_width (layout, (SWIPE_DISTANCE - 16) * PANGO_SCALE);
+  pango_layout_set_wrap (layout, PANGO_WRAP_WORD_CHAR);
+
+  for (GSList *iter = pango_layout_get_lines_readonly (layout); iter; iter = iter->next) {
+    PangoLayoutLine *line = iter->data;
+    g_autofree gchar *part = g_strndup (text + line->start_index, line->length);
+
+    g_string_append (wrapped, g_strstrip (part));
+    if (iter->next)
+      g_string_append_c (wrapped, '\n');
+  }
+
+  gtk_label_set_text (label, wrapped->str);
+  gtk_accessible_update_property (GTK_ACCESSIBLE (label), GTK_ACCESSIBLE_PROPERTY_LABEL, text, -1);
+}
+
+static void
 update_action_widget (StampConversationRow *self,
                       GtkWidget            *box,
                       GtkLabel             *label,
@@ -159,12 +244,12 @@ update_action_widget (StampConversationRow *self,
   switch (action) {
     case SWIPE_ACTION_TOGGLE_READ:
       gtk_widget_add_css_class (box, "accent");
-      gtk_label_set_text (label, self->unread ? _("Mark Read") : _("Mark Unread"));
-      gtk_image_set_from_icon_name (image, self->unread ? "mark-read-symbolic" : "mail-unread-symbolic");
+      set_action_label (label, self->unread ? _("Mark Read") : _("Mark Unread"));
+      gtk_image_set_from_icon_name (image, self->unread ? "mail-read-symbolic" : "mail-unread-symbolic");
       break;
     case SWIPE_ACTION_TRASH:
       gtk_widget_add_css_class (box, "error");
-      gtk_label_set_text (label, _("Trash"));
+      set_action_label (label, _("Trash"));
       gtk_image_set_from_icon_name (image, "user-trash-symbolic");
       break;
     case SWIPE_ACTION_NONE:
@@ -175,11 +260,22 @@ update_action_widget (StampConversationRow *self,
 static void
 update_swipe_actions (StampConversationRow *self)
 {
+  gint left_height = 0;
+  gint right_height = 0;
+
   self->swipe_right = get_swipe_action (STAMP_PREFS_MAIL_SWIPE_RIGHT_ACTION);
   self->swipe_left = get_swipe_action (STAMP_PREFS_MAIL_SWIPE_LEFT_ACTION);
 
   update_action_widget (self, GTK_WIDGET (self->left_action), self->left_action_label, self->left_action_image, self->swipe_right);
   update_action_widget (self, GTK_WIDGET (self->right_action), self->right_action_label, self->right_action_image, self->swipe_left);
+
+  if (self->swipe_right != SWIPE_ACTION_NONE)
+    gtk_widget_measure (gtk_scrolled_window_get_child (self->left_action), GTK_ORIENTATION_VERTICAL, SWIPE_DISTANCE, NULL, &left_height, NULL, NULL);
+
+  if (self->swipe_left != SWIPE_ACTION_NONE)
+    gtk_widget_measure (gtk_scrolled_window_get_child (self->right_action), GTK_ORIENTATION_VERTICAL, SWIPE_DISTANCE, NULL, &right_height, NULL, NULL);
+
+  gtk_widget_set_size_request (GTK_WIDGET (self->row), -1, MAX (left_height, right_height) + 16);
 }
 
 static void
@@ -255,12 +351,13 @@ stamp_conversation_row_set_property (GObject      *object,
   }
 }
 
-static void
-set_offset (GtkWidget *row,
-            gdouble    offset)
+static gdouble
+clamp_swipe_offset (StampConversationRow *self,
+                    gdouble               offset)
 {
-  gtk_widget_set_margin_start (row, offset);
-  gtk_widget_set_margin_end (row, -offset);
+  return CLAMP (offset,
+                self->swipe_left == SWIPE_ACTION_NONE ? 0 : -SWIPE_DISTANCE,
+                self->swipe_right == SWIPE_ACTION_NONE ? 0 : SWIPE_DISTANCE);
 }
 
 static void
@@ -270,7 +367,6 @@ on_drag_update (GtkGestureDrag *gesture,
                 gpointer        user_data)
 {
   StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
-  gdouble pos;
 
   if (!self->claimed) {
     if (fabs (dx) < 10 || fabs (dx) <= fabs (dy))
@@ -279,29 +375,26 @@ on_drag_update (GtkGestureDrag *gesture,
     if (!gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED))
       return;
 
+    reset_swipe (self);
     self->claimed = TRUE;
   }
 
-  pos = CLAMP (dx, self->swipe_left == SWIPE_ACTION_NONE ? 0 : -96, self->swipe_right == SWIPE_ACTION_NONE ? 0 : 96);
-
-  if (pos > 0) {
-    gtk_widget_set_opacity (GTK_WIDGET (self->left_action), MIN (pos / 80.0, 1.0));
-    gtk_widget_set_opacity (GTK_WIDGET (self->right_action), 0);
-  } else {
-    gtk_widget_set_opacity (GTK_WIDGET (self->right_action), MIN (-pos / 80.0, 1.0));
-    gtk_widget_set_opacity (GTK_WIDGET (self->left_action), 0);
-  }
-
-  set_offset (GTK_WIDGET (self->row), pos);
+  set_swipe_offset (clamp_swipe_offset (self, dx), self);
 }
 
 static void
-animate_to_zero (StampConversationRow *self,
-                 gdouble               pos)
+animate_to_zero (StampConversationRow *self)
 {
-  AdwAnimationTarget *target = adw_callback_animation_target_new ((AdwAnimationTargetFunc)set_offset, self->row, NULL);
-  g_autoptr (AdwAnimation) anim = adw_timed_animation_new (GTK_WIDGET (self->row), pos, 0, 200, target);
-  adw_animation_play (anim);
+  AdwAnimationTarget *target = adw_callback_animation_target_new (set_swipe_offset, self, NULL);
+
+  if (self->swipe_animation)
+    adw_animation_pause (self->swipe_animation);
+
+  g_clear_object (&self->swipe_animation);
+
+  self->swipe_animation = adw_timed_animation_new (GTK_WIDGET (self->row), self->swipe_offset, 0, 200, target);
+  adw_timed_animation_set_easing (ADW_TIMED_ANIMATION (self->swipe_animation), ADW_EASE_OUT_CUBIC);
+  adw_animation_play (self->swipe_animation);
 }
 
 static void
@@ -312,23 +405,35 @@ on_drag_end (GtkGestureDrag *gesture,
 {
   StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
   gdouble pos;
+  SwipeAction action = SWIPE_ACTION_NONE;
 
   if (!self->claimed)
     return;
 
-  pos = CLAMP (dx, self->swipe_left == SWIPE_ACTION_NONE ? 0 : -96, self->swipe_right == SWIPE_ACTION_NONE ? 0 : 96);
-
+  pos = clamp_swipe_offset (self, dx);
   self->claimed = FALSE;
 
-  if (pos > 90)
-    trigger_swipe_action (self, self->swipe_right);
-  else if (pos < -90)
-    trigger_swipe_action (self, self->swipe_left);
+  if (pos > SWIPE_THRESHOLD)
+    action = self->swipe_right;
+  else if (pos < -SWIPE_THRESHOLD)
+    action = self->swipe_left;
 
-  animate_to_zero (self, pos);
-  gtk_widget_set_opacity (GTK_WIDGET (self->row), 1);
-  gtk_widget_set_opacity (GTK_WIDGET (self->left_action), 0);
-  gtk_widget_set_opacity (GTK_WIDGET (self->right_action), 0);
+  animate_to_zero (self);
+  trigger_swipe_action (self, action);
+}
+
+static void
+on_drag_cancel (GtkGesture       *gesture,
+                GdkEventSequence *sequence,
+                gpointer          user_data)
+{
+  StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
+
+  if (!self->claimed)
+    return;
+
+  self->claimed = FALSE;
+  animate_to_zero (self);
 }
 
 static void
@@ -377,6 +482,7 @@ stamp_conversation_row_class_init (StampConversationRowClass *klass)
 
   gtk_widget_class_bind_template_callback (widget_class, on_drag_update);
   gtk_widget_class_bind_template_callback (widget_class, on_drag_end);
+  gtk_widget_class_bind_template_callback (widget_class, on_drag_cancel);
   gtk_widget_class_bind_template_callback (widget_class, on_check_button_toggled);
 
   properties[PROP_SELECTED] = g_param_spec_boolean ("selected",
@@ -532,6 +638,8 @@ stamp_conversation_row_unbind_mail (StampConversationRow  *self,
                                     StampConversationItem *item)
 {
   g_return_if_fail (STAMP_IS_CONVERSATION_ROW (self));
+
+  reset_swipe (self);
 
   /* Cancel Photo-Loading */
   if (self->cancellable) {
