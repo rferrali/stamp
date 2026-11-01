@@ -212,22 +212,7 @@ static void
 set_action_label (GtkLabel    *label,
                   const gchar *text)
 {
-  g_autoptr (PangoLayout) layout = gtk_widget_create_pango_layout (GTK_WIDGET (label), text);
-  g_autoptr (GString) wrapped = g_string_new (NULL);
-
-  pango_layout_set_width (layout, (SWIPE_DISTANCE - 16) * PANGO_SCALE);
-  pango_layout_set_wrap (layout, PANGO_WRAP_WORD_CHAR);
-
-  for (GSList *iter = pango_layout_get_lines_readonly (layout); iter; iter = iter->next) {
-    PangoLayoutLine *line = iter->data;
-    g_autofree gchar *part = g_strndup (text + line->start_index, line->length);
-
-    g_string_append (wrapped, g_strstrip (part));
-    if (iter->next)
-      g_string_append_c (wrapped, '\n');
-  }
-
-  gtk_label_set_text (label, wrapped->str);
+  gtk_label_set_text (label, text);
   gtk_accessible_update_property (GTK_ACCESSIBLE (label), GTK_ACCESSIBLE_PROPERTY_LABEL, text, -1);
 }
 

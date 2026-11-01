@@ -38,6 +38,9 @@ template $StampConversationRow: Box {
 
         Label left_action_label {
           label: _("Mark Read");
+          wrap: true;
+          wrap-mode: word_char;
+          lines: 2;
           ellipsize: end;
           max-width-chars: 12;
           justify: center;
@@ -80,6 +83,9 @@ template $StampConversationRow: Box {
 
         Label right_action_label {
           label: _("Trash");
+          wrap: true;
+          wrap-mode: word_char;
+          lines: 2;
           ellipsize: end;
           max-width-chars: 12;
           justify: center;
