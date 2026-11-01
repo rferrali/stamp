@@ -280,6 +280,8 @@ stamp_prefs_init (gpointer user_data)
   WebKitWebContext *web_context;
   g_autoptr (GStrvBuilder) builder = NULL;
   g_auto (GStrv) languages = NULL;
+  const gchar * const *language_names;
+  guint language_count = 0;
 
   settings = webkit_settings_new_with_settings ("allow-modal-dialogs", FALSE,
                                                 "enable-fullscreen", FALSE,
@@ -295,13 +297,26 @@ stamp_prefs_init (gpointer user_data)
   webkit_web_context_set_spell_checking_enabled (web_context, TRUE);
 
   builder = g_strv_builder_new ();
-  g_strv_builder_add (builder, "de_DE");
-  languages = g_strv_builder_end (builder);
+  language_names = g_get_language_names ();
 
-  webkit_web_context_set_spell_checking_languages (
-    web_context,
-    (const char * const *)languages
-    );
+  for (guint i = 0; language_names[i] != NULL; i++) {
+    g_auto (GStrv) parts = g_strsplit_set (language_names[i], ".@", 2);
+
+    if (g_strcmp0 (parts[0], "C") == 0 || g_strcmp0 (parts[0], "POSIX") == 0)
+      continue;
+
+    g_strv_builder_add (builder, parts[0]);
+    language_count++;
+  }
+
+  if (language_count > 0) {
+    languages = g_strv_builder_end (builder);
+
+    webkit_web_context_set_spell_checking_languages (
+      web_context,
+      (const char * const *)languages
+      );
+  }
 
   g_signal_connect (web_context, "initialize-web-process-extensions", G_CALLBACK (initialize_web_process_extensions), NULL);
   webkit_web_context_register_uri_scheme (web_context, "cid", on_cid_request, NULL, NULL);
