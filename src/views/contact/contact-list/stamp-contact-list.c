@@ -26,6 +26,7 @@
 struct _StampContactList {
   AdwBreakpointBin parent_instance;
 
+  GtkWidget *contact_view;
   GtkWidget *search_bar;
   GtkWidget *search_entry;
   GtkWidget *window_title;
@@ -492,6 +493,7 @@ stamp_contact_list_class_init (StampContactListClass *klass)
 
   gtk_widget_class_bind_template_child (widget_class, StampContactList, sort_list_model);
   gtk_widget_class_bind_template_child (widget_class, StampContactList, filter_list_model);
+  gtk_widget_class_bind_template_child (widget_class, StampContactList, contact_view);
   gtk_widget_class_bind_template_child (widget_class, StampContactList, search_bar);
   gtk_widget_class_bind_template_child (widget_class, StampContactList, search_entry);
   gtk_widget_class_bind_template_child (widget_class, StampContactList, window_title);
@@ -628,4 +630,12 @@ stamp_contact_list_set_show_buttons (StampContactList *self,
                                      gboolean          show)
 {
   adw_header_bar_set_show_end_title_buttons (ADW_HEADER_BAR (self->normal_headerbar), show);
+}
+
+void
+stamp_contact_list_set_key_capture_widget (StampContactList *self,
+                                           gboolean          enable)
+{
+  gtk_search_bar_set_key_capture_widget (GTK_SEARCH_BAR (self->search_bar),
+                                         enable ? self->contact_view : NULL);
 }

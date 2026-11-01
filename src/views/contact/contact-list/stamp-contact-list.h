@@ -63,4 +63,8 @@ void
 stamp_contact_list_set_show_buttons (StampContactList *self,
                                      gboolean          show);
 
+void
+stamp_contact_list_set_key_capture_widget (StampContactList *self,
+                                           gboolean          enable);
+
 G_END_DECLS

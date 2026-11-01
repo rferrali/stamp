@@ -161,6 +161,7 @@ on_apply_view (AdwBreakpoint *breakpoint,
   gboolean show = is_mobile_view (self);
 
   stamp_contact_list_set_show_buttons (STAMP_CONTACT_LIST (self->contact_list), show);
+  stamp_contact_list_set_key_capture_widget (STAMP_CONTACT_LIST (self->contact_list), !show);
 }
 
 void
