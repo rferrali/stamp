@@ -44,11 +44,17 @@ build-flatpak:
   extends: '.flatpak@x86_64'
   stage: build
   before_script: []
+  variables:
+    GLYCIN_DISABLE_SANDBOX: 'i-know-the-risks'
+    FLATPAK_VALIDATE_ICON: '$CI_PROJECT_DIR/.gitlab-ci/flatpak-validate-icon'
 
 build-flatpak-aarch64:
   extends: '.flatpak@aarch64'
   stage: build
   before_script: []
+  variables:
+    GLYCIN_DISABLE_SANDBOX: 'i-know-the-risks'
+    FLATPAK_VALIDATE_ICON: '$CI_PROJECT_DIR/.gitlab-ci/flatpak-validate-icon'
 
 scan-build-gate:
   stage: analysis

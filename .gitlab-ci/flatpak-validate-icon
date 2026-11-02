@@ -1,0 +1,7 @@
+#!/bin/sh
+
+if [ "$1" = "--sandbox" ]; then
+    shift
+fi
+
+exec /usr/libexec/flatpak-validate-icon "$@"
