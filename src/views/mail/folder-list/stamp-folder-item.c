@@ -194,9 +194,9 @@ static guint pending_debounce_id = 0;
 static GHashTable *pending_keys = NULL;
 static GHashTable *active_keys = NULL;
 
-static char *
+static gchar *
 make_notification_key (CamelFolder *folder,
-                       const char  *uid)
+                       const gchar *uid)
 {
   return g_strdup_printf ("%p:%s", folder, uid);
 }
@@ -217,7 +217,7 @@ withdraw_notification_if_all_read (CamelFolder *folder)
 
   g_hash_table_iter_init (&iter, active_keys);
   while (g_hash_table_iter_next (&iter, &key, NULL)) {
-    const char *key_str = key;
+    const gchar *key_str = key;
     g_autoptr (CamelMessageInfo) info = NULL;
 
     if (!g_str_has_prefix (key_str, prefix))

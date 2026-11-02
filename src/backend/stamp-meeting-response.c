@@ -18,11 +18,13 @@
  */
 
 #include "config.h"
-#include "stamp-calendar-autocleanups.h"
+
 #include "stamp-meeting-response.h"
-#include "stamp-m365-calendar.h"
 
 #include <glib/gi18n.h>
+
+#include "stamp-calendar-autocleanups.h"
+#include "stamp-m365-calendar.h"
 
 ICalComponent *
 stamp_meeting_response_ref_event (ICalComponent *calendar)

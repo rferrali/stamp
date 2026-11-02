@@ -21,8 +21,8 @@
 
 #include <glib/gi18n.h>
 
-#include "stamp-conversation-list.h"
 #include "stamp-collection-item.h"
+#include "stamp-conversation-list.h"
 #include "stamp-folder-list.h"
 #include "stamp-header-bar.h"
 #include "stamp-message-list.h"

@@ -22,8 +22,8 @@
 #include "stamp-composer.h"
 
 #include <camel/camel.h>
-#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <gdesktop-enums.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib/gi18n.h>
 #include <libebook-contacts/libebook-contacts.h>
 #include <libebook/libebook.h>
@@ -35,6 +35,7 @@
 #include "stamp-composer-from.h"
 #include "stamp-contact-completion.h"
 #include "stamp-mail-view.h"
+#include "stamp-rich-text-editor.h"
 #include "stamp-scheduler.h"
 #include "stamp-session.h"
 #include "stamp-settings.h"
@@ -42,7 +43,6 @@
 #include "stamp-signature.h"
 #include "stamp-tag.h"
 #include "stamp-webview.h"
-#include "stamp-rich-text-editor.h"
 #include "stamp-window.h"
 
 #define USER_AGENT ("Stamp " PACKAGE_VERSION)
@@ -919,20 +919,19 @@ on_schedule_get_body_html (GObject      *source_object,
   }
 }
 
-static char *
+static gchar *
 schedule_format_ampm (GDateTime *dt)
 {
-  char *str = g_date_time_format (dt, "%p");
+  gchar *str = g_date_time_format (dt, "%p");
 
   if (str[0] == '\0') {
-    g_free (str);
-    str = g_strdup (g_date_time_get_hour (dt) < 12 ? "AM" : "PM");
+    g_set_str (&str, g_date_time_get_hour (dt) < 12 ? "AM" : "PM");
   }
 
   return str;
 }
 
-static char *
+static gchar *
 schedule_format_time (GDateTime *dt,
                       gboolean   twelve_hour)
 {

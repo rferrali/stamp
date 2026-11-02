@@ -42,8 +42,10 @@ static GtkBuildableIface *parent_buildable_iface;
 
 G_DEFINE_FINAL_TYPE_WITH_CODE (StampRichTextEditor, stamp_rich_text_editor, ADW_TYPE_BIN, G_IMPLEMENT_INTERFACE (GTK_TYPE_BUILDABLE, buildable_iface_init));
 
-enum { PROP_0, PROP_READY, N_PROPS };
-static GParamSpec *properties[N_PROPS];
+typedef enum {
+  PROP_READY = 1,
+} StampRichTextEditorProps;
+static GParamSpec *properties[PROP_READY + 1];
 enum { CHANGED, N_SIGNALS };
 static guint signals[N_SIGNALS];
 
@@ -365,7 +367,7 @@ stamp_rich_text_editor_class_init (StampRichTextEditorClass *klass)
   object_class->dispose = stamp_rich_text_editor_dispose;
 
   properties[PROP_READY] = g_param_spec_boolean ("ready", NULL, NULL, FALSE, G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
-  g_object_class_install_properties (object_class, N_PROPS, properties);
+  g_object_class_install_properties (object_class, G_N_ELEMENTS (properties), properties);
 
   signals[CHANGED] = g_signal_new ("changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST,
                                    0, NULL, NULL, NULL, G_TYPE_NONE, 0);
@@ -515,20 +517,20 @@ stamp_rich_text_editor_get_html_async (StampRichTextEditor *self,
                                        GAsyncReadyCallback  callback,
                                        gpointer             user_data)
 {
-  GTask *task;
+  g_autoptr (GTask) task = NULL;
 
   g_return_if_fail (STAMP_IS_RICH_TEXT_EDITOR (self));
   task = g_task_new (self, cancellable, callback, user_data);
+  g_task_set_source_tag (task, stamp_rich_text_editor_get_html_async);
 
   if (!self->ready) {
     g_task_return_new_error (task, G_IO_ERROR, G_IO_ERROR_PENDING, "Editor is still loading");
-    g_object_unref (task);
     return;
   }
 
   webkit_web_view_evaluate_javascript (WEBKIT_WEB_VIEW (self->web_view),
                                        "(() => { const ed = document.getElementById('message-body'); return [ed.innerHTML, ed.innerText]; })()",
-                                       -1, NULL, NULL, cancellable, on_get_html, task);
+                                       -1, NULL, NULL, cancellable, on_get_html, g_steal_pointer (&task));
 }
 
 gchar *

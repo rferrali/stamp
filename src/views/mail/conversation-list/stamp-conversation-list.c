@@ -31,8 +31,8 @@
 #include "stamp-item.h"
 #include "stamp-mail-view.h"
 #include "stamp-message-list.h"
-#include "stamp-settings.h"
 #include "stamp-session.h"
+#include "stamp-settings.h"
 
 
 enum FilterMode {
@@ -710,10 +710,10 @@ cached_thread_free (gpointer data)
   CachedThread *entry = data;
 
   if (entry->folder && entry->folder_changed_id)
-    g_signal_handler_disconnect (entry->folder, entry->folder_changed_id);
+    g_clear_signal_handler (&entry->folder_changed_id, entry->folder);
 
   if (entry->sent_folder && entry->sent_changed_id)
-    g_signal_handler_disconnect (entry->sent_folder, entry->sent_changed_id);
+    g_clear_signal_handler (&entry->sent_changed_id, entry->sent_folder);
 
   g_clear_object (&entry->folder);
   g_clear_object (&entry->sent_folder);
@@ -889,7 +889,7 @@ rebuild_list (StampConversationList *self)
   CachedThread *cached;
   ThreadBuildData *data;
   StampMailService *mail_service;
-  GTask *task;
+  g_autoptr (GTask) task = NULL;
 
   if (!self->folder || !self->account)
     return;
@@ -915,9 +915,9 @@ rebuild_list (StampConversationList *self)
   data->service_uid = g_strdup (camel_service_get_uid (stamp_mail_service_get_service (mail_service)));
 
   task = g_task_new (self, self->thread_cancellable, on_thread_built, self);
+  g_task_set_source_tag (task, rebuild_list);
   g_task_set_task_data (task, data, thread_build_data_free);
   g_task_run_in_thread (task, thread_build_task);
-  g_object_unref (task);
 }
 
 static void
@@ -1024,9 +1024,14 @@ load_collection_data_free (gpointer user_data)
 {
   LoadCollectionData *data = user_data;
 
+  if (!data)
+    return;
+
   g_list_free (data->sources);
   g_free (data);
 }
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (LoadCollectionData, load_collection_data_free)
 
 static void
 collection_folder_done (LoadCollectionData *data)
@@ -1081,7 +1086,7 @@ on_get_collection_folder (GObject      *source,
   g_autoptr (CamelFolder) folder = NULL;
   g_autoptr (GError) error = NULL;
   ThreadBuildData *build;
-  GTask *task;
+  g_autoptr (GTask) task = NULL;
 
   folder = camel_store_get_folder_finish (store, res, &error);
   if (error) {
@@ -1101,9 +1106,9 @@ on_get_collection_folder (GObject      *source,
   build->service_uid = g_strdup (camel_service_get_uid (CAMEL_SERVICE (store)));
 
   task = g_task_new (NULL, self->cancellable, on_collection_thread_built, data);
+  g_task_set_source_tag (task, on_get_collection_folder);
   g_task_set_task_data (task, build, thread_build_data_free);
   g_task_run_in_thread (task, thread_build_task);
-  g_object_unref (task);
 }
 
 static void
@@ -1160,7 +1165,7 @@ void
 stamp_conversation_list_load_collection (StampConversationList *self,
                                          StampCollectionItem   *collection)
 {
-  LoadCollectionData *data;
+  g_autoptr (LoadCollectionData) data = NULL;
   GList *iter;
 
   if (self->cancellable) {
@@ -1222,10 +1227,11 @@ stamp_conversation_list_load_collection (StampConversationList *self,
   }
 
   if (data->pending == 0) {
-    load_collection_data_free (data);
     return;
   }
 
+  /* The pending callbacks release the shared collection data. */
+  g_steal_pointer (&data);
   gtk_widget_set_visible (self->spinner, TRUE);
 }
 
@@ -1737,12 +1743,12 @@ on_conversation_drag_begin (GtkDragSource *source,
 {
   GtkWidget *parent;
   GdkRGBA background_color;
-  const float shadow_padding = 16;
-  const float content_padding = 12;
-  const float vertical_padding = 6;
+  const gfloat shadow_padding = 16;
+  const gfloat content_padding = 12;
+  const gfloat vertical_padding = 6;
   const GdkRGBA shadow_color = { 0, 0, 0, 0.2 };
-  float card_width;
-  float content_scale;
+  gfloat card_width;
+  gfloat content_scale;
   GskRoundedRect card;
   graphene_size_t size;
   g_autoptr (GtkSnapshot) snapshot = NULL;
@@ -3012,7 +3018,7 @@ static GList *
 collect_trash_entries (StampConversationList *self,
                        GPtrArray             *items)
 {
-  GHashTable *by_folder = g_hash_table_new (g_direct_hash, g_direct_equal);
+  g_autoptr (GHashTable) by_folder = g_hash_table_new (g_direct_hash, g_direct_equal);
   GList *entries = NULL;
 
   for (guint i = 0; i < items->len; i++) {
@@ -3051,8 +3057,6 @@ collect_trash_entries (StampConversationList *self,
       g_ptr_array_add (entry->uids, g_strdup (camel_message_info_get_uid (info)));
     }
   }
-
-  g_hash_table_destroy (by_folder);
 
   return entries;
 }

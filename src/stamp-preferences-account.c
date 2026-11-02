@@ -19,11 +19,12 @@
 
 #include "stamp-preferences-account.h"
 
+#include <locale.h>
+
 #include <camel/camel.h>
 #include <cert.h>
 #include <glib/gi18n.h>
 #include <gpgme.h>
-#include <locale.h>
 #include <nss.h>
 #include <pk11pub.h>
 

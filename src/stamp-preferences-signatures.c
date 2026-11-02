@@ -21,9 +21,9 @@
 
 #include <glib/gi18n.h>
 
+#include "stamp-rich-text-editor.h"
 #include "stamp-session.h"
 #include "stamp-signature.h"
-#include "stamp-rich-text-editor.h"
 
 struct _StampPreferencesSignatureEditor {
   AdwNavigationPage parent_instance;

@@ -60,10 +60,15 @@ copy_selection_free (gpointer data)
 {
   CopySelection *selection = data;
 
+  if (!selection)
+    return;
+
   g_object_unref (selection->contact);
   g_ptr_array_unref (selection->targets);
   g_free (selection);
 }
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (CopySelection, copy_selection_free)
 
 typedef struct {
   StampContactDetails *self;
@@ -171,7 +176,7 @@ on_copy_contact (GtkButton *button,
                  gpointer   user_data)
 {
   StampContactDetails *self = STAMP_CONTACT_DETAILS (user_data);
-  CopySelection *selection;
+  g_autoptr (CopySelection) selection = NULL;
   g_autoptr (GtkStringList) names = gtk_string_list_new (NULL);
   GList *accounts = stamp_session_get_accounts (stamp_session_get_default ());
   AdwDialog *dialog;
@@ -210,7 +215,6 @@ on_copy_contact (GtkButton *button,
   }
 
   if (selection->targets->len == 0) {
-    copy_selection_free (selection);
     show_copy_message (self, _("No Writable Address Book"), _("There is no other writable address book available."));
     return;
   }
@@ -229,7 +233,7 @@ on_copy_contact (GtkButton *button,
   adw_alert_dialog_set_response_appearance (ADW_ALERT_DIALOG (dialog), "copy", ADW_RESPONSE_SUGGESTED);
   adw_alert_dialog_set_default_response (ADW_ALERT_DIALOG (dialog), "copy");
   adw_alert_dialog_set_close_response (ADW_ALERT_DIALOG (dialog), "cancel");
-  g_object_set_data_full (G_OBJECT (dialog), "copy-selection", selection, copy_selection_free);
+  g_object_set_data_full (G_OBJECT (dialog), "copy-selection", g_steal_pointer (&selection), copy_selection_free);
   g_signal_connect_object (dialog, "response", G_CALLBACK (on_copy_response), self, G_CONNECT_DEFAULT);
   adw_dialog_present (dialog, GTK_WIDGET (self));
 }

@@ -20,11 +20,12 @@
 #include "config.h"
 
 #include "stamp-meeting-details.h"
+
+#include <glib/gi18n.h>
+
 #include "stamp-calendar-autocleanups.h"
 #include "stamp-meeting-response.h"
 #include "stamp-tag.h"
-
-#include <glib/gi18n.h>
 
 struct _StampMeetingDetails {
   GtkBox parent_instance;

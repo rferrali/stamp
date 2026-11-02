@@ -176,7 +176,7 @@ show_info (StampAccountItem *self,
   }
 
   if (user_items->len > 0) {
-    CamelFolderInfo *labels_info = camel_folder_info_new ();
+    g_autoptr (CamelFolderInfo) labels_info = camel_folder_info_new ();
     g_autoptr (StampFolderItem) labels_item = NULL;
     GListStore *child_store = NULL;
     StampAccount *account = stamp_item_get_account (STAMP_ITEM (self));
@@ -189,7 +189,6 @@ show_info (StampAccountItem *self,
     labels_info->flags = CAMEL_FOLDER_NOSELECT | CAMEL_FOLDER_TYPE_NORMAL;
 
     labels_item = stamp_folder_item_new (account, labels_info);
-    camel_folder_info_free (labels_info);
 
     stamp_item_set_icon_name (STAMP_ITEM (labels_item), section_icon);
     stamp_item_set_list_store_type (STAMP_ITEM (labels_item), STAMP_TYPE_FOLDER_ITEM);

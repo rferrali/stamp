@@ -18,10 +18,11 @@
  */
 
 #include "stamp-contact-list.h"
-#include "stamp-contact-row.h"
-#include "stamp-type-builtins.h"
 
 #include <glib/gi18n.h>
+
+#include "stamp-contact-row.h"
+#include "stamp-type-builtins.h"
 
 struct _StampContactList {
   AdwBreakpointBin parent_instance;

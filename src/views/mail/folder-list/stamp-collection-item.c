@@ -218,8 +218,7 @@ stamp_collection_item_finalize (GObject *object)
     g_free (source);
   }
 
-  g_list_free (self->sources);
-  self->sources = NULL;
+  g_clear_list (&self->sources, NULL);
 
   G_OBJECT_CLASS (stamp_collection_item_parent_class)->finalize (object);
 }

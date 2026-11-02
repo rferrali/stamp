@@ -1350,7 +1350,7 @@ on_categories_ready (GObject      *src,
 {
   MailEnableData *data = user_data;
   g_autoptr (GError) error = NULL;
-  GList *categories = stamp_m365_get_categories_finish (E_SOURCE (src), res, &error);
+  g_autolist (StampCategory) categories = stamp_m365_get_categories_finish (E_SOURCE (src), res, &error);
 
   if (mail_enable_is_current (data) && !error) {
     g_list_free_full (data->account->categories, g_object_unref);
@@ -1358,7 +1358,6 @@ on_categories_ready (GObject      *src,
   } else if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
     g_warning ("%s: Categories: %s", G_STRFUNC, error->message);
   }
-  g_list_free_full (categories, g_object_unref);
   mail_enable_one_done (data);
 }
 

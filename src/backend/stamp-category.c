@@ -166,7 +166,7 @@ stamp_m365_get_categories_sync (ESource       *source,
 {
   g_autoptr (CamelSettings) settings = NULL;
   EM365Connection *connection = NULL;
-  GSList *categories = NULL;
+  g_autoslist (JsonObject) categories = NULL;
   GList *result = NULL;
   gboolean success;
 
@@ -191,8 +191,6 @@ stamp_m365_get_categories_sync (ESource       *source,
         result = g_list_prepend (result, stamp_category_new (id, name, color));
     }
   }
-
-  g_slist_free_full (categories, (GDestroyNotify)json_object_unref);
 
   return g_list_reverse (result);
 }

@@ -19,9 +19,9 @@
 
 #include "config.h"
 
-#include <adwaita.h>
-
 #include "stamp-webview.h"
+
+#include <adwaita.h>
 
 struct _StampWebView {
   WebKitWebView parent_instance;

@@ -31,11 +31,11 @@
 #include <webkit/webkit.h>
 
 #include "stamp-attachment-button.h"
+#include "stamp-calendar-autocleanups.h"
+#include "stamp-meeting-details.h"
+#include "stamp-meeting-response.h"
 #include "stamp-message-header.h"
 #include "stamp-message-list.h"
-#include "stamp-meeting-details.h"
-#include "stamp-calendar-autocleanups.h"
-#include "stamp-meeting-response.h"
 #include "stamp-mime-parser.h"
 #include "stamp-session.h"
 #include "stamp-settings.h"
@@ -369,6 +369,7 @@ lookup_meeting_response (StampMessageListItem *self,
   self->meeting_lookup = g_cancellable_new ();
 
   task = g_task_new (self, self->meeting_lookup, on_meeting_response_loaded, NULL);
+  g_task_set_source_tag (task, lookup_meeting_response);
   g_task_set_task_data (task, lookup, (GDestroyNotify)meeting_lookup_free);
 
   self->meeting_calendar_checked = FALSE;
@@ -989,6 +990,7 @@ start_meeting_operation (StampMessageListItem  *self,
   response->remove = remove;
 
   task = g_task_new (self, self->meeting_send, on_meeting_response_sent, NULL);
+  g_task_set_source_tag (task, start_meeting_operation);
   g_task_set_task_data (task, response, (GDestroyNotify)meeting_response_free);
   gtk_widget_set_sensitive (self->meeting_rsvp, FALSE);
   gtk_widget_set_sensitive (self->meeting_remove, FALSE);
@@ -1837,8 +1839,7 @@ stamp_message_list_item_search (StampMessageListItem           *self,
                                 StampMessageListItemSearchDone  done,
                                 gpointer                        user_data)
 {
-  g_free (self->pending_search);
-  self->pending_search = g_strdup (search_text);
+  g_set_str (&self->pending_search, search_text);
   self->search_done = done;
   self->search_done_data = user_data;
 

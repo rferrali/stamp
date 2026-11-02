@@ -211,7 +211,7 @@ static void
 convert_newlines_to_br (gchar **content)
 {
   const gchar *p;
-  GString *out;
+  g_autoptr (GString) out = NULL;
   gboolean changed = FALSE;
 
   if (!*content)
@@ -238,9 +238,7 @@ convert_newlines_to_br (gchar **content)
 
   if (changed) {
     g_free (*content);
-    *content = g_string_free (out, FALSE);
-  } else {
-    g_string_free (out, TRUE);
+    *content = g_string_free_and_steal (g_steal_pointer (&out));
   }
 }
 
@@ -409,7 +407,7 @@ linkify_urls (const gchar *text)
     p++;
   }
 
-  return g_string_free (out, FALSE);
+  return g_string_free_and_steal (out);
 }
 
 static gchar *
@@ -460,7 +458,7 @@ linkify_emails (const gchar *text)
     p++;
   }
 
-  return g_string_free (out, FALSE);
+  return g_string_free_and_steal (out);
 }
 
 static void
