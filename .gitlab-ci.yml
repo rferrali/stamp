@@ -6,10 +6,6 @@ include:
   - component: gitlab.gnome.org/GNOME/citemplates/release-service@master
     inputs:
       dist-job-name: "build-flatpak"
-  - component: "gitlab.gnome.org/gnome/citemplates/gnomeos-basic-ci@master"
-    inputs:
-      grcov-c-options: '--ignore "tests/*"'
-      gobject-linter: enabled
 
 variables:
   APP_ID: 'org.tabos.stamp'
@@ -21,7 +17,6 @@ variables:
 stages:
   - check
   - build
-  - analysis
   - deploy
 
 check-code-style:
@@ -43,10 +38,42 @@ codespell:
 build-flatpak:
   extends: '.flatpak@x86_64'
   stage: build
-  before_script: []
+  before_script:
+    - python3 .gitlab-ci/prepare-flatpak-checks.py org.tabos.stamp.json ci-flatpak.json
+    - python3 .gitlab-ci/install-flatpak-extensions.py ci-flatpak.json "$ARCH"
   variables:
+    MANIFEST_PATH: 'ci-flatpak.json'
     GLYCIN_DISABLE_SANDBOX: 'i-know-the-risks'
     FLATPAK_VALIDATE_ICON: '$CI_PROJECT_DIR/.gitlab-ci/flatpak-validate-icon'
+  after_script:
+    - |
+      set -euo pipefail
+      mkdir -p ci-reports
+      for reports in .flatpak-builder/build/"${FLATPAK_MODULE}"-*/_flatpak_build/ci-reports; do
+        if [ -d "$reports" ]; then
+          cp -a "$reports/." ci-reports/
+        fi
+      done
+      cp .gitlab-ci/landing-page.html ci-reports/index.html
+  coverage: '/^lines: ([0-9.]+)%/'
+  artifacts:
+    when: always
+    paths:
+      - "*.flatpak"
+      - "*.flatpak.sha256sum"
+      - repo.tar
+      - "${CI_PROJECT_NAME}-docs.tar.gz"
+      - '.flatpak-builder/build/**/_flatpak_build/meson-logs/'
+      - '.flatpak-builder/build/**/_flatpak_build/meson-dist/'
+      - public-dist
+      - ci-reports/
+    reports:
+      junit:
+        - ".flatpak-builder/build/${FLATPAK_MODULE}*/_flatpak_build/meson-logs/testlog*.junit.xml"
+        - ci-reports/testlog-coverage.junit.xml
+      coverage_report:
+        coverage_format: cobertura
+        path: ci-reports/cobertura.xml
 
 build-flatpak-aarch64:
   extends: '.flatpak@aarch64'
@@ -56,20 +83,40 @@ build-flatpak-aarch64:
     GLYCIN_DISABLE_SANDBOX: 'i-know-the-risks'
     FLATPAK_VALIDATE_ICON: '$CI_PROJECT_DIR/.gitlab-ci/flatpak-validate-icon'
 
-scan-build-gate:
-  stage: analysis
+gobject-linter:
+  stage: check
   image:
-    name: fedora:latest
-  needs:
-    - job: "build-gnomeos-scan-build"
-      artifacts: true
+    name: ghcr.io/bilelmoussaoui/gobject-linter:main-5afb48e
+    entrypoint: [""]
+  allow_failure: false
   script:
     - |
-      if find _builddir/meson-logs/scanbuild -mindepth 1 -name 'index.html' -print -quit | grep -q .; then
-        echo "scan-build has finidings - watch Scanbuild Report'"
-        exit 1
-      fi
-      echo "scan-build: Good"
+      set -euo pipefail
+      status=0
+      gobject-linter src --format gitlab-codequality > gobject-linter-codequality.json || status=1
+      gobject-linter src --format text > gobject-linter.log || status=1
+      cat gobject-linter.log
+
+      # Reject warnings as well as errors using the structured report.
+      python3 - <<'PY' || status=1
+      import json
+      from pathlib import Path
+
+      findings = json.loads(Path("gobject-linter-codequality.json").read_text())
+      if not isinstance(findings, list):
+          raise SystemExit("Invalid gobject-linter Code Quality report")
+      if findings:
+          raise SystemExit(f"gobject-linter: {len(findings)} warning(s)/error(s)")
+      PY
+
+      exit "$status"
+  artifacts:
+    when: always
+    paths:
+      - gobject-linter-codequality.json
+      - gobject-linter.log
+    reports:
+      codequality: gobject-linter-codequality.json
 
 nightly:
   extends: '.publish_nightly'
@@ -81,12 +128,10 @@ nightly-aarch64:
 
 pages:
   stage: deploy
-  needs: [ "build-gnomeos-grcov-c", "build-gnomeos-scan-build" ]
+  needs: [ "build-flatpak" ]
   script:
     - mkdir -p public
-    - cp .gitlab-ci/landing-page.html public/index.html
-    - mv public_grcov/cobertura.xml public/
-    - mv public_grcov/html public/coverage
+    - cp -a ci-reports/. public/
   artifacts:
     paths:
       - public
