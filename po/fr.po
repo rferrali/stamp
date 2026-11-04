@@ -1,0 +1,1915 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the stamp package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#: src/views/contact/contact-list/stamp-contact-list.blp:75
+msgid ""
+msgstr ""
+"Project-Id-Version: stamp\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-09-04 17:22+0200\n"
+"PO-Revision-Date: 2026-11-02 11:35+0100\n"
+"Last-Translator: \n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Generator: Poedit 3.10\n"
+
+#: data/org.tabos.stamp.desktop.in:2 data/org.tabos.stamp.metainfo.xml.in:5
+#: src/views/calendar/stamp-calendar-view.blp:14 src/main.c:42
+#: src/stamp-window.blp:9 src/stamp-window.blp:40 src/stamp-window.blp:62
+msgid "Stamp"
+msgstr "Stamp"
+
+#: data/org.tabos.stamp.desktop.in:3
+msgid "Send and receive mail"
+msgstr "Envoyer et recevoir des courriels"
+
+#: data/org.tabos.stamp.desktop.in:10
+msgid "GTK;Mail;Contacts;Calendar;Meeting;Appointment;"
+msgstr "GTK;Courriel;Messagerie;Contacts;Calendrier;Réunion;Rendez-vous;"
+
+#: data/org.tabos.stamp.desktop.in:16
+msgid "Compose Message"
+msgstr "Rédiger un message"
+
+#: data/org.tabos.stamp.gschema.xml:6 data/org.tabos.stamp.gschema.xml:7
+msgid "Whether the window was maximized on last run"
+msgstr "Indique si la fenêtre était maximisée lors de la dernière exécution"
+
+#: data/org.tabos.stamp.gschema.xml:11 data/org.tabos.stamp.gschema.xml:12
+msgid "Most recent window width"
+msgstr "Largeur de fenêtre la plus récente"
+
+#: data/org.tabos.stamp.gschema.xml:16 data/org.tabos.stamp.gschema.xml:17
+msgid "Most recent window height"
+msgstr "Hauteur de fenêtre la plus récente"
+
+#: data/org.tabos.stamp.gschema.xml:21 data/org.tabos.stamp.gschema.xml:22
+msgid "Whether the composer was maximized on last run"
+msgstr ""
+"Indique si la fenêtre de rédaction était maximisée lors de la dernière "
+"exécution"
+
+#: data/org.tabos.stamp.gschema.xml:26 data/org.tabos.stamp.gschema.xml:27
+msgid "Most recent composer width"
+msgstr "Largeur la plus récente de la fenêtre de rédaction"
+
+#: data/org.tabos.stamp.gschema.xml:31 data/org.tabos.stamp.gschema.xml:32
+msgid "Most recent composer height"
+msgstr "Hauteur la plus récente de la fenêtre de rédaction"
+
+#: data/org.tabos.stamp.gschema.xml:36
+msgid "Background notifications"
+msgstr "Notifications en arrière-plan"
+
+#: data/org.tabos.stamp.gschema.xml:37
+msgid ""
+"If enabled, application continues running in the background after closing "
+"the window."
+msgstr ""
+"Si activé, l’application continue de s’exécuter en arrière-plan après la "
+"fermeture de la fenêtre."
+
+#: data/org.tabos.stamp.gschema.xml:41
+msgid "Autostart application"
+msgstr "Démarrage automatique de l’application"
+
+#: data/org.tabos.stamp.gschema.xml:42
+msgid "If enabled, application will be autostart during system startup."
+msgstr ""
+"Si activé, l’application démarrera automatiquement au démarrage du système."
+
+#: data/org.tabos.stamp.gschema.xml:46
+msgid "Current View"
+msgstr "Vue actuelle"
+
+#: data/org.tabos.stamp.gschema.xml:47
+msgid ""
+"Stores current view which will be used during application start to restore "
+"view."
+msgstr ""
+"Mémorise la vue actuelle, qui sera utilisée au démarrage de l’application "
+"pour la restaurer."
+
+#: data/org.tabos.stamp.gschema.xml:51
+msgid "Order of accounts"
+msgstr "Ordre des comptes"
+
+#: data/org.tabos.stamp.gschema.xml:52
+msgid "Saves account order for sidebars."
+msgstr "Enregistre l’ordre des comptes pour les barres latérales."
+
+#: data/org.tabos.stamp.gschema.xml:59 data/org.tabos.stamp.gschema.xml:60
+msgid "The account name and folder name of the last selected folder"
+msgstr "Nom du compte et nom du dossier du dernier dossier sélectionné"
+
+#: data/org.tabos.stamp.gschema.xml:64
+msgid "Whether the All Mailboxes group is expanded"
+msgstr "Indique si le groupe Toutes les boîtes aux lettres est développé"
+
+#: data/org.tabos.stamp.gschema.xml:65
+msgid ""
+"Whether the All Mailboxes combined inbox group is expanded in the sidebar."
+msgstr ""
+"Indique si le groupe de la boîte de réception combinée Toutes les boîtes aux "
+"lettres est développé dans la barre latérale."
+
+#: data/org.tabos.stamp.gschema.xml:69
+msgid "Always show images"
+msgstr "Toujours afficher les images"
+
+#: data/org.tabos.stamp.gschema.xml:70
+msgid "If enabled, all images will be displayed automatically."
+msgstr "Si activé, toutes les images seront affichées automatiquement."
+
+#: data/org.tabos.stamp.gschema.xml:74
+msgid "Load BIMI images"
+msgstr "Charger les images BIMI"
+
+#: data/org.tabos.stamp.gschema.xml:75
+msgid "If enabled, all avatar images are loaded from BIMI TXT records."
+msgstr ""
+"Si activé, toutes les images d’avatar sont chargées à partir des "
+"enregistrements TXT BIMI."
+
+#: data/org.tabos.stamp.gschema.xml:79
+msgid "Mark read timeout"
+msgstr "Délai de marquage comme lu"
+
+#: data/org.tabos.stamp.gschema.xml:80
+msgid "How long it should take until a selected mail is marked read."
+msgstr "Durée avant qu’un courriel sélectionné soit marqué comme lu."
+
+#: data/org.tabos.stamp.gschema.xml:84
+msgid "Play incoming sound"
+msgstr "Jouer un son à la réception"
+
+#: data/org.tabos.stamp.gschema.xml:85
+msgid "Play an sound for new incoming mails."
+msgstr "Joue un son à la réception de nouveaux courriels."
+
+#: data/org.tabos.stamp.gschema.xml:89
+msgid "Show important mails first"
+msgstr "Afficher les courriels importants en premier"
+
+#: data/org.tabos.stamp.gschema.xml:90
+msgid "Whether to move important mails on top."
+msgstr "Indique s’il faut placer les courriels importants en haut."
+
+#: data/org.tabos.stamp.gschema.xml:94
+msgid "Refresh interval in seconds"
+msgstr "Intervalle d’actualisation en secondes"
+
+#: data/org.tabos.stamp.gschema.xml:95
+msgid ""
+"Defines in which refresh interval mail folders should be checked for changes."
+msgstr ""
+"Définit l’intervalle d’actualisation auquel les dossiers de courriels "
+"doivent être vérifiés pour détecter des modifications."
+
+#: data/org.tabos.stamp.gschema.xml:102 data/org.tabos.stamp.gschema.xml:103
+msgid "The account name and book name of the last selected book"
+msgstr "Nom du compte et nom du carnet du dernier carnet sélectionné"
+
+#: data/org.tabos.stamp.gschema.xml:110 data/org.tabos.stamp.gschema.xml:111
+msgid "Whether the account itself is expanded"
+msgstr "Indique si le compte lui-même est développé"
+
+#: data/org.tabos.stamp.gschema.xml:115 data/org.tabos.stamp.gschema.xml:116
+msgid "The list of all the expanded folders"
+msgstr "La liste de tous les dossiers développés"
+
+#: data/org.tabos.stamp.gschema.xml:120
+msgid "Notification mode for this account"
+msgstr "Mode de notification pour ce compte"
+
+#: data/org.tabos.stamp.gschema.xml:121
+msgid ""
+"Controls which folders trigger notifications: 'inbox', 'all', or 'custom'"
+msgstr ""
+"Contrôle quels dossiers déclenchent des notifications : « inbox », « all » "
+"ou « custom »"
+
+#: data/org.tabos.stamp.gschema.xml:125
+msgid "Custom notification folders for this account"
+msgstr "Dossiers de notification personnalisés pour ce compte"
+
+#: data/org.tabos.stamp.gschema.xml:126
+msgid ""
+"List of folder full names that trigger notifications when notification-mode "
+"is 'custom'"
+msgstr ""
+"Liste des noms complets des dossiers qui déclenchent des notifications "
+"lorsque notification-mode vaut « custom »"
+
+#: data/org.tabos.stamp.gschema.xml:130
+msgid "Default signature UID"
+msgstr "UID de la signature par défaut"
+
+#: data/org.tabos.stamp.gschema.xml:131
+msgid "The UID of the default signature to auto-insert in new mails."
+msgstr ""
+"L’UID de la signature par défaut à insérer automatiquement dans les nouveaux "
+"courriels."
+
+#: data/org.tabos.stamp.gschema.xml:135
+msgid "OpenPGP key ID"
+msgstr "ID de clé OpenPGP"
+
+#: data/org.tabos.stamp.gschema.xml:136
+msgid "The ID of the OpenPGP key used for signing and encryption."
+msgstr "L’ID de la clé OpenPGP utilisée pour la signature et le chiffrement."
+
+#: data/org.tabos.stamp.gschema.xml:140
+msgid "S/MIME signing certificate nickname"
+msgstr "Pseudonyme du certificat de signature S/MIME"
+
+#: data/org.tabos.stamp.gschema.xml:141
+msgid "The nickname of the S/MIME certificate used for signing."
+msgstr "Le pseudonyme du certificat S/MIME utilisé pour la signature."
+
+#: data/org.tabos.stamp.gschema.xml:145
+msgid "S/MIME encryption certificate nickname"
+msgstr "Pseudonyme du certificat de chiffrement S/MIME"
+
+#: data/org.tabos.stamp.gschema.xml:146
+msgid "The nickname of the S/MIME certificate used for encryption."
+msgstr "Le pseudonyme du certificat S/MIME utilisé pour le chiffrement."
+
+#: data/org.tabos.stamp.metainfo.xml.in:6
+msgid "Mails and more"
+msgstr "Courriels et bien plus"
+
+#: data/org.tabos.stamp.metainfo.xml.in:8
+msgid ""
+"Stamp is a modern personal information management application that provides "
+"integrated mail and contacts functionality, designed for the GNOME desktop."
+msgstr ""
+"Stamp est une application moderne de gestion d’informations personnelles qui "
+"offre des fonctionnalités intégrées de courriel et de contacts, conçue pour "
+"le bureau GNOME."
+
+#: data/org.tabos.stamp.metainfo.xml.in:9
+msgid ""
+"Built on the Evolution Data Server stack, Stamp supports a wide range of "
+"industry standard data formats and network protocols for information "
+"exchange, with an emphasis on standards compliance and security. Messages "
+"can be signed and encrypted using OpenPGP and S/MIME, and Stamp supports "
+"Brand Indicators for Message Identification (BIMI) as well as one-click "
+"unsubscribe from mailing lists."
+msgstr ""
+"Basé sur la pile Evolution Data Server, Stamp prend en charge un large "
+"éventail de formats de données et de protocoles réseau standard pour "
+"l’échange d’informations, en mettant l’accent sur la conformité aux "
+"standards et sur la sécurité. Les messages peuvent être signés et chiffrés "
+"avec OpenPGP et S/MIME, et Stamp prend en charge Brand Indicators for "
+"Message Identification (BIMI) ainsi que la désinscription en un clic des "
+"listes de diffusion."
+
+#: data/org.tabos.stamp.metainfo.xml.in:10
+msgid ""
+"Manage your email accounts, stay on top of your conversations and keep your "
+"address books in sync — all in a clean, focused and privacy-friendly "
+"interface."
+msgstr ""
+"Gérez vos comptes de messagerie, gardez le contrôle de vos conversations et "
+"synchronisez vos carnets d’adresses, le tout dans une interface claire, "
+"épurée et respectueuse de la vie privée."
+
+#: data/org.tabos.stamp.metainfo.xml.in:43
+msgid "Overview"
+msgstr "Aperçu"
+
+#: data/org.tabos.stamp.metainfo.xml.in:47
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:26
+#: src/views/mail/stamp-mail-view.blp:144 src/stamp-preferences.blp:29
+#: src/stamp-window.blp:91
+msgid "Mail"
+msgstr "Courrier"
+
+#: data/org.tabos.stamp.metainfo.xml.in:53
+msgid "# Changelog"
+msgstr "# Journal des modifications"
+
+#: data/org.tabos.stamp.metainfo.xml.in:54
+msgid "## [Unreleased]"
+msgstr "## [Non publié]"
+
+#: data/org.tabos.stamp.metainfo.xml.in:55
+msgid "### Features"
+msgstr "### Fonctionnalités"
+
+#: data/org.tabos.stamp.metainfo.xml.in:57
+msgid "Add category support (Jan-Michael Brummer)"
+msgstr "Ajout de la prise en charge des catégories (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:58
+msgid "Add notification action (Jan-Michael Brummer)"
+msgstr "Ajout d’une action de notification (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:59
+msgid "Add mime parser (Jan-Michael Brummer)"
+msgstr "Ajout d’un analyseur MIME (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:61
+msgid "### Bug Fixes"
+msgstr "### Corrections de bogues"
+
+#: data/org.tabos.stamp.metainfo.xml.in:63
+msgid "Fix translations (Jan-Michael Brummer)"
+msgstr "Correction des traductions (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:64
+msgid "Fix goblint findings (Jan-Michael Brummer)"
+msgstr "Correction des résultats de goblint (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:65
+msgid "Fix code spelling errors (Jan-Michael Brummer)"
+msgstr "Correction de fautes d’orthographe dans le code (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:66
+msgid "Fix initial conversation end buton title state (Jan-Michael Brummer)"
+msgstr ""
+"Correction de l’état initial du titre du bouton de fin de conversation (Jan-"
+"Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:67
+msgid "Fix crash during send mail (Jan-Michael Brummer)"
+msgstr ""
+"Correction d’un plantage lors de l’envoi d’un courriel (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:68
+msgid "Fix compiler warnings (Jan-Michael Brummer)"
+msgstr "Correction des avertissements du compilateur (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:70
+msgid "### Other Changes"
+msgstr "### Autres changements"
+
+#: data/org.tabos.stamp.metainfo.xml.in:72
+msgid "Remove pkcs11 non working support from flatpak (Jan-Michael Brummer)"
+msgstr ""
+"Suppression de la prise en charge non fonctionnelle de pkcs11 du flatpak "
+"(Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:73
+msgid "Remove service (Jan-Michael Brummer)"
+msgstr "Suppression du service (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:74
+msgid "StampFolderRow: Set account row in bold (Jan-Michael Brummer)"
+msgstr ""
+"StampFolderRow : affichage de la ligne du compte en gras (Jan-Michael "
+"Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:75
+msgid ""
+"StampConversationList: Always scroll to top regardless of visibility (Jan-"
+"Michael Brummer)"
+msgstr ""
+"StampConversationList : défilement systématique vers le haut quelle que soit "
+"la visibilité (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:76
+msgid "wip (Jan-Michael Brummer)"
+msgstr "wip (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:77
+msgid "CI: Add check-code-style stage (Jan-Michael Brummer)"
+msgstr "CI : ajout de l’étape check-code-style (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:78
+msgid "CI: Add new stages (Jan-Michael Brummer)"
+msgstr "CI : ajout de nouvelles étapes (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:79
+msgid "Split style per widgets (Jan-Michael Brummer)"
+msgstr "Séparation des styles par widget (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:80
+msgid ""
+"StampMessageList: Set new message list header bottom margin (Jan-Michael "
+"Brummer)"
+msgstr ""
+"StampMessageList : définition de la marge inférieure du nouvel en-tête de la "
+"liste de messages (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:81
+msgid ""
+"StampWebView: Rerequest page size after loading images (Jan-Michael Brummer)"
+msgstr ""
+"StampWebView : nouvelle demande de la taille de la page après le chargement "
+"des images (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:82
+msgid ""
+"StampConversationList: Scroll to top using list view function (Jan-Michael "
+"Brummer)"
+msgstr ""
+"StampConversationList : défilement vers le haut à l’aide de la fonction de "
+"la vue en liste (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:83
+msgid "StampMessageListItem: Update banner style (Jan-Michael Brummer)"
+msgstr ""
+"StampMessageListItem : mise à jour du style de la bannière (Jan-Michael "
+"Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:84
+msgid ""
+"StampMessageHeader: Fix sender information in cases where only mail is "
+"provided (Jan-Michael Brummer)"
+msgstr ""
+"StampMessageHeader : correction des informations sur l’expéditeur lorsque "
+"seule l’adresse est fournie (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:85
+msgid "StampMessageHeader: Fix actions in popover (Jan-Michael Brummer)"
+msgstr ""
+"StampMessageHeader : correction des actions dans la fenêtre contextuelle "
+"(Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:86
+msgid ""
+"StampConversationList: Mark strings as translatable (Jan-Michael Brummer)"
+msgstr ""
+"StampConversationList : marquage des chaînes comme traduisibles (Jan-Michael "
+"Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:87
+msgid ""
+"StampMessageList: Ensure compose item is a message list item (Jan-Michael "
+"Brummer)"
+msgstr ""
+"StampMessageList : vérification que l’élément de rédaction est un élément de "
+"liste de messages (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:88
+msgid "Views: Reduce sidebar width (Jan-Michael Brummer)"
+msgstr ""
+"Vues : réduction de la largeur de la barre latérale (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:89
+msgid ""
+"StampConversationList: Placeholder must be Title Case (Jan-Michael Brummer)"
+msgstr ""
+"StampConversationList : le texte de substitution doit être en Title Case "
+"(Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:90
+msgid "StampConversationItem: Fix missing preview (Jan-Michael Brummer)"
+msgstr ""
+"StampConversationItem : correction de l’aperçu manquant (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:91
+msgid "Set runtime to 50 (Jan-Michael Brummer)"
+msgstr "Définition du runtime à 50 (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:92
+msgid "StampMessageListItem: Add error banner (Jan-Michael Brummer)"
+msgstr ""
+"StampMessageListItem : ajout d’une bannière d’erreur (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:93
+msgid "Clear photo cache after toggling BIMI option (Jan-Michael Brummer)"
+msgstr ""
+"Vidage du cache des photos après la bascule de l’option BIMI (Jan-Michael "
+"Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:94
+msgid "Remove account accent line (Jan-Michael Brummer)"
+msgstr "Suppression de la ligne d’accent du compte (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:95
+msgid "StampMessageList: Show changing subjects (Jan-Michael Brummer)"
+msgstr "StampMessageList : affichage des objets modifiés (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:96
+msgid ""
+"StampFolderItem: No notification for draft message (Jan-Michael Brummer)"
+msgstr ""
+"StampFolderItem : aucune notification pour les brouillons (Jan-Michael "
+"Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:97
+msgid "StampComposer: Move actions to composer group (Jan-Michael Brummer)"
+msgstr ""
+"StampComposer : déplacement des actions vers le groupe du composeur (Jan-"
+"Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:98
+msgid ""
+"StampMessageListItem: Fix broken row opacity in dark mode (Tobias Bernard)"
+msgstr ""
+"StampMessageListItem : correction de l’opacité de ligne cassée en mode "
+"sombre (Tobias Bernard)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:99
+msgid "StampFolderItem: Handle noselect folder (Jan-Michael Brummer)"
+msgstr "StampFolderItem : gestion des dossiers noselect (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:100
+msgid "StampMessageListItem: Fix cancellable usage (Jan-Michael Brummer)"
+msgstr ""
+"StampMessageListItem : correction de l’utilisation de cancellable (Jan-"
+"Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:101
+msgid "Reenable thread cache (Jan-Michael Brummer)"
+msgstr "Réactivation du cache des fils de discussion (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:102
+msgid ""
+"StampMessageListItem: Move click target from header to row (Tobias Bernard)"
+msgstr ""
+"StampMessageListItem : déplacement de la cible de clic de l’en-tête vers la "
+"ligne (Tobias Bernard)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:103
+msgid ""
+":style: fix message list rounded corner styling and improve spacing when "
+"expanded (Tobias Bernard)"
+msgstr ""
+":style: correction des coins arrondis de la liste de messages et "
+"amélioration de l’espacement lorsqu’elle est développée (Tobias Bernard)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:104
+msgid "Refactor backend (Jan-Michael Brummer)"
+msgstr "Refonte du backend (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:105
+msgid "contact-completion: fix crash when sending email (Michael Catanzaro)"
+msgstr ""
+"contact-completion : correction d’un plantage lors de l’envoi d’un courriel "
+"(Michael Catanzaro)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:106
+msgid ""
+"composer: use correct async finish function when getting message body "
+"(Michael Catanzaro)"
+msgstr ""
+"composer : utilisation de la bonne fonction de fin asynchrone lors de la "
+"récupération du corps du message (Michael Catanzaro)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:107
+msgid "composer: create and use cancellable (Michael Catanzaro)"
+msgstr ""
+"composer : création et utilisation d’un cancellable (Michael Catanzaro)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:108
+msgid "Massive update #1 (Jan-Michael Brummer)"
+msgstr "Mise à jour massive n° 1 (Jan-Michael Brummer)"
+
+#: data/org.tabos.stamp.metainfo.xml.in:109
+msgid "Initial commit (Jan-Michael Brummer)"
+msgstr "Commit initial (Jan-Michael Brummer)"
+
+#: src/views/calendar/stamp-calendar-view.blp:55
+msgid "Week"
+msgstr "Semaine"
+
+#: src/views/calendar/stamp-calendar-view.blp:73
+msgid "A_ccounts"
+msgstr "Co_mptes"
+
+#: src/views/calendar/stamp-calendar-view.blp:80
+#: src/views/stamp-header-bar.blp:35
+msgid "_Preferences"
+msgstr "_Préférences"
+
+#: src/views/calendar/stamp-calendar-view.blp:85
+#: src/views/stamp-header-bar.blp:40
+msgid "_Keyboard Shortcuts"
+msgstr "Raccourcis _clavier"
+
+#: src/views/calendar/stamp-calendar-view.blp:90
+#: src/views/stamp-header-bar.blp:45
+msgid "_About Stamp"
+msgstr "À pr_opos de Stamp"
+
+#: src/views/calendar/stamp-calendar-view.blp:97
+#: src/views/stamp-header-bar.blp:52 src/stamp-application.c:386
+msgid "_Quit"
+msgstr "_Quitter"
+
+#: src/views/contact/book-list/stamp-book-row.blp:13
+msgid "Book Type Icon"
+msgstr "Icône du type de carnet"
+
+#: src/views/contact/book-list/stamp-book-row.blp:29
+#: src/views/mail/folder-list/stamp-folder-row.blp:50
+msgid "Error"
+msgstr "Erreur"
+
+#: src/views/contact/contact-list/stamp-contact-list.blp:18
+#: src/views/mail/composer/stamp-contact-completion.blp:31
+msgid "Contact"
+msgstr "Contact"
+
+#: src/views/contact/contact-list/stamp-contact-list.blp:24
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:32
+msgid "Sidebar Toggle"
+msgstr "Afficher ou masquer la barre latérale"
+
+#: src/views/contact/contact-list/stamp-contact-list.blp:35
+#: src/views/contact/contact-list/stamp-contact-list.blp:42
+msgid "Search"
+msgstr "Rechercher"
+
+#: src/views/contact/contact-list/stamp-contact-list.blp:50
+msgid "Sort Order"
+msgstr "Ordre de tri"
+
+#: src/views/contact/contact-list/stamp-contact-list.blp:72
+msgid "Progress animation"
+msgstr "Animation de progression"
+
+#: src/views/contact/contact-list/stamp-contact-list.blp:130
+msgid "No Contact Found"
+msgstr "Aucun contact trouvé"
+
+#: src/views/contact/stamp-contact-details.blp:20
+msgid "No Contact Selected"
+msgstr "Aucun contact sélectionné"
+
+#: src/views/contact/stamp-contact-details.c:100
+msgid "Send mail"
+msgstr "Envoyer un courriel"
+
+#: src/views/contact/stamp-contact-details.c:141
+msgid "Start call"
+msgstr "Démarrer un appel"
+
+#: src/views/contact/stamp-contact-details.c:150
+msgid "Mobile"
+msgstr "Mobile"
+
+#: src/views/contact/stamp-contact-details.c:151
+msgid "Business"
+msgstr "Professionnel"
+
+#: src/views/contact/stamp-contact-details.c:152
+#: src/views/contact/stamp-contact-details.c:339
+msgid "Home"
+msgstr "Domicile"
+
+#: src/views/contact/stamp-contact-details.c:153
+msgid "Primary"
+msgstr "Principal"
+
+#: src/views/contact/stamp-contact-details.c:154
+msgid "Other"
+msgstr "Autre"
+
+#: src/views/contact/stamp-contact-details.c:177
+msgid "Company"
+msgstr "Entreprise"
+
+#: src/views/contact/stamp-contact-details.c:178
+msgid "Unit"
+msgstr "Unité"
+
+#: src/views/contact/stamp-contact-details.c:179
+msgid "Office"
+msgstr "Bureau"
+
+#: src/views/contact/stamp-contact-details.c:369
+msgid "Work"
+msgstr "Travail"
+
+#: src/views/contact/stamp-contact-view.blp:139 src/stamp-window.blp:101
+msgid "Contacts"
+msgstr "Contacts"
+
+#: src/views/contact/stamp-contact-view.blp:167
+msgid "Inhalt"
+msgstr "Contenu"
+
+#: src/views/mail/composer/stamp-composer.blp:18
+#: src/views/mail/composer/stamp-composer.c:1828
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:170
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:176
+msgid "New Message"
+msgstr "Nouveau message"
+
+#: src/views/mail/composer/stamp-composer.blp:24
+msgid "Close Composer"
+msgstr "Fermer la fenêtre de rédaction"
+
+#: src/views/mail/composer/stamp-composer.blp:39
+msgid "Send Message"
+msgstr "Envoyer le message"
+
+#: src/views/mail/composer/stamp-composer.blp:66
+#: src/views/mail/composer/stamp-composer.blp:94
+msgid "From"
+msgstr "De"
+
+#: src/views/mail/composer/stamp-composer.blp:108
+msgid "To"
+msgstr "À"
+
+#: src/views/mail/composer/stamp-composer.blp:133
+#: src/views/mail/composer/stamp-composer.blp:145
+msgid "Show CC/BCC"
+msgstr "Afficher Cc/Cci"
+
+#: src/views/mail/composer/stamp-composer.blp:160
+msgid "Cc"
+msgstr "Cc"
+
+#: src/views/mail/composer/stamp-composer.blp:195
+msgid "Bcc"
+msgstr "Cci"
+
+#: src/views/mail/composer/stamp-composer.blp:228
+#: src/views/mail/composer/stamp-composer.blp:247
+msgid "Subject"
+msgstr "Objet"
+
+#: src/views/mail/composer/stamp-composer.blp:313
+#: src/views/mail/composer/stamp-composer.blp:323
+msgid "Bold"
+msgstr "Gras"
+
+#: src/views/mail/composer/stamp-composer.blp:328
+#: src/views/mail/composer/stamp-composer.blp:338
+msgid "Italic"
+msgstr "Italique"
+
+#: src/views/mail/composer/stamp-composer.blp:343
+#: src/views/mail/composer/stamp-composer.blp:353
+msgid "Underline"
+msgstr "Souligné"
+
+#: src/views/mail/composer/stamp-composer.blp:358
+#: src/views/mail/composer/stamp-composer.blp:368
+msgid "Strike Through"
+msgstr "Barré"
+
+#: src/views/mail/composer/stamp-composer.blp:379
+#: src/views/mail/composer/stamp-composer.blp:389
+msgid "Bullet List"
+msgstr "Liste à puces"
+
+#: src/views/mail/composer/stamp-composer.blp:394
+#: src/views/mail/composer/stamp-composer.blp:404
+msgid "Numbered List"
+msgstr "Liste numérotée"
+
+#: src/views/mail/composer/stamp-composer.blp:410
+#: src/views/mail/composer/stamp-composer.blp:418
+#: src/views/mail/composer/stamp-composer.c:2061
+msgid "Insert Link"
+msgstr "Insérer un lien"
+
+#: src/views/mail/composer/stamp-composer.blp:430
+#: src/views/mail/composer/stamp-composer.blp:438
+msgid "Remove Format"
+msgstr "Supprimer la mise en forme"
+
+#: src/views/mail/composer/stamp-composer.blp:443
+#: src/views/mail/composer/stamp-composer.blp:451
+msgid "Insert Signature"
+msgstr "Insérer une signature"
+
+#: src/views/mail/composer/stamp-composer.blp:457
+#: src/views/mail/composer/stamp-composer.blp:465
+msgid "Add Attachment"
+msgstr "Ajouter une pièce jointe"
+
+#: src/views/mail/composer/stamp-composer.blp:470
+msgid "Request Read Receipt"
+msgstr "Demander un accusé de lecture"
+
+#: src/views/mail/composer/stamp-composer.blp:478
+msgid "Request Disposition"
+msgstr "Demander une notification de disposition"
+
+#: src/views/mail/composer/stamp-composer.blp:500
+#: src/views/mail/composer/stamp-composer.blp:507
+msgid "Security Options"
+msgstr "Options de sécurité"
+
+#: src/views/mail/composer/stamp-composer.blp:516
+msgid "PGP"
+msgstr "PGP"
+
+#: src/views/mail/composer/stamp-composer.blp:525
+#: src/views/mail/composer/stamp-composer.blp:529
+msgid "PGP Sign"
+msgstr "Signer avec PGP"
+
+#: src/views/mail/composer/stamp-composer.blp:534
+#: src/views/mail/composer/stamp-composer.blp:538
+msgid "PGP Encrypt"
+msgstr "Chiffrer avec PGP"
+
+#: src/views/mail/composer/stamp-composer.blp:545
+msgid "S/MIME"
+msgstr "S/MIME"
+
+#: src/views/mail/composer/stamp-composer.blp:554
+#: src/views/mail/composer/stamp-composer.blp:558
+msgid "S/MIME Sign"
+msgstr "Signer avec S/MIME"
+
+#: src/views/mail/composer/stamp-composer.blp:563
+#: src/views/mail/composer/stamp-composer.blp:567
+msgid "S/MIME Encrypt"
+msgstr "Chiffrer avec S/MIME"
+
+#: src/views/mail/composer/stamp-composer.blp:594
+#: src/views/mail/message-list/stamp-message-list-item.blp:52
+msgid "Send"
+msgstr "Envoyer"
+
+#: src/views/mail/composer/stamp-composer.blp:599
+msgid "Send Later…"
+msgstr "Envoyer plus tard…"
+
+#: src/views/mail/composer/stamp-composer.c:401
+#, c-format
+msgid "Failed to send mail: %s"
+msgstr "Échec de l’envoi du courriel : %s"
+
+#: src/views/mail/composer/stamp-composer.c:414
+msgid "Mail sent"
+msgstr "Courriel envoyé"
+
+#: src/views/mail/composer/stamp-composer.c:645
+msgid "Missing Attachment"
+msgstr "Pièce jointe manquante"
+
+#: src/views/mail/composer/stamp-composer.c:645
+msgid ""
+"Your message mentions an attachment, but none has been added. Do you want to "
+"send anyway?"
+msgstr ""
+"Votre message mentionne une pièce jointe, mais aucune n’a été ajoutée. "
+"Voulez-vous l’envoyer quand même ?"
+
+#: src/views/mail/composer/stamp-composer.c:647
+#: src/views/mail/composer/stamp-composer.c:1233
+#: src/views/mail/composer/stamp-composer.c:1565
+#: src/views/mail/composer/stamp-composer.c:2077 src/stamp-application.c:385
+msgid "_Cancel"
+msgstr "_Annuler"
+
+#: src/views/mail/composer/stamp-composer.c:648
+msgid "Send Anyway"
+msgstr "Envoyer quand même"
+
+#: src/views/mail/composer/stamp-composer.c:735
+msgid "Cannot send mail"
+msgstr "Impossible d’envoyer le courriel"
+
+#: src/views/mail/composer/stamp-composer.c:737
+#: src/views/mail/composer/stamp-composer.c:905
+msgid "_Close"
+msgstr "_Fermer"
+
+#: src/views/mail/composer/stamp-composer.c:767
+msgid "Sending Mail…"
+msgstr "Envoi du courriel…"
+
+#: src/views/mail/composer/stamp-composer.c:903
+msgid "Cannot schedule mail"
+msgstr "Impossible de programmer le courriel"
+
+#: src/views/mail/composer/stamp-composer.c:938
+msgid "Mail scheduled"
+msgstr "Courriel programmé"
+
+#: src/views/mail/composer/stamp-composer.c:1115
+msgid "Schedule Send"
+msgstr "Programmer l’envoi"
+
+#: src/views/mail/composer/stamp-composer.c:1115
+msgid "Choose when the message should be sent:"
+msgstr "Choisissez quand le message doit être envoyé :"
+
+#: src/views/mail/composer/stamp-composer.c:1124
+msgid "Date"
+msgstr "Date"
+
+#: src/views/mail/composer/stamp-composer.c:1131
+msgid "Choose date"
+msgstr "Choisir la date"
+
+#: src/views/mail/composer/stamp-composer.c:1145
+msgid "Time"
+msgstr "Heure"
+
+#: src/views/mail/composer/stamp-composer.c:1152
+msgid "Choose time"
+msgstr "Choisir l’heure"
+
+#: src/views/mail/composer/stamp-composer.c:1234
+msgid "_Schedule"
+msgstr "_Programmer"
+
+#: src/views/mail/composer/stamp-composer.c:1562
+#, c-format
+msgid "Large image: %s"
+msgstr "Image volumineuse : %s"
+
+#: src/views/mail/composer/stamp-composer.c:1563
+#, c-format
+msgid "The image is %s. Choose a size:"
+msgstr "L’image fait %s. Choisissez une taille :"
+
+#: src/views/mail/composer/stamp-composer.c:2009
+msgid "Redo"
+msgstr "Rétablir"
+
+#: src/views/mail/composer/stamp-composer.c:2015
+msgid "Undo"
+msgstr "Annuler"
+
+#: src/views/mail/composer/stamp-composer.c:2066
+msgid "Text"
+msgstr "Texte"
+
+#: src/views/mail/composer/stamp-composer.c:2070
+msgid "URL"
+msgstr "URL"
+
+#: src/views/mail/composer/stamp-composer.c:2078
+msgid "_Insert"
+msgstr "_Insérer"
+
+#: src/views/mail/composer/stamp-composer.c:2158
+msgid "No Signature"
+msgstr "Aucune signature"
+
+#: src/views/mail/composer/stamp-composer.c:2367
+msgid "Changes detected"
+msgstr "Modifications détectées"
+
+#: src/views/mail/composer/stamp-composer.c:2367
+msgid ""
+"You have modified this mail and closing this window will lead to loss of "
+"those changes. How do you want to proceed?"
+msgstr ""
+"Vous avez modifié ce courriel et la fermeture de cette fenêtre entraînera la "
+"perte de ces modifications. Comment souhaitez-vous procéder ?"
+
+#: src/views/mail/composer/stamp-composer.c:2368
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:131
+#: src/views/mail/message-list/stamp-message-list-item.c:544
+msgid "Close"
+msgstr "Fermer"
+
+#: src/views/mail/composer/stamp-composer.c:2369
+msgid "Save Draft"
+msgstr "Enregistrer le brouillon"
+
+#: src/views/mail/composer/stamp-composer.c:2370
+msgid "Continue Editing"
+msgstr "Continuer la modification"
+
+#: src/views/mail/composer/stamp-composer.c:2616
+msgid "%a, %b %-e, %Y at %-l:%M %p"
+msgstr "%a %-e %b %Y à %H:%M"
+
+#: src/views/mail/composer/stamp-composer.c:2652
+#, c-format
+msgid "On %s, %s wrote:"
+msgstr "Le %s, %s a écrit :"
+
+#: src/views/mail/composer/stamp-composer.c:2656
+#, c-format
+msgid "---------- Forwarded message ----------"
+msgstr "---------- Message transféré ----------"
+
+#: src/views/mail/composer/stamp-composer.c:2658
+#, c-format
+msgid "From: %s<br/>"
+msgstr "De : %s<br/>"
+
+#: src/views/mail/composer/stamp-composer.c:2659
+#, c-format
+msgid "Subject: %s<br/>"
+msgstr "Objet : %s<br/>"
+
+#: src/views/mail/composer/stamp-composer.c:2660
+#, c-format
+msgid "Date: %s<br/>"
+msgstr "Date : %s<br/>"
+
+#. impossible time or broken locale settings
+#: src/views/mail/conversation-list/stamp-conversation-item.c:120
+#: src/views/mail/conversation-list/stamp-conversation-item.c:468
+#: src/stamp-time-helpers.c:299
+msgid "Unknown"
+msgstr "Inconnu"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:44
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:47
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:55
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:59
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:149
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:152
+msgid "Search Conversations"
+msgstr "Rechercher des conversations"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:66
+msgid "Select Items"
+msgstr "Sélectionner des éléments"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:89
+msgid "Sort or Filter…"
+msgstr "Trier ou filtrer…"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:98
+msgid "Selection"
+msgstr "Sélection"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:104
+#: src/views/mail/conversation-list/stamp-conversation-row.blp:64
+msgid "Trash"
+msgstr "Corbeille"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:108
+#: src/views/mail/conversation-list/stamp-conversation-row.blp:57
+#: src/views/mail/conversation-list/stamp-conversation-row.blp:201
+msgid "Move to Trash"
+msgstr "Déplacer dans la corbeille"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:115
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:119
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:306
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1051
+#: src/views/mail/conversation-list/stamp-conversation-row.blp:26
+#: src/views/mail/conversation-list/stamp-conversation-row.blp:33
+#: src/views/mail/conversation-list/stamp-conversation-row.c:146
+#: src/views/mail/message-list/stamp-message-header.blp:327
+msgid "Mark Read"
+msgstr "Marquer comme lu"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:125
+msgid "Move to Folder"
+msgstr "Déplacer vers un dossier"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:132
+msgid "Close Selection"
+msgstr "Fermer la sélection"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:190
+msgid "Scroll To Top"
+msgstr "Remonter en haut"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:258
+msgid "No Mails Found"
+msgstr "Aucun courriel trouvé"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:274
+msgid "Select All"
+msgstr "Tout sélectionner"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:280
+msgid "Unselect All"
+msgstr "Tout désélectionner"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:290
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1044
+#: src/views/mail/message-list/stamp-message-header.blp:311
+#: src/views/mail/message-list/stamp-message-list.blp:33
+#: src/views/mail/message-list/stamp-message-list.blp:216
+#: src/views/mail/message-list/stamp-message-list.blp:221
+msgid "Reply"
+msgstr "Répondre"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:295
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1045
+#: src/views/mail/message-list/stamp-message-header.blp:316
+#: src/views/mail/message-list/stamp-message-list.blp:44
+#: src/views/mail/message-list/stamp-message-list.blp:226
+#: src/views/mail/message-list/stamp-message-list.blp:231
+msgid "Reply All"
+msgstr "Répondre à tous"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:300
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1046
+#: src/views/mail/message-list/stamp-message-header.blp:321
+#: src/views/mail/message-list/stamp-message-list.blp:55
+#: src/views/mail/message-list/stamp-message-list.blp:241
+msgid "Forward"
+msgstr "Transférer"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:312
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1053
+#: src/views/mail/conversation-list/stamp-conversation-row.c:137
+#: src/views/mail/message-list/stamp-message-header.blp:333
+msgid "Mark Unread"
+msgstr "Marquer comme non lu"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:318
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1058
+#: src/views/mail/message-list/stamp-message-header.blp:339
+msgid "Mark Starred"
+msgstr "Marquer d’une étoile"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.blp:324
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1056
+#: src/views/mail/message-list/stamp-message-header.blp:345
+msgid "Mark Unstarred"
+msgstr "Retirer l’étoile"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1091
+msgid "Category"
+msgstr "Catégorie"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1133
+#, c-format
+msgid "Move Selected Message to Trash"
+msgid_plural "Move %u Selected Messages to Trash"
+msgstr[0] "Déplacer le message sélectionné dans la corbeille"
+msgstr[1] "Déplacer les %u messages sélectionnés dans la corbeille"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1143
+#, c-format
+msgid "Mark Selected Message as Read"
+msgid_plural "Mark %u Selected Messages as Read"
+msgstr[0] "Marquer le message sélectionné comme lu"
+msgstr[1] "Marquer les %u messages sélectionnés comme lus"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1153
+#, c-format
+msgid "Move Selected Message…"
+msgid_plural "Move %u Selected Messages…"
+msgstr[0] "Déplacer le message sélectionné…"
+msgstr[1] "Déplacer les %u messages sélectionnés…"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1162
+#: src/views/mail/conversation-list/stamp-conversation-list.c:1833
+#, c-format
+msgid "%u selected"
+msgstr "%u sélectionné(s)"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:2354
+msgid "All Mails"
+msgstr "Tous les courriels"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:2355
+#: src/views/mail/message-list/stamp-message-header.blp:101
+msgid "Starred"
+msgstr "Avec étoile"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:2356
+#: src/views/mail/message-list/stamp-message-header.blp:71
+msgid "Attachment"
+msgstr "Pièce jointe"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:2357
+msgid "Unread"
+msgstr "Non lus"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:2358
+msgid "Filter"
+msgstr "Filtrer"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:2362
+msgid "Newest First"
+msgstr "Plus récents en premier"
+
+#: src/views/mail/conversation-list/stamp-conversation-list.c:2363
+msgid "Oldest First"
+msgstr "Plus anciens en premier"
+
+#: src/views/mail/conversation-list/stamp-conversation-row.blp:183
+#: src/views/mail/message-list/stamp-message-header.blp:53
+msgid "Replied to Mail"
+msgstr "Courriel répondu"
+
+#: src/views/mail/conversation-list/stamp-conversation-row.blp:192
+#: src/views/mail/message-list/stamp-message-header.blp:62
+msgid "Forwarded Mail"
+msgstr "Courriel transféré"
+
+#: src/views/mail/conversation-list/stamp-conversation-row.blp:210
+msgid "Mail Attachment"
+msgstr "Courriel avec pièce jointe"
+
+#: src/views/mail/conversation-list/stamp-conversation-row.blp:219
+msgid "Flagged Mail"
+msgstr "Courriel marqué d’un drapeau"
+
+#: src/views/mail/folder-list/stamp-account-item.c:182
+msgid "Labels"
+msgstr "Étiquettes"
+
+#: src/views/mail/folder-list/stamp-account-item.c:182
+msgid "Folders"
+msgstr "Dossiers"
+
+#: src/views/mail/folder-list/stamp-folder-item.c:217
+msgid "New message"
+msgstr "Nouveau message"
+
+#: src/views/mail/folder-list/stamp-folder-item.c:219
+#, c-format
+msgid "%d new message"
+msgid_plural "%d new messages"
+msgstr[0] "%d nouveau message"
+msgstr[1] "%d nouveaux messages"
+
+#: src/views/mail/folder-list/stamp-folder-item.c:229
+#: src/views/mail/message-list/stamp-message-list-item.blp:42
+#: src/views/mail/message-list/stamp-message-list-item.blp:62
+msgid "Show"
+msgstr "Afficher"
+
+#: src/views/mail/folder-list/stamp-folder-list.c:864
+msgid "Combined Inbox"
+msgstr "Boîte de réception combinée"
+
+#: src/views/mail/folder-list/stamp-folder-list.c:868
+msgid "All Mailboxes"
+msgstr "Toutes les boîtes aux lettres"
+
+#: src/views/mail/folder-list/stamp-folder-row.blp:13
+msgid "Folder Type Icon"
+msgstr "Icône du type de dossier"
+
+#: src/views/mail/folder-list/stamp-folder-row.blp:25
+#: src/views/mail/folder-list/stamp-folder-row.blp:28
+msgid "Loading…"
+msgstr "Chargement…"
+
+#: src/views/mail/folder-list/stamp-folder-row.blp:41
+#: src/views/mail/folder-list/stamp-folder-row.blp:44
+msgid "Unread Messages"
+msgstr "Messages non lus"
+
+#: src/views/mail/message-list/stamp-attachment-button.blp:18
+msgid "Attachment Button"
+msgstr "Bouton de pièce jointe"
+
+#: src/views/mail/message-list/stamp-attachment-button.blp:29
+msgid "Attachment Type Icon"
+msgstr "Icône du type de pièce jointe"
+
+#: src/views/mail/message-list/stamp-attachment-button.c:318
+msgid "Attachment Saved"
+msgstr "Pièce jointe enregistrée"
+
+#: src/views/mail/message-list/stamp-attachment-button.c:320
+#: src/views/mail/message-list/stamp-message-list-item.c:458
+msgid "Open Folder"
+msgstr "Ouvrir le dossier"
+
+#: src/views/mail/message-list/stamp-attachment-button.c:337
+#: src/views/mail/message-list/stamp-message-list-item.c:1139
+#: src/stamp-preferences-account-editor.blp:31
+msgid "Save"
+msgstr "Enregistrer"
+
+#: src/views/mail/message-list/stamp-attachment-button.c:371
+msgid "Rename Attachment"
+msgstr "Renommer la pièce jointe"
+
+#: src/views/mail/message-list/stamp-attachment-button.c:371
+msgid "Enter a new name for the attachment:"
+msgstr "Saisissez un nouveau nom pour la pièce jointe :"
+
+#: src/views/mail/message-list/stamp-attachment-button.c:381
+#: src/views/mail/message-list/stamp-message-list-item.c:658
+#: src/views/mail/message-list/stamp-message-list-item.c:1017
+#: src/stamp-application.c:244
+msgid "Cancel"
+msgstr "Annuler"
+
+#: src/views/mail/message-list/stamp-attachment-button.c:382
+msgid "Rename"
+msgstr "Renommer"
+
+#: src/views/mail/message-list/stamp-message-header.blp:19
+msgid "Sender"
+msgstr "Expéditeur"
+
+#: src/views/mail/message-list/stamp-message-header.blp:43
+msgid "Unknown Sender"
+msgstr "Expéditeur inconnu"
+
+#: src/views/mail/message-list/stamp-message-header.blp:85
+msgid "Internal"
+msgstr "Interne"
+
+#: src/views/mail/message-list/stamp-message-header.blp:91
+msgid "For company employees only"
+msgstr "Réservé aux employés de l’entreprise"
+
+#: src/views/mail/message-list/stamp-message-header.blp:170
+msgid "More Participants"
+msgstr "Autres participants"
+
+#: src/views/mail/message-list/stamp-message-header.blp:215
+msgid "More CC Participants"
+msgstr "Autres participants en copie"
+
+#: src/views/mail/message-list/stamp-message-header.blp:256
+#: src/views/stamp-tag.blp:42
+msgid "Copy Address"
+msgstr "Copier l’adresse"
+
+#: src/views/mail/message-list/stamp-message-header.blp:261
+#: src/views/stamp-tag.blp:47
+msgid "Search Address"
+msgstr "Rechercher l’adresse"
+
+#: src/views/mail/message-list/stamp-message-header.blp:266
+#: src/views/stamp-tag.blp:52
+msgid "Show Contact"
+msgstr "Afficher le contact"
+
+#: src/views/mail/message-list/stamp-message-header.blp:353
+#: src/views/mail/message-list/stamp-message-list-item.c:1015
+#: src/views/mail/message-list/stamp-message-list-item.c:1018
+msgid "Unsubscribe"
+msgstr "Se désabonner"
+
+#: src/views/mail/message-list/stamp-message-header.blp:359
+msgid "Print…"
+msgstr "Imprimer…"
+
+#: src/views/mail/message-list/stamp-message-header.blp:364
+msgid "View Source"
+msgstr "Afficher la source"
+
+#: src/views/mail/message-list/stamp-message-header.c:531
+#, c-format
+msgid ""
+"<b>%s</b> <small>(%s)</small>\n"
+"on behalf of <small>%s (%s)</small>"
+msgstr ""
+"<b>%s</b> <small>(%s)</small>\n"
+"de la part de <small>%s (%s)</small>"
+
+#: src/views/mail/message-list/stamp-message-list.blp:66
+msgid "Edit"
+msgstr "Modifier"
+
+#: src/views/mail/message-list/stamp-message-list.blp:75
+#: src/views/mail/message-list/stamp-message-list.blp:78
+#: src/views/mail/message-list/stamp-message-list.blp:115
+#: src/views/mail/message-list/stamp-message-list.blp:118
+msgid "Search Messages"
+msgstr "Rechercher des messages"
+
+#: src/views/mail/message-list/stamp-message-list.blp:85
+msgid "Move Message to Trash"
+msgstr "Déplacer le message dans la corbeille"
+
+#: src/views/mail/message-list/stamp-message-list.blp:92
+msgid "Mark Message as Spam"
+msgstr "Marquer le message comme indésirable"
+
+#: src/views/mail/message-list/stamp-message-list.blp:99
+msgid "Archive Message"
+msgstr "Archiver le message"
+
+#: src/views/mail/message-list/stamp-message-list.blp:130
+#: src/views/mail/message-list/stamp-message-list.blp:292
+msgid "No Conversation Selected"
+msgstr "Aucune conversation sélectionnée"
+
+#: src/views/mail/message-list/stamp-message-list.blp:181
+msgid "External"
+msgstr "Externe"
+
+#: src/views/mail/message-list/stamp-message-list.blp:182
+msgid "The sender is not part of your organization"
+msgstr "L’expéditeur ne fait pas partie de votre organisation"
+
+#: src/views/mail/message-list/stamp-message-list.blp:236
+msgid "Forward Current"
+msgstr "Transférer le message actuel"
+
+#: src/views/mail/message-list/stamp-message-list.blp:246
+#: src/views/mail/message-list/stamp-message-list.blp:251
+msgid "Mark Junk"
+msgstr "Marquer comme indésirable"
+
+#: src/views/mail/message-list/stamp-message-list.blp:256
+#: src/views/mail/message-list/stamp-message-list.blp:261
+msgid "Archive"
+msgstr "Archiver"
+
+#: src/views/mail/message-list/stamp-message-list.blp:266
+#: src/views/mail/message-list/stamp-message-list.blp:271
+msgid "Move To Trash"
+msgstr "Déplacer dans la corbeille"
+
+#: src/views/mail/message-list/stamp-message-list-item.blp:41
+msgid "This message contains remote images"
+msgstr "Ce message contient des images distantes"
+
+#: src/views/mail/message-list/stamp-message-list-item.blp:80
+msgid "RSVP"
+msgstr "RSVP"
+
+#: src/views/mail/message-list/stamp-message-list-item.blp:109
+msgid "Save All…"
+msgstr "Tout enregistrer…"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:145
+#, c-format
+msgid "Sender %s wants a read receipt"
+msgstr "L’expéditeur %s demande un accusé de lecture"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:197
+msgid "Valid Encryption"
+msgstr "Chiffrement valide"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:259
+#, c-format
+msgid "%d Attachment (%s)"
+msgid_plural "%d Attachments (%s)"
+msgstr[0] "%d pièce jointe (%s)"
+msgstr[1] "%d pièces jointes (%s)"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:456
+msgid "Attachments Saved"
+msgstr "Pièces jointes enregistrées"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:476
+msgid "Select destination folder"
+msgstr "Sélectionner le dossier de destination"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:541
+msgid "Signature Details"
+msgstr "Détails de la signature"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:654
+#, c-format
+msgid "%s wants to know whether you can join this meeting"
+msgstr "%s souhaite savoir si vous pouvez participer à cette réunion"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:656
+msgid "RVSP"
+msgstr "RSVP"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:659
+msgid "Decline"
+msgstr "Refuser"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:661
+msgid "Tentative"
+msgstr "Provisoire"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:662
+msgid "Accept"
+msgstr "Accepter"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:1013
+#, c-format
+msgid ""
+"Are you sure you want to unsubscribe from the mailing list?\n"
+"\n"
+"Unsubscribe URL: %s"
+msgstr ""
+"Voulez-vous vraiment vous désabonner de la liste de diffusion ?\n"
+"\n"
+"URL de désabonnement : %s"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:1168
+msgid "Save Image As…"
+msgstr "Enregistrer l’image sous…"
+
+#: src/views/mail/message-list/stamp-message-list-item.c:1258
+msgid "E-Mail Message"
+msgstr "Message électronique"
+
+#: src/views/mail/stamp-mail-view.blp:176
+msgid "Details"
+msgstr "Détails"
+
+#: src/views/mail/stamp-mail-view.c:231
+msgid "Conversations moved to trash"
+msgstr "Conversations déplacées dans la corbeille"
+
+#: src/views/mail/stamp-mail-view.c:232
+msgid "_Undo"
+msgstr "A_nnuler"
+
+#: src/views/mail/stamp-mail-view.c:438
+msgid "Conversations moved to junk"
+msgstr "Conversations déplacées dans les indésirables"
+
+#: src/views/mail/stamp-mail-view.c:462
+msgid "Conversations moved to archives"
+msgstr "Conversations déplacées dans les archives"
+
+#: src/views/stamp-header-bar.blp:16 src/views/stamp-header-bar.blp:19
+msgid "Menu"
+msgstr "Menu"
+
+#: src/views/stamp-header-bar.blp:28 src/stamp-window.blp:73
+msgid "_Online Accounts…"
+msgstr "Comptes en _ligne…"
+
+#: src/views/stamp-tag.blp:12
+msgid "Delete Tag"
+msgstr "Supprimer l’étiquette"
+
+#: src/shortcuts-dialog.blp:6
+msgctxt "Shortcut window description"
+msgid "Application"
+msgstr "Application"
+
+#: src/shortcuts-dialog.blp:9
+msgctxt "Shortcut window description"
+msgid "Open Preferences"
+msgstr "Ouvrir les préférences"
+
+#: src/shortcuts-dialog.blp:14
+msgctxt "Shortcut window description"
+msgid "Quit"
+msgstr "Quitter"
+
+#: src/shortcuts-dialog.blp:20
+msgctxt ""
+msgid "Mail"
+msgstr "Courrier"
+
+#: src/shortcuts-dialog.blp:23
+msgctxt "Shortcut window description"
+msgid "New Mail"
+msgstr "Nouveau courriel"
+
+#: src/shortcuts-dialog.blp:28
+msgctxt "Shortcut window description"
+msgid "Reply Current Mail"
+msgstr "Répondre au courriel actuel"
+
+#: src/shortcuts-dialog.blp:33
+msgctxt "Shortcut window description"
+msgid "Reply All Current Mail"
+msgstr "Répondre à tous pour le courriel actuel"
+
+#: src/shortcuts-dialog.blp:38
+msgctxt "Shortcut window description"
+msgid "Forward Current Mail"
+msgstr "Transférer le courriel actuel"
+
+#: src/shortcuts-dialog.blp:43
+msgctxt "Shortcut window description"
+msgid "Mark Current Mail Read"
+msgstr "Marquer le courriel actuel comme lu"
+
+#: src/shortcuts-dialog.blp:48
+msgctxt "Shortcut window description"
+msgid "Mark Current Mail Unread"
+msgstr "Marquer le courriel actuel comme non lu"
+
+#: src/shortcuts-dialog.blp:53
+msgctxt "Shortcut window description"
+msgid "Flag Current Mail"
+msgstr "Marquer le courriel actuel d’un drapeau"
+
+#: src/shortcuts-dialog.blp:58
+msgctxt "Shortcut window description"
+msgid "Unflag Current Mail"
+msgstr "Retirer le drapeau du courriel actuel"
+
+#: src/shortcuts-dialog.blp:63
+msgctxt "Shortcut window description"
+msgid "Print Current Mail"
+msgstr "Imprimer le courriel actuel"
+
+#: src/stamp-application.c:239
+#, c-format
+msgid "Enter the password for “%s”, token “%s”"
+msgstr "Saisissez le mot de passe pour « %s », jeton « %s »"
+
+#: src/stamp-application.c:241
+#, c-format
+msgid "Enter the password for “%s”"
+msgstr "Saisissez le mot de passe pour « %s »"
+
+#: src/stamp-application.c:243
+msgid "Enter Password"
+msgstr "Saisir le mot de passe"
+
+#: src/stamp-application.c:245
+msgid "Decrypt"
+msgstr "Déchiffrer"
+
+#: src/stamp-application.c:335
+msgid "translator-credits"
+msgstr ""
+
+#: src/stamp-application.c:379
+#, c-format
+msgid ""
+"%u message is scheduled to be sent later and will only be sent while the "
+"application is running. Quitting now will prevent it from being sent."
+msgid_plural ""
+"%u messages are scheduled to be sent later and will only be sent while the "
+"application is running. Quitting now will prevent them from being sent."
+msgstr[0] ""
+"%u message est programmé pour être envoyé plus tard et ne sera envoyé que "
+"tant que l’application est en cours d’exécution. Quitter maintenant "
+"empêchera son envoi."
+msgstr[1] ""
+"%u messages sont programmés pour être envoyés plus tard et ne seront envoyés "
+"que tant que l’application est en cours d’exécution. Quitter maintenant "
+"empêchera leur envoi."
+
+#: src/stamp-application.c:384
+msgid "Scheduled messages pending"
+msgstr "Messages programmés en attente"
+
+#: src/stamp-application.c:473
+msgid "Start window hidden"
+msgstr "Démarrer avec la fenêtre masquée"
+
+#: src/stamp-preferences.blp:10 src/stamp-preferences.blp:14
+#: src/stamp-preferences.blp:33
+msgid "General"
+msgstr "Général"
+
+#: src/stamp-preferences.blp:17
+msgid "Background Notifications"
+msgstr "Notifications en arrière-plan"
+
+#: src/stamp-preferences.blp:18
+msgid "Fetch notifications while the app is closed"
+msgstr "Récupérer les notifications lorsque l’application est fermée"
+
+#: src/stamp-preferences.blp:22
+msgid "Autostart"
+msgstr "Démarrage automatique"
+
+#: src/stamp-preferences.blp:23
+msgid "Start during system startup in background"
+msgstr "Démarrer en arrière-plan au démarrage du système"
+
+#: src/stamp-preferences.blp:36
+msgid "Mark Read Timeout"
+msgstr "Délai de marquage comme lu"
+
+#: src/stamp-preferences.blp:40 src/stamp-preferences.blp:61
+msgid "sec"
+msgstr "s"
+
+#: src/stamp-preferences.blp:56
+msgid "Folder Refresh Interval"
+msgstr "Intervalle d’actualisation des dossiers"
+
+#: src/stamp-preferences.blp:57
+msgid "Interval after which folders should be checked for changes"
+msgstr ""
+"Intervalle après lequel les dossiers sont vérifiés pour détecter des "
+"modifications"
+
+#: src/stamp-preferences.blp:75
+msgid "Visual"
+msgstr "Affichage"
+
+#: src/stamp-preferences.blp:78
+msgid "Always Show Images"
+msgstr "Toujours afficher les images"
+
+#: src/stamp-preferences.blp:79
+msgid "Except for Junk and Trash folders"
+msgstr "Sauf dans les dossiers Indésirables et Corbeille"
+
+#: src/stamp-preferences.blp:83
+msgid "Load Verified Company Logos from BIMI"
+msgstr "Charger les logos d’entreprise vérifiés depuis BIMI"
+
+#: src/stamp-preferences.blp:84
+msgid ""
+"Should offer more trust and provide protection against phishing attempts"
+msgstr ""
+"Devrait renforcer la confiance et protéger contre les tentatives "
+"d’hameçonnage"
+
+#: src/stamp-preferences.blp:88
+msgid "Show important mails on top"
+msgstr "Afficher les courriels importants en premier"
+
+#: src/stamp-preferences.blp:93
+msgid "Audio"
+msgstr "Audio"
+
+#: src/stamp-preferences.blp:96
+msgid "Play Incoming Sound"
+msgstr "Jouer un son à la réception"
+
+#: src/stamp-preferences.blp:97
+msgid "Audio notification for new incoming mails"
+msgstr "Notification sonore pour les nouveaux courriels reçus"
+
+#: src/stamp-preferences.blp:102
+msgid "Signatures"
+msgstr "Signatures"
+
+#: src/stamp-preferences.blp:105
+msgid "Add Signature"
+msgstr "Ajouter une signature"
+
+#: src/stamp-preferences.blp:113 src/stamp-preferences.blp:117
+msgid "Accounts"
+msgstr "Comptes"
+
+#: src/stamp-preferences.c:150 src/stamp-window.c:205
+msgid "Waiting for new emails"
+msgstr "En attente de nouveaux courriels"
+
+#: src/stamp-preferences-account-editor.blp:5
+#: src/stamp-preferences-account-editor.blp:11
+#: src/stamp-preferences-account-editor.blp:17
+msgid "Alias"
+msgstr "Alias"
+
+#: src/stamp-preferences-account-editor.blp:20
+msgid "Email"
+msgstr "Courriel"
+
+#: src/stamp-preferences-account-editor.blp:25
+msgid "Name"
+msgstr "Nom"
+
+#: src/stamp-preferences-account-editor.blp:42
+msgid "Remove"
+msgstr "Supprimer"
+
+#: src/stamp-preferences-account.blp:5 src/stamp-preferences-account.blp:11
+msgid "Account"
+msgstr "Compte"
+
+#: src/stamp-preferences-account.blp:17
+msgid "Composing"
+msgstr "Rédaction"
+
+#: src/stamp-preferences-account.blp:20
+msgid "Default Signature"
+msgstr "Signature par défaut"
+
+#: src/stamp-preferences-account.blp:25
+msgid "Aliases"
+msgstr "Alias"
+
+#: src/stamp-preferences-account.blp:26
+msgid "Add different names or email addresses to your account"
+msgstr "Ajoutez d’autres noms ou adresses électroniques à votre compte"
+
+#: src/stamp-preferences-account.blp:29
+msgid "Alias Preferences"
+msgstr "Préférences de l’alias"
+
+#: src/stamp-preferences-account.blp:35
+msgid "Add Alias"
+msgstr "Ajouter un alias"
+
+#: src/stamp-preferences-account.blp:41
+msgid "Notifications"
+msgstr "Notifications"
+
+#: src/stamp-preferences-account.blp:44
+msgid "Folder Notifications"
+msgstr "Notifications de dossiers"
+
+#: src/stamp-preferences-account.blp:45
+msgid "Select which folders trigger notifications"
+msgstr "Sélectionnez les dossiers qui déclenchent des notifications"
+
+#: src/stamp-preferences-account.blp:48
+msgid "Notification Mode"
+msgstr "Mode de notification"
+
+#: src/stamp-preferences-account.blp:54
+msgid "Security"
+msgstr "Sécurité"
+
+#: src/stamp-preferences-account.blp:57
+msgid "PGP Key"
+msgstr "Clé PGP"
+
+#: src/stamp-preferences-account.blp:58
+msgid "Select the PGP key to use for signing and encryption"
+msgstr "Sélectionnez la clé PGP à utiliser pour la signature et le chiffrement"
+
+#: src/stamp-preferences-account.blp:62
+msgid "S/MIME Signing Certificate"
+msgstr "Certificat de signature S/MIME"
+
+#: src/stamp-preferences-account.blp:63
+msgid "Select the certificate to use for S/MIME signing"
+msgstr "Sélectionnez le certificat à utiliser pour la signature S/MIME"
+
+#: src/stamp-preferences-account.blp:67
+msgid "S/MIME Encryption Certificate"
+msgstr "Certificat de chiffrement S/MIME"
+
+#: src/stamp-preferences-account.blp:68
+msgid "Select the certificate to use for S/MIME encryption"
+msgstr "Sélectionnez le certificat à utiliser pour le chiffrement S/MIME"
+
+#: src/stamp-preferences-account.blp:73
+msgid "Custom Folders"
+msgstr "Dossiers personnalisés"
+
+#: src/stamp-preferences-account.blp:74
+msgid "Enable notifications for selected folders"
+msgstr "Activer les notifications pour les dossiers sélectionnés"
+
+#: src/stamp-preferences-account.c:193 src/stamp-preferences-account.c:407
+#: src/stamp-preferences-account.c:444
+msgid "None"
+msgstr "Aucun"
+
+#: src/stamp-preferences-account.c:350
+msgid "Inbox"
+msgstr "Boîte de réception"
+
+#: src/stamp-preferences-account.c:350
+msgid "All"
+msgstr "Tous"
+
+#: src/stamp-preferences-account.c:350
+msgid "Custom"
+msgstr "Personnalisé"
+
+#: src/stamp-preferences-account.c:889
+msgid "Edit Alias"
+msgstr "Modifier l’alias"
+
+#: src/stamp-preferences-account.c:891
+msgid "New Alias"
+msgstr "Nouvel alias"
+
+#: src/stamp-preferences-signatures.c:163
+msgid "Edit Signature"
+msgstr "Modifier la signature"
+
+#: src/stamp-preferences-signatures.c:177
+msgid "New Signature"
+msgstr "Nouvelle signature"
+
+#. Translators: "friendly time" string for the current day, strftime format. like "Today 12∶34 am"
+#: src/stamp-time-helpers.c:229
+msgid "%I∶%M %p"
+msgstr "%H∶%M"
+
+#. Translators: "friendly time" string for the current day, strftime format. like "Today 15∶34"
+#: src/stamp-time-helpers.c:232
+msgid "%H∶%M"
+msgstr "%H∶%M"
+
+#: src/stamp-time-helpers.c:254
+msgid "%a %I∶%M %p"
+msgstr "%a %H∶%M"
+
+#: src/stamp-time-helpers.c:256 src/stamp-time-helpers.c:264
+#, c-format
+msgid "%a"
+msgstr "%a"
+
+#: src/stamp-time-helpers.c:262
+msgid "%a %H∶%M"
+msgstr "%a %H∶%M"
+
+#. Translators: "friendly time" string for a day in the current year,
+#. * strftime format. e.g. "Feb 12 12∶34 am"
+#.
+#: src/stamp-time-helpers.c:278
+msgid "%b %d %I∶%M %p"
+msgstr "%d %b %H∶%M"
+
+#. Translators: "friendly time" string for a day in the current year,
+#. * strftime format. e.g. "Feb 12 15∶34"
+#.
+#: src/stamp-time-helpers.c:283
+msgid "%b %d %H∶%M"
+msgstr "%d %b %H∶%M"
+
+#. Translators: "friendly time" string for a day in a different year,
+#. * strftime format. e.g. "Feb 12 1997"
+#.
+#: src/stamp-time-helpers.c:289
+msgid "%b %d %Y"
+msgstr "%d %b %Y"
+
+#: src/stamp-window.blp:42
+msgid "Loading configuration"
+msgstr "Chargement de la configuration"
+
+#: src/stamp-window.blp:64
+msgid "Stamp uses email accounts configured in System Settings."
+msgstr ""
+"Stamp utilise les comptes de messagerie configurés dans les Paramètres "
+"système."
+
+#: src/stamp-window.blp:111
+msgid "Calendar"
+msgstr "Calendrier"
