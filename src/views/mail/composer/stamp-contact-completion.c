@@ -45,6 +45,8 @@ struct _StampContactCompletion {
   gboolean has_entries;
   StampAccount *account;
   gboolean block;
+
+  gchar *accessible_label;
 };
 
 G_DEFINE_FINAL_TYPE (StampContactCompletion, stamp_contact_completion, ADW_TYPE_BIN);
@@ -53,9 +55,10 @@ G_DEFINE_FINAL_TYPE (StampContactCompletion, stamp_contact_completion, ADW_TYPE_
 
 typedef enum {
   PROP_HAS_ENTRIES = 1,
+  PROP_ACCESSIBLE_LABEL,
 } StampContactCompletionProps;
 
-static GParamSpec *properties[PROP_HAS_ENTRIES + 1];
+static GParamSpec *properties[PROP_ACCESSIBLE_LABEL + 1];
 
 static void
 on_tag_destroy (GtkWidget *obj,
@@ -525,6 +528,14 @@ stamp_contact_completion_set_property (GObject      *object,
       self->has_entries = g_value_get_boolean (value);
       g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_HAS_ENTRIES]);
       break;
+    case PROP_ACCESSIBLE_LABEL:
+      g_free (self->accessible_label);
+      self->accessible_label = g_value_dup_string (value);
+      if (self->entry)
+        gtk_accessible_update_property (GTK_ACCESSIBLE (self->entry),
+                                        GTK_ACCESSIBLE_PROPERTY_LABEL, self->accessible_label,
+                                        -1);
+      break;
   }
 }
 
@@ -539,6 +550,9 @@ stamp_contact_completion_get_property (GObject    *object,
   switch ((StampContactCompletionProps)property_id) {
     case PROP_HAS_ENTRIES:
       g_value_set_boolean (value, self->has_entries);
+      break;
+    case PROP_ACCESSIBLE_LABEL:
+      g_value_set_string (value, self->accessible_label);
       break;
   }
 }
@@ -563,6 +577,7 @@ stamp_contact_completion_dispose (GObject *object)
   g_clear_object (&self->store);
   g_clear_object (&self->account);
   g_clear_pointer (&self->receivers, g_list_free);
+  g_clear_pointer (&self->accessible_label, g_free);
 
   adw_bin_set_child (ADW_BIN (self), NULL);
   gtk_widget_dispose_template (GTK_WIDGET (self), STAMP_TYPE_CONTACT_COMPLETION);
@@ -595,6 +610,12 @@ stamp_contact_completion_class_init (StampContactCompletionClass *klass)
                           NULL, NULL,
                           FALSE,
                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_ACCESSIBLE_LABEL] =
+    g_param_spec_string ("accessible-label",
+                         NULL, NULL,
+                         NULL,
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, G_N_ELEMENTS (properties), properties);
 }
