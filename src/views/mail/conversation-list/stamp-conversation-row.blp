@@ -260,5 +260,12 @@ template $StampConversationRow: Box {
       cancel => $on_drag_cancel();
       propagation-phase: capture;
     }
+
+    EventControllerScroll {
+      flags: horizontal;
+      scroll-begin => $on_swipe_scroll_begin();
+      scroll => $on_swipe_scroll();
+      scroll-end => $on_swipe_scroll_end();
+    }
   }
 }

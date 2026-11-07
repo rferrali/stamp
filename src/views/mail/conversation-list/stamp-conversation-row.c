@@ -69,6 +69,8 @@ struct _StampConversationRow {
   gboolean claimed;
   AdwAnimation *swipe_animation;
   gdouble swipe_offset;
+  gboolean scrolling;
+  gdouble scroll_offset;
   StampConversationItem *item;
   GPtrArray *bindings;
   guint instance_id;
@@ -422,6 +424,71 @@ on_drag_cancel (GtkGesture       *gesture,
 }
 
 static void
+on_swipe_scroll_begin (GtkEventControllerScroll *controller,
+                       gpointer                  user_data)
+{
+  StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
+
+  self->scrolling = FALSE;
+  self->scroll_offset = 0;
+}
+
+static gboolean
+on_swipe_scroll (GtkEventControllerScroll *controller,
+                 gdouble                   dx,
+                 gdouble                   dy,
+                 gpointer                  user_data)
+{
+  StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
+  GdkEvent *event;
+
+  if (self->swipe_left == SWIPE_ACTION_NONE && self->swipe_right == SWIPE_ACTION_NONE)
+    return GDK_EVENT_PROPAGATE;
+
+  event = gtk_event_controller_get_current_event (GTK_EVENT_CONTROLLER (controller));
+  if (!event || !GDK_IS_EVENT_TYPE (event, GDK_SCROLL) || gdk_scroll_event_get_direction (event) != GDK_SCROLL_SMOOTH)
+    return GDK_EVENT_PROPAGATE;
+
+  if (!self->scrolling) {
+    if (fabs (dx) < 1 || fabs (dx) <= fabs (dy))
+      return GDK_EVENT_PROPAGATE;
+
+    reset_swipe (self);
+    self->scrolling = TRUE;
+  }
+
+  self->scroll_offset -= dx;
+  set_swipe_offset (clamp_swipe_offset (self, self->scroll_offset), self);
+
+  return GDK_EVENT_STOP;
+}
+
+static void
+on_swipe_scroll_end (GtkEventControllerScroll *controller,
+                     gpointer                  user_data)
+{
+  StampConversationRow *self = STAMP_CONVERSATION_ROW (user_data);
+  gdouble pos;
+  SwipeAction action = SWIPE_ACTION_NONE;
+
+  if (!self->scrolling)
+    return;
+
+  pos = clamp_swipe_offset (self, self->scroll_offset);
+
+  self->scrolling = FALSE;
+  self->scroll_offset = 0;
+
+  if (pos > SWIPE_THRESHOLD)
+    action = self->swipe_right;
+  else if (pos < -SWIPE_THRESHOLD)
+    action = self->swipe_left;
+
+  animate_to_zero (self);
+  trigger_swipe_action (self, action);
+}
+
+static void
 on_check_button_toggled (GtkCheckButton *check,
                          gpointer        user_data)
 {
@@ -468,6 +535,9 @@ stamp_conversation_row_class_init (StampConversationRowClass *klass)
   gtk_widget_class_bind_template_callback (widget_class, on_drag_update);
   gtk_widget_class_bind_template_callback (widget_class, on_drag_end);
   gtk_widget_class_bind_template_callback (widget_class, on_drag_cancel);
+  gtk_widget_class_bind_template_callback (widget_class, on_swipe_scroll_begin);
+  gtk_widget_class_bind_template_callback (widget_class, on_swipe_scroll);
+  gtk_widget_class_bind_template_callback (widget_class, on_swipe_scroll_end);
   gtk_widget_class_bind_template_callback (widget_class, on_check_button_toggled);
 
   properties[PROP_SELECTED] = g_param_spec_boolean ("selected",
