@@ -760,16 +760,47 @@ on_bind (GtkSignalListItemFactory *f,
   g_list_free_full (emails, g_free);
 }
 
+static gboolean
+on_tag_drop (GtkDropTarget *target,
+             const GValue  *value,
+             gdouble        x,
+             gdouble        y,
+             gpointer       user_data)
+{
+  StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
+  StampTag *source = g_value_get_object (value);
+  GtkWidget *tag;
+
+  if (!source || g_list_find (self->receivers, source))
+    return FALSE;
+
+  if (!stamp_contact_completion_contains_address (self, stamp_tag_get_mail (source))) {
+    tag = stamp_tag_new (self->account);
+    stamp_tag_set_label (STAMP_TAG (tag), stamp_tag_get_label (source));
+    stamp_tag_set_mail (STAMP_TAG (tag), stamp_tag_get_mail (source));
+    stamp_contact_completion_add_tag (self, STAMP_TAG (tag));
+  }
+
+  gtk_widget_unparent (GTK_WIDGET (source));
+
+  return TRUE;
+}
+
 static void
 stamp_contact_completion_init (StampContactCompletion *self)
 {
   GtkFilterListModel *filtered;
+  GtkDropTarget *drop_target;
   GtkWidget *scrolled_window;
   GtkSorter *sorter;
   GtkSortListModel *sorted;
   GtkListItemFactory *factory;
 
   gtk_widget_init_template (GTK_WIDGET (self));
+
+  drop_target = gtk_drop_target_new (STAMP_TYPE_TAG, GDK_ACTION_MOVE);
+  g_signal_connect (drop_target, "drop", G_CALLBACK (on_tag_drop), self);
+  gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (drop_target));
 
   self->store = g_list_store_new (E_TYPE_CONTACT);
 
@@ -830,6 +861,7 @@ void
 stamp_contact_completion_add_tag (StampContactCompletion *self,
                                   StampTag               *tag)
 {
+  stamp_tag_set_show_button (tag, TRUE);
   g_signal_connect_object (tag, "destroy", G_CALLBACK (on_tag_destroy), self, G_CONNECT_DEFAULT);
 
   adw_wrap_box_append (ADW_WRAP_BOX (self->wrap_box), GTK_WIDGET (tag));

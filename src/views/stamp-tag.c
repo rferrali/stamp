@@ -39,6 +39,7 @@ struct _StampTag {
   GtkLabel *popover_email;
 
   gchar *mail;
+  GtkDragSource *drag_source;
   GCancellable *cancellable;
   StampAccount *account;
 };
@@ -174,6 +175,25 @@ on_show_contact_activate (GSimpleAction *action,
   stamp_window_show_contact (window, self->mail);
 }
 
+static GdkContentProvider *
+on_drag_prepare (GtkDragSource *source,
+                 gdouble        x,
+                 gdouble        y,
+                 gpointer       user_data)
+{
+  return gdk_content_provider_new_typed (STAMP_TYPE_TAG, user_data);
+}
+
+static void
+on_drag_begin (GtkDragSource *source,
+               GdkDrag       *drag,
+               gpointer       user_data)
+{
+  g_autoptr (GdkPaintable) paintable = gtk_widget_paintable_new (GTK_WIDGET (user_data));
+
+  gtk_drag_source_set_icon (source, paintable, 0, 0);
+}
+
 static void
 stamp_tag_init (StampTag *self)
 {
@@ -202,6 +222,13 @@ stamp_tag_init (StampTag *self)
   self->cancellable = g_cancellable_new ();
 
   gtk_widget_set_parent (GTK_WIDGET (self->popover), GTK_WIDGET (self));
+
+  self->drag_source = gtk_drag_source_new ();
+  gtk_drag_source_set_actions (self->drag_source, GDK_ACTION_MOVE);
+  g_signal_connect (self->drag_source, "prepare", G_CALLBACK (on_drag_prepare), self);
+  g_signal_connect (self->drag_source, "drag-begin", G_CALLBACK (on_drag_begin), self);
+  gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (self->drag_source), GTK_PHASE_NONE);
+  gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (self->drag_source));
 }
 
 static void
@@ -308,4 +335,6 @@ stamp_tag_set_show_button (StampTag *self,
                            gboolean  show)
 {
   gtk_widget_set_visible (GTK_WIDGET (self->button), show);
+
+  gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (self->drag_source), show ? GTK_PHASE_CAPTURE : GTK_PHASE_NONE);
 }
