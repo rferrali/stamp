@@ -585,11 +585,21 @@ stamp_contact_completion_dispose (GObject *object)
   G_OBJECT_CLASS (stamp_contact_completion_parent_class)->dispose (object);
 }
 
+static gboolean
+stamp_contact_completion_grab_focus (GtkWidget *widget)
+{
+  StampContactCompletion *self = STAMP_CONTACT_COMPLETION (widget);
+
+  return gtk_widget_grab_focus (self->entry);
+}
+
 static void
 stamp_contact_completion_class_init (StampContactCompletionClass *klass)
 {
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
+
+  widget_class->grab_focus = stamp_contact_completion_grab_focus;
 
   gtk_widget_class_set_template_from_resource (widget_class, "/org/tabos/stamp/views/mail/composer/stamp-contact-completion.ui");
 

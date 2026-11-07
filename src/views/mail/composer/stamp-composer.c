@@ -2812,6 +2812,8 @@ stamp_composer_set_to (StampComposer *self,
 
   if (to_address)
     stamp_add_addresses_to_completion (self, self->to, to_address);
+
+  gtk_widget_grab_focus (self->subject);
 }
 
 void
@@ -2819,6 +2821,7 @@ stamp_composer_set_subject (StampComposer *self,
                             gchar         *subject)
 {
   gtk_editable_set_text (GTK_EDITABLE (self->subject), subject);
+  gtk_widget_grab_focus (GTK_WIDGET (self->webview));
 }
 
 void
