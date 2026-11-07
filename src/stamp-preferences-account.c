@@ -19,16 +19,11 @@
 
 #include "stamp-preferences-account.h"
 
-#include <locale.h>
-
 #include <camel/camel.h>
-#include <cert.h>
 #include <glib/gi18n.h>
-#include <gpgme.h>
-#include <nss.h>
-#include <pk11pub.h>
 
 #include "stamp-account.h"
+#include "stamp-crypto-keys.h"
 #include "stamp-helper.h"
 #include "stamp-out-of-office.h"
 #include "stamp-preferences-out-of-office.h"
@@ -64,6 +59,7 @@ struct _StampPreferencesAccount {
   GSettings *account_settings;
   GPtrArray *folder_rows;
   GCancellable *cancellable;
+  GCancellable *crypto_cancellable;
 };
 
 G_DEFINE_FINAL_TYPE (StampPreferencesAccount, stamp_preferences_account, ADW_TYPE_NAVIGATION_PAGE);
@@ -546,125 +542,6 @@ on_cert_list_item_bind (GtkListItemFactory *factory,
   gtk_label_set_text (GTK_LABEL (title), text);
 }
 
-static GtkStringList *
-enumerate_smime_certs (GPtrArray *nicknames)
-{
-  GtkStringList *list = gtk_string_list_new (NULL);
-  CERTCertList *cert_list;
-  CERTCertListNode *node;
-
-  g_ptr_array_set_size (nicknames, 0);
-
-  gtk_string_list_append (list, _("None"));
-  g_ptr_array_add (nicknames, NULL);
-
-  cert_list = PK11_ListCerts (PK11CertListAll, NULL);
-  if (!cert_list)
-    return list;
-
-  for (node = CERT_LIST_HEAD (cert_list); !CERT_LIST_END (node, cert_list); node = CERT_LIST_NEXT (node)) {
-    CERTCertificate *cert = node->cert;
-
-    if (!cert->nickname || g_strcmp0 (cert->nickname, "") == 0)
-      continue;
-
-    /* if (!(cert->keyUsage & certificateUsageObjectSigner) && !(cert->keyUsage & certificateUsageEmailSigner)) */
-    /*   continue; */
-
-    gtk_string_list_append (list, cert->nickname);
-
-    g_ptr_array_add (nicknames, g_strdup (cert->nickname));
-  }
-
-  CERT_DestroyCertList (cert_list);
-
-  return list;
-}
-
-static gboolean
-init_gpgme (void)
-{
-  static gsize initialized = 0;
-  static gboolean available = FALSE;
-
-  if (g_once_init_enter (&initialized)) {
-    gpgme_error_t err;
-
-    gpgme_check_version (NULL);
-    gpgme_set_locale (NULL, LC_CTYPE, setlocale (LC_CTYPE, NULL));
-#ifdef LC_MESSAGES
-    gpgme_set_locale (NULL, LC_MESSAGES, setlocale (LC_MESSAGES, NULL));
-#endif
-
-    err = gpgme_engine_check_version (GPGME_PROTOCOL_OpenPGP);
-    if (err != GPG_ERR_NO_ERROR)
-      g_warning ("OpenPGP engine not available: %s", gpgme_strerror (err));
-    else
-      available = TRUE;
-
-    g_once_init_leave (&initialized, 1);
-  }
-
-  return available;
-}
-
-static GtkStringList *
-enumerate_pgp_keys (GPtrArray *key_ids)
-{
-  GtkStringList *list = gtk_string_list_new (NULL);
-  gpgme_ctx_t ctx;
-  gpgme_error_t err;
-  gpgme_key_t key;
-
-  if (key_ids)
-    g_ptr_array_set_size (key_ids, 0);
-
-  gtk_string_list_append (list, _("None"));
-  if (key_ids)
-    g_ptr_array_add (key_ids, NULL);
-
-  if (!init_gpgme ())
-    return list;
-
-  err = gpgme_new (&ctx);
-  if (err != GPG_ERR_NO_ERROR) {
-    g_warning ("Failed to create gpgme context: %s", gpgme_strerror (err));
-    return list;
-  }
-
-  gpgme_set_protocol (ctx, GPGME_PROTOCOL_OpenPGP);
-  gpgme_set_keylist_mode (ctx, GPGME_KEYLIST_MODE_LOCAL);
-
-  err = gpgme_op_keylist_start (ctx, NULL, 0);
-  if (err != GPG_ERR_NO_ERROR) {
-    g_warning ("Failed to list PGP keys: %s", gpgme_strerror (err));
-    gpgme_release (ctx);
-    return list;
-  }
-
-  while (gpgme_op_keylist_next (ctx, &key) == GPG_ERR_NO_ERROR) {
-    const gchar *key_id = key->subkeys ? key->subkeys->keyid : NULL;
-    const gchar *uid = key->uids ? key->uids->uid : NULL;
-
-    if (key_id && (key->secret || key->has_sign || key->has_encrypt)) {
-      if (uid)
-        gtk_string_list_append (list, uid);
-      else
-        gtk_string_list_append (list, key_id);
-
-      if (key_ids)
-        g_ptr_array_add (key_ids, g_strdup (key_id));
-    }
-
-    gpgme_key_unref (key);
-  }
-
-  gpgme_op_keylist_end (ctx);
-  gpgme_release (ctx);
-
-  return list;
-}
-
 static void
 on_pgp_key_selected (GObject    *combo,
                      GParamSpec *pspec,
@@ -707,38 +584,60 @@ on_smime_encrypt_cert_selected (GObject    *combo,
     g_settings_set_string (self->account_settings, "smime-encrypt-cert", "");
 }
 
+typedef struct {
+  GWeakRef page;
+  GCancellable *cancellable;
+} CryptoRequest;
+
 static void
-setup_crypto (StampPreferencesAccount *self)
+crypto_request_free (CryptoRequest *request)
 {
-  GtkListItemFactory *factory;
-  GtkStringList *pgp_keys;
-  GtkStringList *smime_certs;
+  g_weak_ref_clear (&request->page);
+  g_object_unref (request->cancellable);
+  g_free (request);
+}
+
+static void
+on_crypto_loaded (GObject      *source,
+                  GAsyncResult *result,
+                  gpointer      user_data)
+{
+  CryptoRequest *request = user_data;
+  g_autoptr (StampPreferencesAccount) self = g_weak_ref_get (&request->page);
+  g_autoptr (StampCryptoKeys) keys = stamp_crypto_keys_load_finish (result, NULL);
+  gboolean current = self && self->crypto_cancellable == request->cancellable;
+
+  g_autoptr (GtkStringList) pgp_keys = NULL;
+  g_autoptr (GtkStringList) smime_certs = NULL;
   g_autofree char *key_id = NULL;
   g_autofree char *sign_val = NULL;
   g_autofree char *enc_val = NULL;
+
+  crypto_request_free (request);
+
+  if (!keys || !current)
+    return;
+
+  g_clear_object (&self->crypto_cancellable);
 
   g_signal_handlers_block_by_func (self->smime_encrypt_cert, on_smime_encrypt_cert_selected, self);
   g_signal_handlers_block_by_func (self->smime_sign_cert, on_smime_sign_cert_selected, self);
   g_signal_handlers_block_by_func (self->pgp_key, on_pgp_key_selected, self);
 
   g_clear_pointer (&self->pgp_key_ids, g_ptr_array_unref);
-  self->pgp_key_ids = g_ptr_array_new_full (0, g_free);
-  pgp_keys = enumerate_pgp_keys (self->pgp_key_ids);
+  self->pgp_key_ids = g_ptr_array_ref (keys->pgp_key_ids);
+  pgp_keys = gtk_string_list_new (NULL);
+  for (guint i = 0; i < keys->pgp_labels->len; i++)
+    gtk_string_list_append (pgp_keys, g_ptr_array_index (keys->pgp_labels, i));
   adw_combo_row_set_model (self->pgp_key, G_LIST_MODEL (pgp_keys));
 
   g_clear_pointer (&self->smime_cert_nicknames, g_ptr_array_unref);
-  self->smime_cert_nicknames = g_ptr_array_new_full (0, g_free);
-  smime_certs = enumerate_smime_certs (self->smime_cert_nicknames);
+  self->smime_cert_nicknames = g_ptr_array_ref (keys->smime_cert_nicknames);
+  smime_certs = gtk_string_list_new (NULL);
+  for (guint i = 0; i < keys->smime_labels->len; i++)
+    gtk_string_list_append (smime_certs, g_ptr_array_index (keys->smime_labels, i));
   adw_combo_row_set_model (self->smime_sign_cert, G_LIST_MODEL (smime_certs));
   adw_combo_row_set_model (self->smime_encrypt_cert, G_LIST_MODEL (smime_certs));
-
-  factory = gtk_signal_list_item_factory_new ();
-  g_signal_connect (factory, "setup", G_CALLBACK (on_cert_list_item_setup), NULL);
-  g_signal_connect (factory, "bind", G_CALLBACK (on_cert_list_item_bind), NULL);
-
-  adw_combo_row_set_list_factory (self->pgp_key, factory);
-  adw_combo_row_set_list_factory (self->smime_sign_cert, factory);
-  adw_combo_row_set_list_factory (self->smime_encrypt_cert, factory);
 
   key_id = g_settings_get_string (self->account_settings, "pgp-key-id");
   if (key_id && strlen (key_id) > 0) {
@@ -779,6 +678,30 @@ setup_crypto (StampPreferencesAccount *self)
   g_signal_handlers_unblock_by_func (self->pgp_key, on_pgp_key_selected, self);
   g_signal_handlers_unblock_by_func (self->smime_sign_cert, on_smime_sign_cert_selected, self);
   g_signal_handlers_unblock_by_func (self->smime_encrypt_cert, on_smime_encrypt_cert_selected, self);
+
+  gtk_widget_set_sensitive (GTK_WIDGET (self->pgp_key), TRUE);
+  gtk_widget_set_sensitive (GTK_WIDGET (self->smime_sign_cert), TRUE);
+  gtk_widget_set_sensitive (GTK_WIDGET (self->smime_encrypt_cert), TRUE);
+}
+
+static void
+setup_crypto (StampPreferencesAccount *self)
+{
+  CryptoRequest *request;
+
+  /* Construction and the shown signal can both request a refresh. */
+  if (self->crypto_cancellable)
+    return;
+
+  gtk_widget_set_sensitive (GTK_WIDGET (self->pgp_key), FALSE);
+  gtk_widget_set_sensitive (GTK_WIDGET (self->smime_sign_cert), FALSE);
+  gtk_widget_set_sensitive (GTK_WIDGET (self->smime_encrypt_cert), FALSE);
+
+  request = g_new0 (CryptoRequest, 1);
+  g_weak_ref_init (&request->page, self);
+  self->crypto_cancellable = g_cancellable_new ();
+  request->cancellable = g_object_ref (self->crypto_cancellable);
+  stamp_crypto_keys_load_async (self->crypto_cancellable, on_crypto_loaded, request);
 }
 
 static void
@@ -798,6 +721,10 @@ set_account (StampPreferencesAccount *self,
 {
   g_autofree char *path = NULL;
   const gchar *name;
+
+  if (self->crypto_cancellable)
+    g_cancellable_cancel (self->crypto_cancellable);
+  g_clear_object (&self->crypto_cancellable);
 
   g_set_object (&self->account, account);
   name = stamp_account_get_name (self->account);
@@ -864,6 +791,10 @@ stamp_preferences_account_dispose (GObject *object)
 {
   StampPreferencesAccount *self = STAMP_PREFERENCES_ACCOUNT (object);
 
+  if (self->crypto_cancellable)
+    g_cancellable_cancel (self->crypto_cancellable);
+  g_clear_object (&self->crypto_cancellable);
+
   if (self->cancellable)
     g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
@@ -922,7 +853,16 @@ stamp_preferences_account_class_init (StampPreferencesAccountClass *klass)
 void
 stamp_preferences_account_init (StampPreferencesAccount *self)
 {
+  g_autoptr (GtkListItemFactory) factory = NULL;
+
   gtk_widget_init_template (GTK_WIDGET (self));
+
+  factory = gtk_signal_list_item_factory_new ();
+  g_signal_connect (factory, "setup", G_CALLBACK (on_cert_list_item_setup), NULL);
+  g_signal_connect (factory, "bind", G_CALLBACK (on_cert_list_item_bind), NULL);
+  adw_combo_row_set_list_factory (self->pgp_key, factory);
+  adw_combo_row_set_list_factory (self->smime_sign_cert, factory);
+  adw_combo_row_set_list_factory (self->smime_encrypt_cert, factory);
 
   self->cancellable = g_cancellable_new ();
   self->folder_rows = g_ptr_array_new ();

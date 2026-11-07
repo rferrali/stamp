@@ -22,6 +22,7 @@ stamp_sources = [
   'backend/stamp-account.c',
   'backend/stamp-bimi.c',
   'backend/stamp-category.c',
+  'backend/stamp-crypto-keys.c',
   'backend/stamp-helper.c',
   'backend/stamp-mime-parser.c',
   'backend/stamp-meeting-response.c',
