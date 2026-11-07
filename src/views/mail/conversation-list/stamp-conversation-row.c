@@ -634,10 +634,15 @@ transform_flagged_to (GBinding     *binding,
 {
   gint flagged = g_value_get_boolean (from_value);
 
+  g_autoptr (GObject) target = g_binding_dup_target (binding);
+
   if (flagged)
     g_value_set_static_string (to_value, "starred-symbolic");
   else
     g_value_set_static_string (to_value, "non-starred-symbolic");
+
+  if (GTK_IS_WIDGET (target))
+    gtk_widget_set_tooltip_text (GTK_WIDGET (target), flagged ? _("Flagged") : _("Not flagged"));
 
   return TRUE;
 }
@@ -657,7 +662,11 @@ set_num_messages (StampConversationRow *self,
 {
   g_autofree char *tmp = g_strdup_printf ("%ld", num);
 
+  g_autofree char *tooltip = g_strdup_printf (ngettext ("%lu message in this conversation",
+                                                        "%lu messages in this conversation", num), num);
+
   gtk_label_set_label (self->counter, tmp);
+  gtk_widget_set_tooltip_text (GTK_WIDGET (self->counter), num > 1 ? tooltip : NULL);
 
   /* Hint: We are using opacity here as otherwise we do have weird fast mouse scrolling zitter effects
    * (not scroll wheel) as widget will be recalculated every time. So let's leave it here and change
