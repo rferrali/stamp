@@ -1,0 +1,106 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $StampDateTimePicker: Adw.PreferencesRow {
+  activatable: false;
+  use-markup: false;
+
+  Box {
+    orientation: horizontal;
+    spacing: 12;
+    margin-top: 10;
+    margin-bottom: 10;
+    margin-start: 12;
+    margin-end: 12;
+
+    Label {
+      label: bind template.title;
+      xalign: 0;
+      hexpand: true;
+      valign: center;
+      wrap: true;
+    }
+
+    Box {
+      spacing: 6;
+      halign: end;
+      valign: center;
+
+      MenuButton date_button {
+        tooltip-text: _("Select Date");
+
+        styles [
+          "flat",
+        ]
+
+        popover: Popover {
+          Calendar calendar {
+            margin-top: 6;
+            margin-bottom: 6;
+            margin-start: 6;
+            margin-end: 6;
+            day-selected => $on_date_selected();
+          }
+        };
+      }
+
+      MenuButton time_button {
+        tooltip-text: _("Select Time");
+
+        styles [
+          "flat",
+        ]
+
+        popover: Popover time_popover {
+          Adw.PreferencesGroup {
+            width-request: 260;
+            margin-top: 6;
+            margin-bottom: 6;
+            margin-start: 6;
+            margin-end: 6;
+
+            Adw.SpinRow hour {
+              title: _("Hour");
+              numeric: true;
+              wrap: true;
+              update-policy: if_valid;
+
+              adjustment: Adjustment {
+                lower: 0;
+                upper: 23;
+                step-increment: 1;
+                page-increment: 1;
+              };
+
+              notify::value => $on_time_changed();
+            }
+
+            Adw.SpinRow minute {
+              title: _("Minute");
+              numeric: true;
+              wrap: true;
+              update-policy: if_valid;
+
+              adjustment: Adjustment {
+                lower: 0;
+                upper: 59;
+                step-increment: 1;
+                page-increment: 5;
+              };
+
+              notify::value => $on_time_changed();
+            }
+
+            Adw.ComboRow period {
+              title: _("Time of Day");
+              visible: false;
+              notify::selected => $on_time_changed();
+            }
+          }
+
+          closed => $on_time_closed();
+        };
+      }
+    }
+  }
+}

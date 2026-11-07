@@ -4,12 +4,14 @@
     <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
     <file preprocess="xml-stripblanks">stamp-preferences.ui</file>
     <file preprocess="xml-stripblanks">stamp-preferences-account.ui</file>
+    <file preprocess="xml-stripblanks">stamp-preferences-out-of-office.ui</file>
     <file preprocess="xml-stripblanks">stamp-preferences-account-editor.ui</file>
     <file preprocess="xml-stripblanks">stamp-preferences-signatures-editor.ui</file>
     <file preprocess="xml-stripblanks">stamp-window.ui</file>
     <file preprocess="xml-stripblanks">views/stamp-header-bar.ui</file>
     <file preprocess="xml-stripblanks">views/stamp-tag.ui</file>
     <file preprocess="xml-stripblanks">views/stamp-rich-text-editor.ui</file>
+    <file preprocess="xml-stripblanks">views/stamp-date-time-picker.ui</file>
     <file preprocess="xml-stripblanks">views/calendar/stamp-calendar-view.ui</file>
     <file preprocess="xml-stripblanks">views/contact/stamp-contact-details.ui</file>
     <file preprocess="xml-stripblanks">views/contact/stamp-contact-view.ui</file>

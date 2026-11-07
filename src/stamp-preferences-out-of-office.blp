@@ -1,0 +1,169 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $StampPreferencesOutOfOffice: Adw.NavigationPage {
+  title: _("Out of Office");
+
+  child: Adw.NavigationView {
+    Adw.NavigationPage {
+      title: _("Out of Office");
+      tag: "settings";
+
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {}
+
+        [top]
+        Adw.Banner oof_error_banner {
+          title: "";
+          use-markup: false;
+          revealed: false;
+          button-label: _("Dismiss");
+          button-clicked => $on_oof_error_dismissed();
+        }
+
+        content: Adw.PreferencesPage {
+          Adw.PreferencesGroup {
+            title: _("Out of Office");
+            description: _("Automatically reply to incoming messages while you are away");
+
+            Adw.ComboRow oof_state {
+              title: _("Automatic Replies");
+              notify::selected => $on_oof_selection_changed();
+
+              model: StringList {
+                strings [
+                  _("Disabled"),
+                  _("Enabled"),
+                  _("Scheduled"),
+                ]
+              };
+            }
+
+            $StampDateTimePicker oof_start {
+              title: _("Start");
+              visible: false;
+              notify::date-time => $on_oof_selection_changed();
+            }
+
+            $StampDateTimePicker oof_end {
+              title: _("End");
+              visible: false;
+              notify::date-time => $on_oof_selection_changed();
+            }
+          }
+
+          Adw.PreferencesGroup {
+            Adw.ActionRow oof_internal_link {
+              title: _("Reply to People in Your Organization");
+              subtitle-lines: 2;
+              use-markup: false;
+              activatable: true;
+              action-name: "navigation.push";
+              action-target: "'internal'";
+
+              [suffix]
+              Image {
+                icon-name: "go-next-symbolic";
+              }
+            }
+
+            Adw.ActionRow oof_external_link {
+              title: _("Reply to People Outside Your Organization");
+              subtitle-lines: 2;
+              use-markup: false;
+              activatable: true;
+              action-name: "navigation.push";
+              action-target: "'external'";
+
+              [suffix]
+              Image {
+                icon-name: "go-next-symbolic";
+              }
+            }
+          }
+
+          Adw.PreferencesGroup {
+            Adw.ButtonRow oof_save {
+              title: _("Save");
+              tooltip-text: _("Save Automatic Replies");
+              sensitive: false;
+              activated => $on_oof_save_clicked();
+
+              styles [
+                "suggested-action",
+              ]
+            }
+          }
+        };
+      };
+    }
+
+    Adw.NavigationPage {
+      title: _("Reply to People in Your Organization");
+      tag: "internal";
+
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {}
+
+        content: Adw.PreferencesPage {
+          Adw.PreferencesGroup {
+            $StampRichTextEditor oof_internal {
+              notify::ready => $on_oof_editor_ready();
+              changed => $on_oof_editor_changed();
+              height-request: 320;
+              hexpand: true;
+
+              styles [
+                "card",
+              ]
+            }
+          }
+        };
+      };
+    }
+
+    Adw.NavigationPage {
+      title: _("Reply to People Outside Your Organization");
+      tag: "external";
+
+      child: Adw.ToolbarView {
+        [top]
+        Adw.HeaderBar {}
+
+        content: Adw.PreferencesPage {
+          Adw.PreferencesGroup {
+            Adw.ComboRow oof_audience {
+              title: _("Reply to People Outside Your Organization");
+              notify::selected => $on_oof_selection_changed();
+
+              model: StringList {
+                strings [
+                  _("Nobody"),
+                  _("Contacts Only"),
+                  _("Everyone"),
+                ]
+              };
+            }
+          }
+
+          Adw.PreferencesGroup oof_external_row {
+            title: _("External Reply");
+
+            $StampRichTextEditor oof_external {
+              notify::ready => $on_oof_editor_ready();
+              changed => $on_oof_editor_changed();
+              height-request: 320;
+              hexpand: true;
+
+              styles [
+                "card",
+              ]
+            }
+          }
+        };
+      };
+    }
+  };
+}

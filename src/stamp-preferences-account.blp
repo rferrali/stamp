@@ -21,6 +21,22 @@ template $StampPreferencesAccount: Adw.NavigationPage {
         }
       }
 
+      Adw.PreferencesGroup out_of_office_group {
+        visible: false;
+
+        Adw.ActionRow {
+          title: _("Out of Office");
+          subtitle: _("Automatically reply to incoming messages while you are away");
+          activatable: true;
+          activated => $on_out_of_office_activated();
+
+          [suffix]
+          Image {
+            icon-name: "go-next-symbolic";
+          }
+        }
+      }
+
       Adw.PreferencesGroup badge_color_group {
         title: _("Badge Color");
         description: _("Color for the account badge in the combined inbox");

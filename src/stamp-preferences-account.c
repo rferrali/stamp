@@ -30,6 +30,8 @@
 
 #include "stamp-account.h"
 #include "stamp-helper.h"
+#include "stamp-out-of-office.h"
+#include "stamp-preferences-out-of-office.h"
 #include "stamp-session.h"
 #include "stamp-settings.h"
 #include "stamp-signature.h"
@@ -54,6 +56,7 @@ struct _StampPreferencesAccount {
   GPtrArray *pgp_key_ids;
   GPtrArray *smime_cert_nicknames;
 
+  AdwPreferencesGroup *out_of_office_group;
   StampAccount *account;
   GHashTable *aliases;
   GPtrArray *alias_rows;
@@ -779,6 +782,17 @@ setup_crypto (StampPreferencesAccount *self)
 }
 
 static void
+on_out_of_office_activated (AdwActionRow *row,
+                            gpointer      user_data)
+{
+  StampPreferencesAccount *self = STAMP_PREFERENCES_ACCOUNT (user_data);
+  GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
+  GtkWidget *page = stamp_preferences_out_of_office_new (self->account);
+
+  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (page));
+}
+
+static void
 set_account (StampPreferencesAccount *self,
              StampAccount            *account)
 {
@@ -798,6 +812,8 @@ set_account (StampPreferencesAccount *self,
   setup_badge_color (self);
   setup_notifications (self);
   setup_crypto (self);
+
+  gtk_widget_set_visible (GTK_WIDGET (self->out_of_office_group), stamp_out_of_office_supported (self->account));
 }
 
 static void
@@ -890,6 +906,8 @@ stamp_preferences_account_class_init (StampPreferencesAccountClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, smime_sign_cert);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, smime_encrypt_cert);
 
+  gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, out_of_office_group);
+  gtk_widget_class_bind_template_callback (widget_class, on_out_of_office_activated);
   gtk_widget_class_bind_template_callback (widget_class, on_add_alias_clicked);
 
   props[PROP_ACCOUNT] = g_param_spec_object ("account",
