@@ -3462,14 +3462,49 @@ stamp_conversation_list_junk (StampConversationList *self,
   stamp_conversation_list_unselect (self);
 }
 
+static gboolean
+archive_conversation (StampConversationList *self,
+                      StampConversationItem *item)
+{
+  StampAccount *account = get_item_account (self, item);
+  CamelFolder *archives_folder;
+  GList single_folder = { .data = self->folder };
+  GList *folders = self->is_collection ? self->collection_folders : &single_folder;
+  gboolean moved = FALSE;
+
+  if (!account)
+    return FALSE;
+
+  archives_folder = stamp_account_get_mail_archives_folder (account);
+  if (!archives_folder) {
+    g_warning ("%s: No archives folder available, abort", G_STRFUNC);
+    return FALSE;
+  }
+
+  for (GList *iter = folders; iter; iter = iter->next) {
+    CamelFolder *folder = iter->data;
+    g_autoptr (GPtrArray) uids = NULL;
+
+    if (!folder || folder == archives_folder)
+      continue;
+
+    uids = collect_uids_for_folder (stamp_conversation_item_get_node (item), folder);
+    if (uids->len == 0)
+      continue;
+
+    camel_folder_transfer_messages_to (folder, uids, archives_folder, TRUE, G_PRIORITY_DEFAULT, self->transfer_cancellable, on_transfer_messages_to, self);
+    moved = TRUE;
+  }
+
+  return moved;
+}
+
 void
 stamp_conversation_list_archive (StampConversationList *self,
                                  StampConversationItem *item)
 {
-  g_autoptr (GPtrArray) node_array = g_ptr_array_new ();
-  g_autoptr (GPtrArray) uid_array = NULL;
-  CamelFolder *folder;
-  CamelFolder *archives_folder;
+  g_autoptr (GPtrArray) node_array = g_ptr_array_new_with_free_func (g_object_unref);
+  gboolean moved = FALSE;
 
   if (self->selection_mode) {
     GtkBitset *selected_items = self->selected;
@@ -3481,7 +3516,7 @@ stamp_conversation_list_archive (StampConversationList *self,
     while (gtk_bitset_iter_is_valid (&iter)) {
       g_autoptr (StampConversationItem) child_item = STAMP_CONVERSATION_ITEM (g_list_model_get_item (G_LIST_MODEL (self->multi_selection), current_item_position));
 
-      g_ptr_array_add (node_array, child_item);
+      g_ptr_array_add (node_array, g_steal_pointer (&child_item));
       gtk_bitset_iter_next (&iter, &current_item_position);
     }
 
@@ -3495,48 +3530,30 @@ stamp_conversation_list_archive (StampConversationList *self,
     if (!item)
       return;
 
-    g_ptr_array_add (node_array, item);
+    g_ptr_array_add (node_array, g_object_ref (item));
   }
 
-  folder = self->folder;
-  archives_folder = stamp_account_get_mail_archives_folder (self->account);
-
-  if (!archives_folder) {
-    g_warning ("%s: No archives folder available, abort", G_STRFUNC);
+  if (node_array->len == 0)
     return;
-  }
 
-  uid_array = g_ptr_array_new_with_free_func (g_free);
+  g_cancellable_cancel (self->transfer_cancellable);
+  g_clear_object (&self->transfer_cancellable);
 
-  for (gint idx = 0; idx < node_array->len; idx++) {
-    StampConversationItem *child_item = STAMP_CONVERSATION_ITEM (node_array->pdata[idx]);
-    CamelFolderThreadNode *child_node = stamp_conversation_item_get_node (child_item);
-    g_autoptr (GPtrArray) folder_uids = NULL;
-
-    stamp_conversation_item_set_hidden (child_item, TRUE);
-    folder_uids = collect_uids_for_folder (child_node, folder);
-
-    for (guint ui = 0; ui < folder_uids->len; ui++)
-      g_ptr_array_add (uid_array, g_strdup (g_ptr_array_index (folder_uids, ui)));
-  }
-
-  g_list_model_items_changed (G_LIST_MODEL (self->list_store),
-                              0,
-                              g_list_model_get_n_items (G_LIST_MODEL (self->list_store)),
-                              g_list_model_get_n_items (G_LIST_MODEL (self->list_store)));
-
-  if (uid_array->len == 0) {
-    g_warning ("%s: No uids from current folder, abort", G_STRFUNC);
-    return;
-  }
-
-  if (self->transfer_cancellable) {
-    g_cancellable_cancel (self->transfer_cancellable);
-    g_clear_object (&self->transfer_cancellable);
-  }
   self->transfer_cancellable = g_cancellable_new ();
 
-  camel_folder_transfer_messages_to (folder, uid_array, archives_folder, TRUE, G_PRIORITY_DEFAULT, self->transfer_cancellable, on_transfer_messages_to, self);
+  for (guint idx = 0; idx < node_array->len; idx++) {
+    StampConversationItem *child_item = g_ptr_array_index (node_array, idx);
+
+    if (archive_conversation (self, child_item)) {
+      stamp_conversation_item_set_hidden (child_item, TRUE);
+      moved = TRUE;
+    }
+  }
+
+  if (!moved)
+    return;
+
+  g_list_model_items_changed (G_LIST_MODEL (self->list_store), 0, g_list_model_get_n_items (G_LIST_MODEL (self->list_store)), g_list_model_get_n_items (G_LIST_MODEL (self->list_store)));
 
   stamp_conversation_list_unselect (self);
 }
