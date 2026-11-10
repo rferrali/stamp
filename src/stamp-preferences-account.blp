@@ -19,14 +19,11 @@ template $StampPreferencesAccount: Adw.NavigationPage {
         Adw.ComboRow default_signature {
           title: _("Default Signature");
         }
-      }
 
-      Adw.PreferencesGroup out_of_office_group {
-        visible: false;
-
-        Adw.ActionRow {
+        Adw.ActionRow out_of_office_row {
           title: _("Out of Office");
           subtitle: _("Automatically reply to incoming messages while you are away");
+          visible: false;
           activatable: true;
           activated => $on_out_of_office_activated();
 
@@ -37,8 +34,61 @@ template $StampPreferencesAccount: Adw.NavigationPage {
         }
       }
 
+      Adw.PreferencesGroup alias_group {
+        title: _("Aliases");
+        description: _("Add different names or email addresses to your account");
+
+        accessibility {
+          label: _("Alias Preferences");
+        }
+
+        Adw.ButtonRow add_alias {
+          title: _("Add Alias");
+          start-icon-name: "list-add-symbolic";
+          activated => $on_add_alias_clicked();
+        }
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Notifications");
+
+        Adw.ComboRow notification_mode {
+          title: _("Folder Notifications");
+          subtitle: _("Select which folders trigger notifications");
+
+          accessibility {
+            label: _("Notification Mode");
+          }
+        }
+      }
+
+      Adw.PreferencesGroup notification_folders_group {
+        title: _("Custom Folders");
+        description: _("Enable notifications for selected folders");
+        visible: false;
+      }
+
+      Adw.PreferencesGroup {
+        title: _("Security");
+
+        Adw.ComboRow pgp_key {
+          title: _("PGP Key");
+          subtitle: _("Select the PGP key to use for signing and encryption");
+        }
+
+        Adw.ComboRow smime_sign_cert {
+          title: _("S/MIME Signing Certificate");
+          subtitle: _("Select the certificate to use for S/MIME signing");
+        }
+
+        Adw.ComboRow smime_encrypt_cert {
+          title: _("S/MIME Encryption Certificate");
+          subtitle: _("Select the certificate to use for S/MIME encryption");
+        }
+      }
+
       Adw.PreferencesGroup badge_color_group {
-        title: _("Badge Color");
+        title: _("Appearance");
         description: _("Color for the account badge in the combined inbox");
 
         header-suffix: Button reset_badge_color_button {
@@ -71,60 +121,6 @@ template $StampPreferencesAccount: Adw.NavigationPage {
             ]
           }
         }
-      }
-
-      Adw.PreferencesGroup alias_group {
-        title: _("Aliases");
-        description: _("Add different names or email addresses to your account");
-
-        accessibility {
-          label: _("Alias Preferences");
-        }
-      }
-
-      Adw.PreferencesGroup {
-        Adw.ButtonRow add_alias {
-          title: _("Add Alias");
-          activated => $on_add_alias_clicked();
-        }
-      }
-
-      Adw.PreferencesGroup {
-        title: _("Notifications");
-
-        Adw.ComboRow notification_mode {
-          title: _("Folder Notifications");
-          subtitle: _("Select which folders trigger notifications");
-
-          accessibility {
-            label: _("Notification Mode");
-          }
-        }
-      }
-
-      Adw.PreferencesGroup {
-        title: _("Security");
-
-        Adw.ComboRow pgp_key {
-          title: _("PGP Key");
-          subtitle: _("Select the PGP key to use for signing and encryption");
-        }
-
-        Adw.ComboRow smime_sign_cert {
-          title: _("S/MIME Signing Certificate");
-          subtitle: _("Select the certificate to use for S/MIME signing");
-        }
-
-        Adw.ComboRow smime_encrypt_cert {
-          title: _("S/MIME Encryption Certificate");
-          subtitle: _("Select the certificate to use for S/MIME encryption");
-        }
-      }
-
-      Adw.PreferencesGroup notification_folders_group {
-        title: _("Custom Folders");
-        description: _("Enable notifications for selected folders");
-        visible: false;
       }
     };
   };

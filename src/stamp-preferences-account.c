@@ -43,6 +43,7 @@ struct _StampPreferencesAccount {
   AdwPreferencesGroup *alias_group;
   AdwComboRow *notification_mode;
   AdwPreferencesGroup *notification_folders_group;
+  AdwButtonRow *add_alias;
 
   AdwComboRow *pgp_key;
   AdwComboRow *smime_sign_cert;
@@ -51,7 +52,7 @@ struct _StampPreferencesAccount {
   GPtrArray *pgp_key_ids;
   GPtrArray *smime_cert_nicknames;
 
-  AdwPreferencesGroup *out_of_office_group;
+  AdwActionRow *out_of_office_row;
   StampAccount *account;
   GHashTable *aliases;
   GPtrArray *alias_rows;
@@ -118,43 +119,46 @@ refresh_alias_list (StampPreferencesAccount *self)
     self->alias_rows = g_ptr_array_new ();
   }
 
+  adw_preferences_group_remove (self->alias_group, GTK_WIDGET (self->add_alias));
+
   service = stamp_account_get_mail_service (self->account);
   if (service)
     self->aliases = stamp_mail_service_get_aliases (service);
 
-  if (!self->aliases)
-    return;
+  if (self->aliases) {
+    mails = g_hash_table_get_keys (self->aliases);
 
-  mails = g_hash_table_get_keys (self->aliases);
+    for (GList *iter = mails; iter && iter->data; iter = g_list_next (iter)) {
+      gchar *mail = iter->data;
+      gchar *name = g_hash_table_lookup (self->aliases, mail);
+      GtkWidget *row;
+      GtkWidget *edit_button;
 
-  for (GList *iter = mails; iter && iter->data; iter = g_list_next (iter)) {
-    gchar *mail = iter->data;
-    gchar *name = g_hash_table_lookup (self->aliases, mail);
-    GtkWidget *row;
-    GtkWidget *edit_button;
+      row = adw_action_row_new ();
+      adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), mail);
+      adw_action_row_set_subtitle (ADW_ACTION_ROW (row), name);
+      gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), TRUE);
 
-    row = adw_action_row_new ();
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), mail);
-    adw_action_row_set_subtitle (ADW_ACTION_ROW (row), name);
-    gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), TRUE);
+      g_object_set_data_full (G_OBJECT (row), "email", g_strdup (mail), g_free);
+      g_object_set_data_full (G_OBJECT (row), "name", g_strdup (name), g_free);
+      g_signal_connect_object (row, "activated", G_CALLBACK (on_alias_activated), self, G_CONNECT_DEFAULT);
 
-    g_object_set_data_full (G_OBJECT (row), "email", g_strdup (mail), g_free);
-    g_object_set_data_full (G_OBJECT (row), "name", g_strdup (name), g_free);
-    g_signal_connect_object (row, "activated", G_CALLBACK (on_alias_activated), self, G_CONNECT_DEFAULT);
+      edit_button = gtk_button_new ();
+      gtk_button_set_icon_name (GTK_BUTTON (edit_button), "document-edit-symbolic");
+      gtk_widget_add_css_class (edit_button, "flat");
+      gtk_widget_set_valign (edit_button, GTK_ALIGN_CENTER);
+      g_object_set_data (G_OBJECT (edit_button), "row", row);
+      g_signal_connect (edit_button, "clicked", G_CALLBACK (on_alias_edit_clicked), self);
+      adw_action_row_add_suffix (ADW_ACTION_ROW (row), edit_button);
 
-    edit_button = gtk_button_new ();
-    gtk_button_set_icon_name (GTK_BUTTON (edit_button), "document-edit-symbolic");
-    gtk_widget_add_css_class (edit_button, "flat");
-    gtk_widget_set_valign (edit_button, GTK_ALIGN_CENTER);
-    g_object_set_data (G_OBJECT (edit_button), "row", row);
-    g_signal_connect (edit_button, "clicked", G_CALLBACK (on_alias_edit_clicked), self);
-    adw_action_row_add_suffix (ADW_ACTION_ROW (row), edit_button);
+      adw_preferences_group_add (self->alias_group, row);
+      g_ptr_array_add (self->alias_rows, row);
+    }
 
-    adw_preferences_group_add (self->alias_group, row);
-    g_ptr_array_add (self->alias_rows, row);
+    g_list_free (mails);
   }
 
-  g_list_free (mails);
+  adw_preferences_group_add (self->alias_group, GTK_WIDGET (self->add_alias));
 }
 
 static void
@@ -740,7 +744,7 @@ set_account (StampPreferencesAccount *self,
   setup_notifications (self);
   setup_crypto (self);
 
-  gtk_widget_set_visible (GTK_WIDGET (self->out_of_office_group), stamp_out_of_office_supported (self->account));
+  gtk_widget_set_visible (GTK_WIDGET (self->out_of_office_row), stamp_out_of_office_supported (self->account));
 }
 
 static void
@@ -831,13 +835,14 @@ stamp_preferences_account_class_init (StampPreferencesAccountClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, badge_color_box);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, reset_badge_color_button);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, alias_group);
+  gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, add_alias);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, notification_mode);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, notification_folders_group);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, pgp_key);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, smime_sign_cert);
   gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, smime_encrypt_cert);
 
-  gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, out_of_office_group);
+  gtk_widget_class_bind_template_child (widget_class, StampPreferencesAccount, out_of_office_row);
   gtk_widget_class_bind_template_callback (widget_class, on_out_of_office_activated);
   gtk_widget_class_bind_template_callback (widget_class, on_add_alias_clicked);
 

@@ -25,9 +25,13 @@
 
 G_BEGIN_DECLS
 
+#define STAMP_TYPE_PREFERENCES_SIGNATURES (stamp_preferences_signatures_get_type ())
+G_DECLARE_FINAL_TYPE (StampPreferencesSignatures, stamp_preferences_signatures, STAMP, PREFERENCES_SIGNATURES, AdwNavigationPage)
+
 #define STAMP_TYPE_PREFERENCES_SIGNATURE_EDITOR (stamp_preferences_signature_editor_get_type ())
 G_DECLARE_FINAL_TYPE (StampPreferencesSignatureEditor, stamp_preferences_signature_editor, STAMP, PREFERENCES_SIGNATURE_EDITOR, AdwNavigationPage)
 
+GtkWidget *stamp_preferences_signatures_new (void);
 GtkWidget *stamp_preferences_signature_editor_new (StampSignature *signature);
 
 G_END_DECLS

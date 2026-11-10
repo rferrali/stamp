@@ -2,8 +2,8 @@ using Gtk 4.0;
 using Adw 1;
 
 template $StampPreferences: Adw.PreferencesDialog {
-  content-width: 640;
-  content-height: 580;
+  content-width: 600;
+  content-height: 600;
   search-enabled: true;
 
   Adw.PreferencesPage {
@@ -69,6 +69,11 @@ template $StampPreferences: Adw.PreferencesDialog {
           value: 60.0;
         };
       }
+
+      Adw.SwitchRow play_incoming_sound {
+        title: _("Play Incoming Sound");
+        subtitle: _("Audio notification for new incoming mails");
+      }
     }
 
     Adw.PreferencesGroup {
@@ -86,6 +91,26 @@ template $StampPreferences: Adw.PreferencesDialog {
 
       Adw.SwitchRow important_first {
         title: _("Show important mails on top");
+      }
+    }
+
+    Adw.PreferencesGroup {
+      title: _("Signatures");
+
+      Adw.ActionRow {
+        title: _("Manage Signatures");
+        subtitle: _("Create and edit your email signatures");
+        activatable: true;
+        activated => $on_signatures_activated();
+
+        [suffix]
+        Image {
+          icon-name: "go-next-symbolic";
+
+          accessibility {
+            label: _("Go Next");
+          }
+        }
       }
     }
 
@@ -114,25 +139,6 @@ template $StampPreferences: Adw.PreferencesDialog {
             _("Move to Trash"),
           ]
         };
-      }
-    }
-
-    Adw.PreferencesGroup {
-      title: _("Audio");
-
-      Adw.SwitchRow play_incoming_sound {
-        title: _("Play Incoming Sound");
-        subtitle: _("Audio notification for new incoming mails");
-      }
-    }
-
-    Adw.PreferencesGroup signatures_group {
-      title: _("Signatures");
-
-      Adw.ButtonRow add_signature {
-        title: _("Add Signature");
-        start-icon-name: "list-add-symbolic";
-        activated => $on_add_signature_clicked();
       }
     }
   }

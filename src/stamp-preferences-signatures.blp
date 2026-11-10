@@ -1,0 +1,28 @@
+using Gtk 4.0;
+using Adw 1;
+
+template $StampPreferencesSignatures: Adw.NavigationPage {
+  title: _("Signatures");
+
+  child: Adw.ToolbarView {
+    [top]
+    Adw.HeaderBar {
+      title-widget: Adw.WindowTitle {
+        title: _("Signatures");
+      };
+    }
+
+    content: Adw.PreferencesPage {
+      Adw.PreferencesGroup signatures_group {
+        title: _("Signatures");
+        description: _("Signatures are appended to outgoing messages");
+
+        Adw.ButtonRow add_signature {
+          title: _("Add Signature");
+          start-icon-name: "list-add-symbolic";
+          activated => $on_add_signature_clicked();
+        }
+      }
+    };
+  };
+}

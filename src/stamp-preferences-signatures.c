@@ -25,6 +25,128 @@
 #include "stamp-session.h"
 #include "stamp-signature.h"
 
+struct _StampPreferencesSignatures {
+  AdwNavigationPage parent_instance;
+
+  AdwPreferencesGroup *signatures_group;
+  AdwButtonRow *add_signature;
+
+  GPtrArray *signature_rows;
+};
+
+G_DEFINE_FINAL_TYPE (StampPreferencesSignatures, stamp_preferences_signatures, ADW_TYPE_NAVIGATION_PAGE);
+
+static void
+on_signature_activated (AdwActionRow *row,
+                        gpointer      user_data)
+{
+  StampPreferencesSignatures *self = STAMP_PREFERENCES_SIGNATURES (user_data);
+  StampSignature *signature = g_object_get_data (G_OBJECT (row), "signature");
+  GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
+
+  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (signature)));
+}
+
+static void
+on_add_signature_clicked (GtkWidget *button,
+                          gpointer   user_data)
+{
+  StampPreferencesSignatures *self = STAMP_PREFERENCES_SIGNATURES (user_data);
+  GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
+
+  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (NULL)));
+}
+
+static void
+on_signature_edit_clicked (GtkWidget *button,
+                           gpointer   user_data)
+{
+  StampPreferencesSignatures *self = STAMP_PREFERENCES_SIGNATURES (user_data);
+  AdwActionRow *row = ADW_ACTION_ROW (g_object_get_data (G_OBJECT (button), "row"));
+  StampSignature *signature = g_object_get_data (G_OBJECT (row), "signature");
+  GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
+
+  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (signature)));
+}
+
+static void
+init_signatures (StampPreferencesSignatures *self)
+{
+  GList *signatures;
+  guint i;
+
+  for (i = 0; i < self->signature_rows->len; i++)
+    adw_preferences_group_remove (self->signatures_group, g_ptr_array_index (self->signature_rows, i));
+
+  g_ptr_array_set_size (self->signature_rows, 0);
+
+  adw_preferences_group_remove (self->signatures_group, GTK_WIDGET (self->add_signature));
+
+  signatures = stamp_session_get_signatures (stamp_session_get_default ());
+  for (GList *iter = signatures; iter && iter->data; iter = g_list_next (iter)) {
+    StampSignature *signature = (StampSignature *)iter->data;
+    GtkWidget *row = adw_action_row_new ();
+    GtkWidget *edit_button = gtk_button_new_from_icon_name ("document-edit-symbolic");
+
+    gtk_button_set_has_frame (GTK_BUTTON (edit_button), FALSE);
+    gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), TRUE);
+
+    g_object_set_data_full (G_OBJECT (row), "signature", signature, NULL);
+    g_object_set_data (G_OBJECT (edit_button), "row", row);
+    g_signal_connect_object (row, "activated", G_CALLBACK (on_signature_activated), self, G_CONNECT_DEFAULT);
+    g_signal_connect_object (edit_button, "clicked", G_CALLBACK (on_signature_edit_clicked), self, G_CONNECT_DEFAULT);
+    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), stamp_signature_get_name (signature));
+    adw_action_row_add_suffix (ADW_ACTION_ROW (row), edit_button);
+
+    adw_preferences_group_add (self->signatures_group, row);
+    g_ptr_array_add (self->signature_rows, row);
+  }
+
+  adw_preferences_group_add (self->signatures_group, GTK_WIDGET (self->add_signature));
+}
+
+static void
+stamp_preferences_signatures_dispose (GObject *object)
+{
+  StampPreferencesSignatures *self = STAMP_PREFERENCES_SIGNATURES (object);
+
+  g_clear_pointer (&self->signature_rows, g_ptr_array_unref);
+
+  G_OBJECT_CLASS (stamp_preferences_signatures_parent_class)->dispose (object);
+}
+
+void
+stamp_preferences_signatures_class_init (StampPreferencesSignaturesClass *klass)
+{
+  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
+  GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
+
+  gobject_class->dispose = stamp_preferences_signatures_dispose;
+
+  gtk_widget_class_set_template_from_resource (widget_class, "/org/tabos/stamp/stamp-preferences-signatures.ui");
+
+  gtk_widget_class_bind_template_child (widget_class, StampPreferencesSignatures, signatures_group);
+  gtk_widget_class_bind_template_child (widget_class, StampPreferencesSignatures, add_signature);
+
+  gtk_widget_class_bind_template_callback (widget_class, on_add_signature_clicked);
+}
+
+void
+stamp_preferences_signatures_init (StampPreferencesSignatures *self)
+{
+  gtk_widget_init_template (GTK_WIDGET (self));
+
+  self->signature_rows = g_ptr_array_new ();
+
+  g_signal_connect_swapped (self->signatures_group, "map", G_CALLBACK (init_signatures), self);
+}
+
+GtkWidget *
+stamp_preferences_signatures_new (void)
+{
+  return g_object_new (STAMP_TYPE_PREFERENCES_SIGNATURES, NULL);
+}
+
 struct _StampPreferencesSignatureEditor {
   AdwNavigationPage parent_instance;
 

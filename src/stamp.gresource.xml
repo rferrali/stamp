@@ -6,6 +6,7 @@
     <file preprocess="xml-stripblanks">stamp-preferences-account.ui</file>
     <file preprocess="xml-stripblanks">stamp-preferences-out-of-office.ui</file>
     <file preprocess="xml-stripblanks">stamp-preferences-account-editor.ui</file>
+    <file preprocess="xml-stripblanks">stamp-preferences-signatures.ui</file>
     <file preprocess="xml-stripblanks">stamp-preferences-signatures-editor.ui</file>
     <file preprocess="xml-stripblanks">stamp-window.ui</file>
     <file preprocess="xml-stripblanks">views/stamp-header-bar.ui</file>

@@ -43,46 +43,21 @@ struct _StampPreferences {
   AdwComboRow *swipe_right_action;
   AdwComboRow *swipe_left_action;
   AdwPreferencesGroup *accounts_group;
-  AdwPreferencesGroup *signatures_group;
-  AdwActionRow *add_signature;
 
   gboolean autostart_failed;
 
   GCancellable *cancellable;
-
-  GPtrArray *signature_rows;
 };
 
 G_DEFINE_FINAL_TYPE (StampPreferences, stamp_preferences, ADW_TYPE_PREFERENCES_DIALOG);
 
 static void
-on_signature_activated (AdwActionRow *row,
-                        gpointer      user_data)
-{
-  StampPreferences *self = STAMP_PREFERENCES (user_data);
-  StampSignature *signature = g_object_get_data (G_OBJECT (row), "signature");
-
-  adw_preferences_dialog_push_subpage (ADW_PREFERENCES_DIALOG (self), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (signature)));
-}
-
-static void
-on_add_signature_clicked (GtkWidget *button,
-                          gpointer   user_data)
+on_signatures_activated (AdwActionRow *row,
+                         gpointer      user_data)
 {
   StampPreferences *self = STAMP_PREFERENCES (user_data);
 
-  adw_preferences_dialog_push_subpage (ADW_PREFERENCES_DIALOG (self), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (NULL)));
-}
-
-static void
-on_signature_edit_clicked (GtkWidget *button,
-                           gpointer   user_data)
-{
-  StampPreferences *self = STAMP_PREFERENCES (user_data);
-  AdwActionRow *row = ADW_ACTION_ROW (g_object_get_data (G_OBJECT (button), "row"));
-  StampSignature *signature = g_object_get_data (G_OBJECT (row), "signature");
-
-  adw_preferences_dialog_push_subpage (ADW_PREFERENCES_DIALOG (self), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (signature)));
+  adw_preferences_dialog_push_subpage (ADW_PREFERENCES_DIALOG (self), ADW_NAVIGATION_PAGE (stamp_preferences_signatures_new ()));
 }
 
 static const gchar *swipe_action_names[] = { "none", "toggle-read", "trash" };
@@ -126,7 +101,6 @@ stamp_preferences_dispose (GObject *object)
     g_cancellable_cancel (self->cancellable);
 
   g_clear_object (&self->cancellable);
-  g_clear_pointer (&self->signature_rows, g_ptr_array_unref);
 
   G_OBJECT_CLASS (stamp_preferences_parent_class)->dispose (object);
 }
@@ -152,10 +126,8 @@ stamp_preferences_class_init (StampPreferencesClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampPreferences, swipe_right_action);
   gtk_widget_class_bind_template_child (widget_class, StampPreferences, swipe_left_action);
   gtk_widget_class_bind_template_child (widget_class, StampPreferences, accounts_group);
-  gtk_widget_class_bind_template_child (widget_class, StampPreferences, signatures_group);
-  gtk_widget_class_bind_template_child (widget_class, StampPreferences, add_signature);
 
-  gtk_widget_class_bind_template_callback (widget_class, on_add_signature_clicked);
+  gtk_widget_class_bind_template_callback (widget_class, on_signatures_activated);
 }
 
 static void
@@ -277,42 +249,6 @@ init_accounts (StampPreferences *self)
   }
 }
 
-static void
-init_signatures (StampPreferences *self)
-{
-  GList *signatures;
-  guint i;
-
-  for (i = 0; i < self->signature_rows->len; i++)
-    adw_preferences_group_remove (self->signatures_group, g_ptr_array_index (self->signature_rows, i));
-
-  g_ptr_array_set_size (self->signature_rows, 0);
-
-  adw_preferences_group_remove (self->signatures_group, GTK_WIDGET (self->add_signature));
-
-  signatures = stamp_session_get_signatures (stamp_session_get_default ());
-  for (GList *iter = signatures; iter && iter->data; iter = g_list_next (iter)) {
-    StampSignature *signature = (StampSignature *)iter->data;
-    GtkWidget *row = adw_action_row_new ();
-    GtkWidget *edit_button = gtk_button_new_from_icon_name ("document-edit-symbolic");
-
-    gtk_button_set_has_frame (GTK_BUTTON (edit_button), FALSE);
-    gtk_list_box_row_set_activatable (GTK_LIST_BOX_ROW (row), TRUE);
-
-    g_object_set_data_full (G_OBJECT (row), "signature", signature, NULL);
-    g_object_set_data (G_OBJECT (edit_button), "row", row);
-    g_signal_connect_object (row, "activated", G_CALLBACK (on_signature_activated), self, G_CONNECT_DEFAULT);
-    g_signal_connect_object (edit_button, "clicked", G_CALLBACK (on_signature_edit_clicked), self, G_CONNECT_DEFAULT);
-    adw_preferences_row_set_title (ADW_PREFERENCES_ROW (row), stamp_signature_get_name (signature));
-    adw_action_row_add_suffix (ADW_ACTION_ROW (row), edit_button);
-
-    adw_preferences_group_add (self->signatures_group, row);
-    g_ptr_array_add (self->signature_rows, row);
-  }
-
-  adw_preferences_group_add (self->signatures_group, GTK_WIDGET (self->add_signature));
-}
-
 void
 stamp_preferences_init (StampPreferences *self)
 {
@@ -321,7 +257,6 @@ stamp_preferences_init (StampPreferences *self)
   gtk_widget_init_template (GTK_WIDGET (self));
 
   self->cancellable = g_cancellable_new ();
-  self->signature_rows = g_ptr_array_new ();
 
   g_settings_bind (STAMP_SETTINGS, STAMP_PREFS_BACKGROUND_NOTIFICATIONS, self->background_notifications, "active", G_SETTINGS_BIND_DEFAULT);
   g_settings_bind (STAMP_SETTINGS, STAMP_PREFS_BACKGROUND_AUTOSTART, self->autostart, "active", G_SETTINGS_BIND_DEFAULT);
@@ -339,7 +274,6 @@ stamp_preferences_init (StampPreferences *self)
   g_settings_bind (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_REFRESH_INTERVAL, self->refresh_interval, "value", G_SETTINGS_BIND_DEFAULT);
 
   g_signal_connect_object (self->bimi_images, "notify::active", G_CALLBACK (on_bimi_images), self, G_CONNECT_DEFAULT);
-  g_signal_connect_swapped (self->signatures_group, "map", G_CALLBACK (init_signatures), self);
   init_accounts (self);
 }
 
