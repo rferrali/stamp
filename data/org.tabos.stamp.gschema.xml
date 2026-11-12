@@ -16,6 +16,26 @@
       <summary>Most recent window height</summary>
       <description>Most recent window height</description>
     </key>
+    <key name="mail-desktop-list-pane-width" type="i">
+      <default>360</default>
+      <summary>Width of the conversation list pane</summary>
+      <description>Most recent width in pixels of the conversation list pane next to the message contents</description>
+    </key>
+    <key name="mail-tablet-list-pane-width" type="i">
+      <default>360</default>
+      <summary>Width of the conversation list pane in tablet layout</summary>
+      <description>Most recent width in pixels of the conversation list pane in the tablet layout</description>
+    </key>
+    <key name="contact-desktop-list-pane-width" type="i">
+      <default>360</default>
+      <summary>Width of the contact list pane</summary>
+      <description>Most recent width in pixels of the contact list pane next to the contact details</description>
+    </key>
+    <key name="contact-tablet-list-pane-width" type="i">
+      <default>360</default>
+      <summary>Width of the contact list pane in tablet layout</summary>
+      <description>Most recent width in pixels of the contact list pane in the tablet layout</description>
+    </key>
     <key name="composer-maximized" type="b">
       <default>false</default>
       <summary>Whether the composer was maximized on last run</summary>

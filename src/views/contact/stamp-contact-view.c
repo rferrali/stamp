@@ -5,6 +5,8 @@
 #include "stamp-contact-details.h"
 #include "stamp-contact-item.h"
 #include "stamp-contact-list.h"
+#include "stamp-paned.h"
+#include "stamp-settings.h"
 
 struct _StampContactView {
   AdwBreakpointBin parent_instance;
@@ -20,8 +22,6 @@ struct _StampContactView {
   GtkWidget *contact_list;
   GtkWidget *contact_details;
   AdwViewStack *stack;
-
-  gint saved_paned_pos;
 };
 
 G_DEFINE_FINAL_TYPE (StampContactView, stamp_contact_view, ADW_TYPE_BREAKPOINT_BIN);
@@ -222,29 +222,6 @@ on_layout_changed (AdwMultiLayoutView *view,
   GtkWidget *btn = stamp_contact_list_get_sidebar_button (STAMP_CONTACT_LIST (self->contact_list));
 
   gtk_widget_set_visible (btn, narrow);
-
-  if (!narrow && self->saved_paned_pos > 50) {
-    gtk_paned_set_position (self->desktop_paned, self->saved_paned_pos);
-    gtk_paned_set_position (self->tablet_paned, self->saved_paned_pos);
-  }
-}
-
-static void
-on_paned_changed (GtkPaned      *paned,
-                  GParamSpec *ps G_GNUC_UNUSED,
-                  gpointer       user_data)
-{
-  StampContactView *self = STAMP_CONTACT_VIEW (user_data);
-  GtkPaned *other;
-  gint pos = gtk_paned_get_position (paned);
-
-  if (pos < 50)
-    return;
-
-  self->saved_paned_pos = pos;
-  other = (paned == self->desktop_paned) ? self->tablet_paned : self->desktop_paned;
-  if (gtk_paned_get_position (other) != pos)
-    gtk_paned_set_position (other, pos);
 }
 
 void
@@ -256,13 +233,11 @@ stamp_contact_view_init (StampContactView *self)
 
   stamp_contact_list_set_key_capture_widget (STAMP_CONTACT_LIST (self->contact_list), TRUE);
 
-  self->saved_paned_pos = 360;
+  stamp_paned_remember_position (self->desktop_paned, STAMP_PREFS_CONTACT_DESKTOP_LIST_PANE_WIDTH);
+  stamp_paned_remember_position (self->tablet_paned, STAMP_PREFS_CONTACT_TABLET_LIST_PANE_WIDTH);
 
   g_signal_connect (self->contacts_layout, "notify::layout-name", G_CALLBACK (on_layout_changed), self);
   g_signal_connect (stamp_contact_list_get_sidebar_button (STAMP_CONTACT_LIST (self->contact_list)), "clicked", G_CALLBACK (on_toggle_sidebar), self);
-
-  g_signal_connect (self->desktop_paned, "notify::position", G_CALLBACK (on_paned_changed), self);
-  g_signal_connect (self->tablet_paned, "notify::position", G_CALLBACK (on_paned_changed), self);
 
   /* Synchronize button state with show-sidebar */
   g_signal_connect_swapped (self->tablet_osv, "notify::show-sidebar", G_CALLBACK (on_sidebar_visibility_changed), self);
