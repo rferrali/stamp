@@ -79,4 +79,8 @@ void
 stamp_message_list_set_key_capture_widget (StampMessageList *self,
                                            gboolean          enable);
 
+void
+stamp_message_list_set_show_buttons (StampMessageList *self,
+                                     gboolean          show);
+
 G_END_DECLS

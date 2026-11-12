@@ -364,6 +364,16 @@ is_mobile_view (StampMailView *self)
   return g_strcmp0 (adw_multi_layout_view_get_layout_name (self->mail_layout), "mobile") == 0;
 }
 
+static void
+update_title_buttons (StampMailView *self)
+{
+  gboolean vertical = g_strcmp0 (adw_multi_layout_view_get_layout_name (self->mail_layout), "desktop") == 0 &&
+                      gtk_orientable_get_orientation (GTK_ORIENTABLE (self->desktop_paned)) == GTK_ORIENTATION_VERTICAL;
+
+  stamp_consersation_list_set_show_buttons (self->conversation_list, is_mobile_view (self) || vertical);
+  stamp_message_list_set_show_buttons (self->message_list, !vertical);
+}
+
 static
 void
 on_apply_view (AdwBreakpoint *breakpoint,
@@ -378,7 +388,7 @@ on_apply_view (AdwBreakpoint *breakpoint,
   self = STAMP_MAIL_VIEW (user_data);
   show = is_mobile_view (self);
 
-  stamp_consersation_list_set_show_buttons (self->conversation_list, show);
+  update_title_buttons (self);
   stamp_conversation_list_set_key_capture_widget (self->conversation_list, !show);
   stamp_message_list_set_key_capture_widget (self->message_list, !show);
 
@@ -630,6 +640,19 @@ on_layout_changed (AdwMultiLayoutView *view,
   gtk_widget_set_visible (GTK_WIDGET (toggle_button), narrow);
 
   stamp_message_list_set_mobile_mode (self->message_list, g_strcmp0 (name, "mobile") == 0);
+  update_title_buttons (self);
+}
+
+static void
+on_vertical_view_changed (GSettings   *settings,
+                          const gchar *key,
+                          gpointer     user_data)
+{
+  StampMailView *self = STAMP_MAIL_VIEW (user_data);
+
+  gtk_orientable_set_orientation (GTK_ORIENTABLE (self->desktop_paned),
+                                  g_settings_get_boolean (settings, key) ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
+  update_title_buttons (self);
 }
 
 typedef struct {
@@ -705,6 +728,9 @@ stamp_mail_view_init (StampMailView *self)
   g_signal_connect (stamp_conversation_list_get_sidebar_button (self->conversation_list), "clicked", G_CALLBACK (on_toggle_sidebar), self);
 
   stamp_folder_list_set_conversation_list (self->folder_list, self->conversation_list);
+
+  on_vertical_view_changed (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_VERTICAL_VIEW, self);
+  g_signal_connect_object (STAMP_SETTINGS_MAIL, "changed::" STAMP_PREFS_MAIL_VERTICAL_VIEW, G_CALLBACK (on_vertical_view_changed), self, G_CONNECT_DEFAULT);
 
   /* Synchronize button state with show-sidebar */
   g_signal_connect_swapped (self->tablet_osv, "notify::show-sidebar", G_CALLBACK (on_sidebar_visibility_changed), self);

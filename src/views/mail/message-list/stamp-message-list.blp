@@ -25,7 +25,7 @@ template $StampMessageList: Adw.BreakpointBin {
 
         child: Adw.ToolbarView {
           [top]
-          Adw.HeaderBar {
+          Adw.HeaderBar header_bar {
             show-title: false;
 
             [start]
@@ -303,6 +303,8 @@ template $StampMessageList: Adw.BreakpointBin {
           [top]
           Adw.HeaderBar {
             show-title: false;
+            show-start-title-buttons: bind header_bar.show-start-title-buttons;
+            show-end-title-buttons: bind header_bar.show-end-title-buttons;
           }
 
           Adw.StatusPage {

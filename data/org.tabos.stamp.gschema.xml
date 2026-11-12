@@ -129,6 +129,11 @@
       <summary>Swipe left action</summary>
       <description>Action performed when swiping a conversation to the left: 'none', 'toggle-read' or 'trash'.</description>
     </key>
+    <key type="b" name="vertical-mail-view">
+        <default>false</default>
+        <summary>Vertical mail view</summary>
+        <description>Whether to arrange the mail list above the message in desktop mode.</description>
+    </key>
     <key type="u" name="refresh-interval">
         <default>60</default>
         <summary>Refresh interval in seconds</summary>

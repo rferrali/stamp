@@ -42,6 +42,7 @@ struct _StampPreferences {
   AdwSwitchRow *important_first;
   AdwComboRow *swipe_right_action;
   AdwComboRow *swipe_left_action;
+  AdwSwitchRow *vertical_mail_view;
   AdwPreferencesGroup *accounts_group;
 
   gboolean autostart_failed;
@@ -125,6 +126,7 @@ stamp_preferences_class_init (StampPreferencesClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampPreferences, important_first);
   gtk_widget_class_bind_template_child (widget_class, StampPreferences, swipe_right_action);
   gtk_widget_class_bind_template_child (widget_class, StampPreferences, swipe_left_action);
+  gtk_widget_class_bind_template_child (widget_class, StampPreferences, vertical_mail_view);
   gtk_widget_class_bind_template_child (widget_class, StampPreferences, accounts_group);
 
   gtk_widget_class_bind_template_callback (widget_class, on_signatures_activated);
@@ -270,6 +272,7 @@ stamp_preferences_init (StampPreferences *self)
                                 swipe_action_get_mapping, swipe_action_set_mapping, NULL, NULL);
   g_settings_bind_with_mapping (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_SWIPE_LEFT_ACTION, self->swipe_left_action, "selected", G_SETTINGS_BIND_DEFAULT,
                                 swipe_action_get_mapping, swipe_action_set_mapping, NULL, NULL);
+  g_settings_bind (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_VERTICAL_VIEW, self->vertical_mail_view, "active", G_SETTINGS_BIND_DEFAULT);
   g_settings_bind (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_MARK_READ_TIMEOUT, self->mark_read, "value", G_SETTINGS_BIND_DEFAULT);
   g_settings_bind (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_REFRESH_INTERVAL, self->refresh_interval, "value", G_SETTINGS_BIND_DEFAULT);
 

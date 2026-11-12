@@ -49,6 +49,7 @@ G_BEGIN_DECLS
 #define STAMP_PREFS_MAIL_MARK_READ_TIMEOUT    "mark-read-timeout"
 #define STAMP_PREFS_MAIL_PLAY_INCOMING_SOUND  "play-incoming-sound"
 #define STAMP_PREFS_MAIL_IMPORTANT_FIRST      "important-first"
+#define STAMP_PREFS_MAIL_VERTICAL_VIEW        "vertical-mail-view"
 #define STAMP_PREFS_MAIL_REFRESH_INTERVAL     "refresh-interval"
 #define STAMP_PREFS_MAIL_SWIPE_RIGHT_ACTION   "swipe-right-action"
 #define STAMP_PREFS_MAIL_SWIPE_LEFT_ACTION    "swipe-left-action"

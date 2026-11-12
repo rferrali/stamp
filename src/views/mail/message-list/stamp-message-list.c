@@ -34,6 +34,7 @@
 struct _StampMessageList {
   AdwBreakpointBin parent_instance;
 
+  AdwHeaderBar *header_bar;
   GtkWidget *scrolled_window;
   GtkWidget *list_box;
   GtkWidget *message_title;
@@ -287,6 +288,14 @@ stamp_message_list_set_mobile_mode (StampMessageList *self,
   }
 }
 
+void
+stamp_message_list_set_show_buttons (StampMessageList *self,
+                                     gboolean          show)
+{
+  adw_header_bar_set_show_start_title_buttons (self->header_bar, show);
+  adw_header_bar_set_show_end_title_buttons (self->header_bar, show);
+}
+
 static void
 stamp_message_list_class_init (StampMessageListClass *klass)
 {
@@ -297,6 +306,7 @@ stamp_message_list_class_init (StampMessageListClass *klass)
 
   gtk_widget_class_set_template_from_resource (widget_class, "/org/tabos/stamp/views/mail/message-list/stamp-message-list.ui");
 
+  gtk_widget_class_bind_template_child (widget_class, StampMessageList, header_bar);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, scrolled_window);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, list_box);
   gtk_widget_class_bind_template_child (widget_class, StampMessageList, message_title);
@@ -580,7 +590,8 @@ populate_list_box_from_thread (StampAccount          *account,
 }
 
 static GtkWidget *
-create_carousel_page_view (StampAccount          *account,
+create_carousel_page_view (StampMessageList      *self,
+                           StampAccount          *account,
                            CamelFolderThreadNode *node)
 {
   GtkWidget *toolbar_view;
@@ -601,6 +612,10 @@ create_carousel_page_view (StampAccount          *account,
 
   header_bar = adw_header_bar_new ();
   adw_header_bar_set_show_title (ADW_HEADER_BAR (header_bar), FALSE);
+  g_object_bind_property (self->header_bar, "show-start-title-buttons",
+                          header_bar, "show-start-title-buttons", G_BINDING_SYNC_CREATE);
+  g_object_bind_property (self->header_bar, "show-end-title-buttons",
+                          header_bar, "show-end-title-buttons", G_BINDING_SYNC_CREATE);
   adw_toolbar_view_add_top_bar (ADW_TOOLBAR_VIEW (toolbar_view), header_bar);
 
   message = camel_folder_thread_node_get_item (node);
@@ -681,7 +696,7 @@ populate_adjacent_pages (gpointer user_data)
       prev_child = next;
     }
 
-    gtk_box_append (GTK_BOX (self->prev_page), create_carousel_page_view (self->account, stamp_conversation_item_get_node (adjacent)));
+    gtk_box_append (GTK_BOX (self->prev_page), create_carousel_page_view (self, self->account, stamp_conversation_item_get_node (adjacent)));
     g_object_unref (adjacent);
   }
 
@@ -700,7 +715,7 @@ populate_adjacent_pages (gpointer user_data)
       next_child = next;
     }
 
-    gtk_box_append (GTK_BOX (self->next_page), create_carousel_page_view (self->account, stamp_conversation_item_get_node (adjacent)));
+    gtk_box_append (GTK_BOX (self->next_page), create_carousel_page_view (self, self->account, stamp_conversation_item_get_node (adjacent)));
     g_object_unref (adjacent);
   }
 
