@@ -83,6 +83,7 @@ enum {
   BOOK_ADDED,
   BOOK_REMOVED,
   COLOR_CHANGED,
+  CATEGORIES_CHANGED,
   LAST_SIGNAL,
 };
 
@@ -230,6 +231,11 @@ stamp_account_class_init (StampAccountClass *klass)
                                          0, NULL, NULL, NULL,
                                          G_TYPE_NONE,
                                          0);
+  signals[CATEGORIES_CHANGED] = g_signal_new ("categories-changed", G_OBJECT_CLASS_TYPE (klass),
+                                              G_SIGNAL_RUN_FIRST,
+                                              0, NULL, NULL, NULL,
+                                              G_TYPE_NONE,
+                                              0);
 }
 
 #define NUMBER_OF_COLORS 14
@@ -1363,6 +1369,7 @@ on_categories_ready (GObject      *src,
   if (mail_enable_is_current (data) && !error) {
     g_list_free_full (data->account->categories, g_object_unref);
     data->account->categories = g_steal_pointer (&categories);
+    g_signal_emit (data->account, signals[CATEGORIES_CHANGED], 0);
   } else if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
     g_warning ("%s: Categories: %s", G_STRFUNC, error->message);
   }

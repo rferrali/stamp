@@ -29,4 +29,8 @@ stamp_m365_calendar_get_default_uid_sync (GList         *candidates,
                                           GCancellable  *cancellable,
                                           GError       **error);
 
+void
+stamp_m365_calendar_sync_colors_async (ESourceRegistry *registry,
+                                       GCancellable    *cancellable);
+
 G_END_DECLS

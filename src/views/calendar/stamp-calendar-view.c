@@ -1,32 +1,23 @@
 #include "stamp-calendar-view.h"
-#include "stamp-calendar-list.h"
 
-#include "stamp-account.h"
-
-#include <glib/gi18n.h>
 #include <core/gcal-context.h>
-#include <core/gcal-manager.h>
 #include <core/gcal-event.h>
 #include <core/gcal-global.h>
+#include <core/gcal-manager.h>
 #include <core/gcal-timeline.h>
+#include <gcal-timeline-subscriber.h>
+#include <glib/gi18n.h>
 #include <gui/common/gcal-date-chooser.h>
+#include <gui/event-editor/gcal-event-editor-dialog.h>
 #include <gui/views/gcal-agenda-view.h>
 #include <gui/views/gcal-week-view.h>
-#include <gcal-timeline-subscriber.h>
 #include <utils/gcal-date-time-utils.h>
 
-#if __has_include (<gui/event-editor/gcal-event-editor-dialog.h>)
-#include <gui/event-editor/gcal-event-editor-dialog.h>
-#else
-/* libgcal exports the editor API, but does not install its header yet. */
-typedef struct _GcalEventEditorDialog GcalEventEditorDialog;
-
-GtkWidget *gcal_event_editor_dialog_new (void);
-void gcal_event_editor_dialog_present_event (GcalEventEditorDialog *self,
-                                             GtkWidget             *parent,
-                                             GcalEvent             *event,
-                                             gboolean               new_event);
-#endif
+#include "stamp-account.h"
+#include "stamp-calendar-autocleanups.h"
+#include "stamp-calendar-list.h"
+#include "stamp-category.h"
+#include "stamp-session.h"
 
 struct _StampCalendarView {
   GtkWidget parent_instance;
@@ -49,17 +40,15 @@ struct _StampCalendarView {
   GDateTime *active_date;
   GcalEventWidget *preview_event;
   guint preview_timeout;
-  double preview_x;
+  gdouble preview_x;
 };
 
-enum {
-  PROP_0,
-  PROP_STACK,
+typedef enum {
+  PROP_STACK = 1,
   PROP_ACTIVE_DATE,
-  N_PROPS
-};
+} StampCalendarViewProps;
 
-static GParamSpec *properties[N_PROPS] = { NULL, };
+static GParamSpec *properties[PROP_ACTIVE_DATE + 1] = { NULL, };
 
 G_DEFINE_FINAL_TYPE (StampCalendarView, stamp_calendar_view, ADW_TYPE_BREAKPOINT_BIN);
 
@@ -71,7 +60,7 @@ stamp_calendar_view_get_property (GObject    *object,
 {
   StampCalendarView *self = STAMP_CALENDAR_VIEW (object);
 
-  switch (id) {
+  switch ((StampCalendarViewProps)id) {
     case PROP_STACK:
       g_value_set_object (value, STAMP_CALENDAR_VIEW (object)->stack);
       break;
@@ -91,7 +80,7 @@ stamp_calendar_view_set_property (GObject      *object,
 {
   StampCalendarView *self = STAMP_CALENDAR_VIEW (object);
 
-  switch (id) {
+  switch ((StampCalendarViewProps)id) {
     case PROP_STACK:
       g_set_object (&STAMP_CALENDAR_VIEW (object)->stack, g_value_get_object (value));
       break;
@@ -152,7 +141,7 @@ cancel_pending_preview (StampCalendarView *self)
   g_clear_object (&self->preview_event);
 }
 
-static gboolean
+static void
 show_pending_preview (gpointer user_data)
 {
   StampCalendarView *self = STAMP_CALENDAR_VIEW (user_data);
@@ -160,7 +149,7 @@ show_pending_preview (gpointer user_data)
 
   self->preview_timeout = 0;
   if (gtk_widget_get_root (GTK_WIDGET (event_widget)) == NULL)
-    return G_SOURCE_REMOVE;
+    return;
 
   gcal_event_widget_show_preview (event_widget, event_preview_cb, self);
 
@@ -175,15 +164,13 @@ show_pending_preview (gpointer user_data)
         gtk_popover_set_pointing_to (GTK_POPOVER (child), &rect);
     }
   }
-
-  return G_SOURCE_REMOVE;
 }
 
 static void
 on_event_click_pressed (GtkGestureClick   *gesture,
-                        int                n_press,
-                        double             x,
-                        double             y,
+                        gint               n_press,
+                        gdouble            x,
+                        gdouble            y,
                         StampCalendarView *self)
 {
   gtk_gesture_set_state (GTK_GESTURE (gesture), GTK_EVENT_SEQUENCE_CLAIMED);
@@ -192,14 +179,14 @@ on_event_click_pressed (GtkGestureClick   *gesture,
 
 static void
 on_event_click_released (GtkGestureClick   *gesture,
-                         int                n_press,
-                         double             x,
-                         double             y,
+                         gint               n_press,
+                         gdouble            x,
+                         gdouble            y,
                          StampCalendarView *self)
 {
   GcalEventWidget *event_widget = GCAL_EVENT_WIDGET (
     gtk_event_controller_get_widget (GTK_EVENT_CONTROLLER (gesture)));
-  int double_click_time;
+  gint double_click_time;
 
   cancel_pending_preview (self);
   if (n_press == 2) {
@@ -210,15 +197,15 @@ on_event_click_released (GtkGestureClick   *gesture,
                   "gtk-double-click-time", &double_click_time, NULL);
     self->preview_event = g_object_ref (event_widget);
     self->preview_x = x;
-    self->preview_timeout = g_timeout_add (double_click_time, show_pending_preview, self);
+    self->preview_timeout = g_timeout_add_once (double_click_time, show_pending_preview, self);
   }
 }
 
 static void
 on_calendar_click_pressed (GtkGestureClick   *gesture,
-                           int                n_press,
-                           double             x,
-                           double             y,
+                           gint               n_press,
+                           gdouble            x,
+                           gdouble            y,
                            StampCalendarView *self)
 {
   GtkWidget *target = gtk_widget_pick (GTK_WIDGET (self), x, y, GTK_PICK_DEFAULT);
@@ -246,8 +233,8 @@ on_calendar_click_pressed (GtkGestureClick   *gesture,
 
   click = gtk_gesture_click_new ();
   gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click), GDK_BUTTON_PRIMARY);
-  g_signal_connect_object (click, "pressed", G_CALLBACK (on_event_click_pressed), self, 0);
-  g_signal_connect_object (click, "released", G_CALLBACK (on_event_click_released), self, 0);
+  g_signal_connect_object (click, "pressed", G_CALLBACK (on_event_click_pressed), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (click, "released", G_CALLBACK (on_event_click_released), self, G_CONNECT_DEFAULT);
   gtk_widget_add_controller (event_widget, GTK_EVENT_CONTROLLER (click));
   g_object_set_data (G_OBJECT (event_widget), "stamp-event-click", click);
 }
@@ -267,15 +254,15 @@ create_meeting (GtkButton         *button,
 {
   GcalManager *manager = gcal_context_get_manager (gcal_get_default_context ());
   GcalCalendar *calendar = gcal_manager_get_default_calendar (manager);
-  ECalComponent *component;
+  g_autoptr (ECalComponent) component = NULL;
   g_autoptr (GDateTime) now = g_date_time_new_now_local ();
   g_autoptr (GDateTime) start = NULL;
   g_autoptr (GDateTime) end = NULL;
-  ICalTime *start_time;
-  ICalTime *end_time;
+  g_autoptr (ICalTime) start_time = NULL;
+  g_autoptr (ICalTime) end_time = NULL;
   g_autoptr (GcalEvent) event = NULL;
   g_autoptr (GError) error = NULL;
-  ECalComponentDateTime *date_time;
+  g_autoptr (ECalComponentDateTime) date_time = NULL;
   GtkWidget *editor;
 
   cancel_pending_preview (self);
@@ -315,12 +302,8 @@ create_meeting (GtkButton         *button,
   e_cal_component_set_dtstart (component, date_time);
   e_cal_component_datetime_set_value (date_time, end_time);
   e_cal_component_set_dtend (component, date_time);
-  e_cal_component_datetime_free (date_time);
-  g_object_unref (start_time);
-  g_object_unref (end_time);
   e_cal_component_commit_sequence (component);
   event = gcal_event_new (calendar, component, &error);
-  g_object_unref (component);
 
   if (event == NULL) {
     AdwDialog *dialog = adw_alert_dialog_new (_("Could Not Create Meeting"), error->message);
@@ -361,12 +344,12 @@ stamp_calendar_view_class_init (StampCalendarViewClass *klass)
                                                 G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_ACTIVE_DATE] = g_param_spec_boxed ("active-date",
-                                                     "Date",
-                                                     "The active/selected date",
+                                                     NULL,
+                                                     NULL,
                                                      G_TYPE_DATE_TIME,
                                                      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  g_object_class_install_properties (object_class, N_PROPS, properties);
+  g_object_class_install_properties (object_class, G_N_ELEMENTS (properties), properties);
 
   gtk_widget_class_set_template_from_resource (widget_class, "/org/tabos/stamp/views/calendar/stamp-calendar-view.ui");
 
@@ -393,7 +376,7 @@ load_css_providers (StampCalendarView *self)
 
   /* Icons and styles are shipped by libgcal; Stamp only overrides details. */
   if (g_once_init_enter (&lib_resources_loaded)) {
-    GtkCssProvider *lib_provider = gtk_css_provider_new ();
+    g_autoptr (GtkCssProvider) lib_provider = gtk_css_provider_new ();
 
     gtk_icon_theme_add_resource_path (gtk_icon_theme_get_for_display (display),
                                       "/org/gnome/calendar/icons");
@@ -401,7 +384,6 @@ load_css_providers (StampCalendarView *self)
     gtk_style_context_add_provider_for_display (display,
                                                 GTK_STYLE_PROVIDER (lib_provider),
                                                 GTK_STYLE_PROVIDER_PRIORITY_APPLICATION - 1);
-    g_object_unref (lib_provider);
     g_once_init_leave (&lib_resources_loaded, 1);
   }
 
@@ -410,6 +392,35 @@ load_css_providers (StampCalendarView *self)
   gtk_style_context_add_provider_for_display (display,
                                               GTK_STYLE_PROVIDER (self->colors_provider),
                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
+}
+
+/* Events take the color of their first Outlook category, so publish those colors to the calendar library */
+static void
+append_category_colors (StampCalendarView *self,
+                        GString           *css)
+{
+  g_autoptr (GHashTable) colors = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify)gdk_rgba_free);
+  GList *accounts = stamp_session_get_accounts (stamp_session_get_default ());
+
+  for (GList *a = accounts; a; a = a->next) {
+    for (GList *c = stamp_account_get_categories (a->data); c; c = c->next) {
+      const gchar *name = stamp_category_get_name (c->data);
+      const gchar *color_str = stamp_category_get_color (c->data);
+      g_autofree gchar *rgba_str = NULL;
+      GdkRGBA rgba;
+
+      g_debug ("%s: category '%s' color '%s'", G_STRFUNC, name ? name : "(null)", color_str ? color_str : "(null)");
+
+      if (!name || !color_str || !gdk_rgba_parse (&rgba, color_str))
+        continue;
+
+      rgba_str = gdk_rgba_to_string (&rgba);
+      g_string_append_printf (css, ".color-%u { --event-bg-color: %s; }\n", g_quark_from_string (rgba_str), rgba_str);
+      g_hash_table_replace (colors, g_strdup (name), gdk_rgba_copy (&rgba));
+    }
+  }
+
+  gcal_event_set_category_colors (colors);
 }
 
 static void
@@ -438,13 +449,35 @@ recalculate_calendar_colors_css (StampCalendarView *self)
     g_string_append_printf (css_colors, ".color-%u { --event-bg-color: %s; }\n", color_id, color_str);
   }
 
+  append_category_colors (self, css_colors);
   gtk_css_provider_load_from_string (self->colors_provider, css_colors->str);
+}
+
+static void
+on_categories_changed (StampCalendarView *self)
+{
+  recalculate_calendar_colors_css (self);
+}
+
+static void
+watch_account_categories (StampCalendarView *self,
+                          StampAccount      *account)
+{
+  g_signal_connect_object (account, "categories-changed", G_CALLBACK (on_categories_changed), self, G_CONNECT_SWAPPED);
+}
+
+static void
+on_account_added (StampSession      *session,
+                  StampAccount      *account,
+                  StampCalendarView *self)
+{
+  watch_account_categories (self, account);
 }
 
 static AdwOverlaySplitView *
 get_current_osv (StampCalendarView *self)
 {
-  const char *layout = adw_multi_layout_view_get_layout_name (self->calendar_layout);
+  const gchar *layout = adw_multi_layout_view_get_layout_name (self->calendar_layout);
 
   if (g_strcmp0 (layout, "tablet") == 0)
     return self->tablet_osv;
@@ -461,7 +494,7 @@ on_layout_changed (AdwMultiLayoutView *view,
                    gpointer            user_data)
 {
   StampCalendarView *self = STAMP_CALENDAR_VIEW (user_data);
-  const char *name = adw_multi_layout_view_get_layout_name (view);
+  const gchar *name = adw_multi_layout_view_get_layout_name (view);
   gboolean narrow = g_strcmp0 (name, "desktop") != 0;
   GtkToggleButton *toggle_button = self->sidebar_button;
 
@@ -518,6 +551,13 @@ stamp_calendar_view_init (StampCalendarView *self)
                     "swapped-object-signal::calendar-changed", recalculate_calendar_colors_css, self,
                     "swapped-object-signal::calendar-removed", recalculate_calendar_colors_css, self,
                     NULL);
+  {
+    StampSession *session = stamp_session_get_default ();
+
+    for (GList *a = stamp_session_get_accounts (session); a; a = a->next)
+      watch_account_categories (self, a->data);
+    g_signal_connect_object (session, "account-added", G_CALLBACK (on_account_added), self, G_CONNECT_DEFAULT);
+  }
   recalculate_calendar_colors_css (self);
 
   /* Initialize the shared date before the template synchronizes its bindings. */
@@ -529,7 +569,7 @@ stamp_calendar_view_init (StampCalendarView *self)
   click = gtk_gesture_click_new ();
   gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (click), GDK_BUTTON_PRIMARY);
   gtk_event_controller_set_propagation_phase (GTK_EVENT_CONTROLLER (click), GTK_PHASE_CAPTURE);
-  g_signal_connect_object (click, "pressed", G_CALLBACK (on_calendar_click_pressed), self, 0);
+  g_signal_connect_object (click, "pressed", G_CALLBACK (on_calendar_click_pressed), self, G_CONNECT_DEFAULT);
   gtk_widget_add_controller (GTK_WIDGET (self), GTK_EVENT_CONTROLLER (click));
 
   timeline = gcal_manager_get_timeline (gcal_context_get_manager (context));

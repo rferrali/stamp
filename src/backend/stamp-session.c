@@ -29,6 +29,7 @@
 
 #include "stamp-account.h"
 #include "stamp-helper.h"
+#include "stamp-m365-calendar.h"
 #include "stamp-signature.h"
 
 static StampSession *_session = NULL;
@@ -306,6 +307,7 @@ on_registry_ready_for_load (GObject      *src,
   g_signal_connect_object (self->registry, "source-changed", G_CALLBACK (on_source_changed), self, G_CONNECT_DEFAULT);
 
   stamp_session_load_signatures (self);
+  stamp_m365_calendar_sync_colors_async (self->registry, self->cancellable);
 
   g_task_return_pointer (task, stamp_session_load_accounts_from_registry (self->registry), (GDestroyNotify)g_ptr_array_unref);
 }
