@@ -93,6 +93,7 @@ struct _StampConversationList {
   GtkSorter *sorter;
   GtkFilter *filter;
   gchar *full_name;
+  gchar *restore_uid;
   GMenuModel *context_menu_model;
 
   StampAccount *account;
@@ -193,6 +194,44 @@ on_collection_sources_changed (StampCollectionItem *collection,
                                gpointer             user_data);
 
 
+static const gchar *
+find_first_uid (CamelFolderThreadNode *node)
+{
+  CamelMessageInfo *info;
+
+  for (; node; node = camel_folder_thread_node_get_next (node)) {
+    const gchar *uid;
+
+    info = camel_folder_thread_node_get_item (node);
+    if (info)
+      return camel_message_info_get_uid (info);
+
+    uid = find_first_uid (camel_folder_thread_node_get_child (node));
+    if (uid)
+      return uid;
+  }
+
+  return NULL;
+}
+
+static void
+remember_selected_uid (StampConversationList *self)
+{
+  StampConversationItem *item;
+  const gchar *uid;
+
+  if (self->selection_mode)
+    return;
+
+  item = STAMP_CONVERSATION_ITEM (gtk_single_selection_get_selected_item (self->single_selection));
+  if (!item)
+    return;
+
+  uid = find_first_uid (stamp_conversation_item_get_node (item));
+  if (uid)
+    g_set_str (&self->restore_uid, uid);
+}
+
 static void
 on_conversation_list_folder_changed (CamelFolder           *folder,
                                      CamelFolderChangeInfo *changes,
@@ -218,6 +257,7 @@ on_conversation_list_folder_changed (CamelFolder           *folder,
   }
 
   if ((changes->uid_added && changes->uid_added->len > 0) || (changes->uid_removed && changes->uid_removed->len > 0)) {
+    remember_selected_uid (self);
     g_clear_handle_id (&self->load_folder_handler, g_source_remove);
     self->load_folder_handler = g_idle_add_once (update_folder_idle, self);
   }
@@ -827,6 +867,8 @@ display_thread (StampConversationList *self,
   StampMailService *mail_service;
   CamelFolder *folder = self->folder;
   const gchar *service_uid;
+  g_autofree gchar *restore_uid = NULL;
+  gboolean had_selection;
 
   gboolean keep_scroll = self->keep_scroll;
 
@@ -837,10 +879,36 @@ display_thread (StampConversationList *self,
   service_uid = camel_service_get_uid (stamp_mail_service_get_service (mail_service));
   g_hash_table_insert (self->folders, g_strdup (service_uid), g_object_ref (folder));
 
+  restore_uid = g_steal_pointer (&self->restore_uid);
+  had_selection = restore_uid && gtk_single_selection_get_selected_item (self->single_selection);
+
+  /* Keep the current conversation selected across reloads of the same folder */
+  if (had_selection)
+    g_signal_handlers_block_by_func (self->single_selection, on_single_selection_changed, self);
   if (keep_scroll)
     splice_keeping_unchanged (self, array);
   else
     g_list_store_splice (self->list_store, 0, g_list_model_get_n_items (G_LIST_MODEL (self->list_store)), (gpointer *)array->pdata, array->len);
+  if (had_selection)
+    g_signal_handlers_unblock_by_func (self->single_selection, on_single_selection_changed, self);
+
+  if (had_selection) {
+    guint n_items = g_list_model_get_n_items (G_LIST_MODEL (self->single_selection));
+    guint found = GTK_INVALID_LIST_POSITION;
+
+    for (guint idx = 0; idx < n_items && found == GTK_INVALID_LIST_POSITION; idx++) {
+      g_autoptr (StampConversationItem) item = g_list_model_get_item (G_LIST_MODEL (self->single_selection), idx);
+
+      if (find_uid_in_thread_node (stamp_conversation_item_get_node (item), restore_uid))
+        found = idx;
+    }
+
+    if (found != GTK_INVALID_LIST_POSITION)
+      gtk_single_selection_set_selected (self->single_selection, found);
+  }
+
+  if (had_selection && !gtk_single_selection_get_selected_item (self->single_selection))
+    g_signal_emit (self, signals[CONVERSATION_SELECTED], 0, NULL);
 
   if (self->window_title) {
     adw_window_title_set_title (ADW_WINDOW_TITLE (self->window_title), camel_folder_get_display_name (folder));
@@ -951,6 +1019,8 @@ on_get_folder (GObject      *source,
 
   if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
     return;
+
+  g_clear_pointer (&self->restore_uid, g_free);
 
   if (self->folder) {
     g_signal_handlers_disconnect_by_func (self->folder, on_conversation_list_folder_changed, self);
@@ -2126,6 +2196,7 @@ stamp_conversation_list_dispose (GObject *object)
   g_clear_object (&self->thread);
   g_clear_object (&self->list_store);
   g_clear_pointer (&self->full_name, g_free);
+  g_clear_pointer (&self->restore_uid, g_free);
   g_clear_pointer (&self->thread_cache, g_hash_table_unref);
   g_clear_pointer (&self->folders, g_hash_table_unref);
   g_clear_list (&self->moved_messages, g_object_unref);
