@@ -28,6 +28,7 @@
 #include "stamp-conversation-item.h"
 #include "stamp-conversation-list-store.h"
 #include "stamp-conversation-row.h"
+#include "stamp-input-helpers.h"
 #include "stamp-item.h"
 #include "stamp-mail-view.h"
 #include "stamp-message-list.h"
@@ -3337,7 +3338,7 @@ stamp_conversation_list_set_key_capture_widget (StampConversationList *self,
                                                 gboolean               enable)
 {
   gtk_search_bar_set_key_capture_widget (GTK_SEARCH_BAR (self->search_bar),
-                                         enable ? self->conversation_view : NULL);
+                                         enable && stamp_input_has_keyboard (self->search_bar) ? self->conversation_view : NULL);
 }
 
 void

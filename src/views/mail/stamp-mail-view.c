@@ -693,6 +693,9 @@ stamp_mail_view_init (StampMailView *self)
 
   adw_multi_layout_view_set_layout_name (self->mail_layout, "desktop");
 
+  stamp_conversation_list_set_key_capture_widget (self->conversation_list, TRUE);
+  stamp_message_list_set_key_capture_widget (self->message_list, TRUE);
+
   self->actions = g_simple_action_group_new ();
   g_action_map_add_action_entries (G_ACTION_MAP (self->actions),
                                    stamp_mail_view_action_entries,

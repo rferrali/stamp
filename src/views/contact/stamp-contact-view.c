@@ -254,6 +254,8 @@ stamp_contact_view_init (StampContactView *self)
 
   adw_multi_layout_view_set_layout_name (self->contacts_layout, "desktop");
 
+  stamp_contact_list_set_key_capture_widget (STAMP_CONTACT_LIST (self->contact_list), TRUE);
+
   self->saved_paned_pos = 360;
 
   g_signal_connect (self->contacts_layout, "notify::layout-name", G_CALLBACK (on_layout_changed), self);

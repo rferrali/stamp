@@ -14,6 +14,7 @@ stamp_sources = [
   'stamp-preferences-out-of-office.c',
   'stamp-preferences-signatures.c',
   'stamp-settings.c',
+  'stamp-input-helpers.c',
   'stamp-time-helpers.c',
   'stamp-webview.c',
   'stamp-window.c',

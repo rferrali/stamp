@@ -22,6 +22,7 @@
 #include <glib/gi18n.h>
 
 #include "stamp-contact-row.h"
+#include "stamp-input-helpers.h"
 #include "stamp-type-builtins.h"
 
 struct _StampContactList {
@@ -211,6 +212,13 @@ stamp_contact_list_load (StampContactList *self,
 
   if (self->search_only) {
     gtk_search_bar_set_search_mode (GTK_SEARCH_BAR (self->search_bar), TRUE);
+    if (!stamp_input_has_keyboard (self->search_bar)) {
+      GtkRoot *root = gtk_widget_get_root (self->search_bar);
+
+      /* Don't pop up the OSK on touch-only devices */
+      if (root)
+        gtk_root_set_focus (root, NULL);
+    }
     update_contact_list_state (self);
     on_contact_search_entry_changed (self->search_entry, self);
     return;
@@ -638,5 +646,5 @@ stamp_contact_list_set_key_capture_widget (StampContactList *self,
                                            gboolean          enable)
 {
   gtk_search_bar_set_key_capture_widget (GTK_SEARCH_BAR (self->search_bar),
-                                         enable ? self->contact_view : NULL);
+                                         enable && stamp_input_has_keyboard (self->search_bar) ? self->contact_view : NULL);
 }
