@@ -333,13 +333,13 @@ stamp_meeting_details_new (StampAccount          *account,
   cancelled = stamp_meeting_details_is_cancelled (calendar, method);
   response = saved_response != I_CAL_PARTSTAT_NONE ? saved_response : get_response (event, email);
   *can_respond = !response_pending && calendar_method == I_CAL_METHOD_REQUEST && !cancelled && response != I_CAL_PARTSTAT_ACCEPTED && response != I_CAL_PARTSTAT_DECLINED && response != I_CAL_PARTSTAT_TENTATIVE && response != I_CAL_PARTSTAT_DELEGATED;
-  heading = cancelled ? _("Meeting cancelled") : calendar_method == I_CAL_METHOD_REPLY ? _("Meeting response") : calendar_method == I_CAL_METHOD_REQUEST ? _("Meeting invitation") : _("Calendar event");
+  heading = cancelled ? _("Meeting Cancelled") : calendar_method == I_CAL_METHOD_REPLY ? _("Meeting Response") : calendar_method == I_CAL_METHOD_REQUEST ? _("Meeting Invitation") : _("Calendar Event");
 
   self = g_object_new (STAMP_TYPE_MEETING_DETAILS, NULL);
   gtk_label_set_text (self->heading, heading);
   gtk_widget_add_css_class (GTK_WIDGET (self->heading), cancelled ? "error" : "accent");
   summary = i_cal_component_get_summary (event);
-  gtk_label_set_text (self->summary, summary && *summary ? summary : _("Untitled meeting"));
+  gtk_label_set_text (self->summary, summary && *summary ? summary : _("Untitled Meeting"));
 
   period = format_period (calendar, event);
   if (period && (i_cal_component_count_properties (event, I_CAL_DTEND_PROPERTY) || i_cal_component_count_properties (event, I_CAL_DURATION_PROPERTY))) {
