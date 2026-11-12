@@ -727,6 +727,32 @@ calendar_method_from_part (CamelMimePart *part)
   return g_ascii_strup (method, -1);
 }
 
+static gchar *
+calendar_method_from_data (GBytes *data)
+{
+  g_autofree gchar *text = NULL;
+  ICalComponent *ical;
+  ICalPropertyMethod method;
+  gsize len;
+  const gchar *bytes = g_bytes_get_data (data, &len);
+
+  if (!bytes)
+    return NULL;
+
+  text = g_strndup (bytes, len);
+  ical = e_cal_util_parse_ics_string (text);
+  if (!ical)
+    return NULL;
+
+  method = i_cal_component_get_method (ical);
+  g_object_unref (ical);
+
+  if (method == I_CAL_METHOD_NONE || method == I_CAL_METHOD_X)
+    return NULL;
+
+  return g_strdup (i_cal_property_method_to_string (method));
+}
+
 static gboolean
 create_calendar (StampMimeParser     *self,
                  StampMimeAttachment *attachment)
@@ -856,6 +882,10 @@ handle_attachment (StampMimeParser *self,
   } else if ((g_strcmp0 (type_lc, "application") == 0 && g_strcmp0 (sub_lc, "ics") == 0) || (g_strcmp0 (type_lc, "text") == 0 && g_strcmp0 (sub_lc, "calendar") == 0)) {
     att->kind = STAMP_MIME_ATTACHMENT_CALENDAR;
     att->calendar_method = calendar_method_from_part (part);
+
+    if (!att->calendar_method && g_strcmp0 (sub_lc, "calendar") == 0)
+      att->calendar_method = calendar_method_from_data (att->data);
+
     if (att->calendar_method) {
       att->kind = STAMP_MIME_ATTACHMENT_INVITATION;
       create_calendar (self, att);
