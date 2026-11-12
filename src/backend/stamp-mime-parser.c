@@ -21,6 +21,8 @@
 
 #include <libecal/libecal.h>
 #include <libsoup/soup.h>
+#include <secasn1.h>
+#include <secoid.h>
 
 struct _StampMimeParser {
   GObject parent_instance;
@@ -1181,6 +1183,46 @@ handle_smime_signed_opaque (StampMimeParser  *self,
   return ok;
 }
 
+static SECOidTag
+get_smime_content_type (CamelMimePart  *part,
+                        GCancellable   *cancellable,
+                        GError        **error)
+{
+  typedef struct {
+    SECItem type;
+  } ContentInfo;
+  static const SEC_ASN1Template content_info_template[] = {
+    { SEC_ASN1_SEQUENCE, 0, NULL, sizeof (ContentInfo) },
+    { SEC_ASN1_OBJECT_ID, G_STRUCT_OFFSET (ContentInfo, type) },
+    { SEC_ASN1_SKIP_REST },
+    { 0 }
+  };
+  g_autoptr (CamelStream) stream = camel_stream_mem_new ();
+  CamelDataWrapper *content = camel_medium_get_content (CAMEL_MEDIUM (part));
+  GByteArray *buffer;
+  PLArenaPool *arena;
+  ContentInfo info = { 0 };
+  SECItem encoded;
+  SECOidTag type = SEC_OID_UNKNOWN;
+
+  if (!content || camel_data_wrapper_decode_to_stream_sync (content, stream, cancellable, error) < 0)
+    return SEC_OID_UNKNOWN;
+
+  buffer = camel_stream_mem_get_byte_array (CAMEL_STREAM_MEM (stream));
+  encoded.type = siBuffer;
+  encoded.data = buffer->data;
+  encoded.len = buffer->len;
+  arena = PORT_NewArena (1024);
+  if (!arena)
+    return SEC_OID_UNKNOWN;
+
+  if (SEC_ASN1DecodeItem (arena, &info, content_info_template, &encoded) == SECSuccess)
+    type = SECOID_FindOIDTag (&info.type);
+
+  PORT_FreeArena (arena, PR_FALSE);
+  return type;
+}
+
 static gboolean
 dispatch_smime (StampMimeParser  *self,
                 CamelMimePart    *part,
@@ -1191,7 +1233,16 @@ dispatch_smime (StampMimeParser  *self,
   CamelContentType *content_type = camel_mime_part_get_content_type (part);
   const gchar *smime_type = camel_content_type_param (content_type, "smime-type");
 
-  if (g_strcmp0 (smime_type, "enveloped-data") == 0) {
+  if (!smime_type) {
+    SECOidTag type = get_smime_content_type (part, cancellable, error);
+
+    if (error && *error)
+      return FALSE;
+    if (type == SEC_OID_PKCS7_ENVELOPED_DATA)
+      smime_type = "enveloped-data";
+  }
+
+  if (smime_type && g_ascii_strcasecmp (smime_type, "enveloped-data") == 0) {
     g_autoptr (CamelMimePart) plain = NULL;
 
     plain = handle_smime_encrypted (self, part, cancellable, error);
@@ -1201,7 +1252,7 @@ dispatch_smime (StampMimeParser  *self,
     return dispatch_part (self, plain, cancellable, error);
   }
 
-  if (g_strcmp0 (smime_type, "signed-data") == 0)
+  if (smime_type && g_ascii_strcasecmp (smime_type, "signed-data") == 0)
     return handle_smime_signed_opaque (self, part, cancellable, error);
 
   handle_attachment (self, part, cancellable);
