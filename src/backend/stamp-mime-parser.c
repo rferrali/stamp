@@ -604,8 +604,8 @@ handle_pgp_inline (StampMimeParser         *self,
 
       body = g_new0 (StampMimeBody, 1);
       body->is_html = FALSE;
-      body->text = cleartext;
-      body->length = strlen (cleartext);
+      body->text = g_markup_escape_text (cleartext, -1);
+      body->length = strlen (body->text);
       body->charset = g_strdup (charset);
 
       convert_newlines_to_br (&body->text);
