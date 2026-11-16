@@ -67,6 +67,10 @@ stamp_conversation_item_set_flagged (StampConversationItem *self,
 const gchar *
 stamp_conversation_item_get_preview (StampConversationItem *self);
 
+void
+stamp_conversation_item_fetch_preview (StampConversationItem *self,
+                                       CamelFolder           *folder);
+
 guint
 stamp_conversation_item_get_timestamp (StampConversationItem *self);
 

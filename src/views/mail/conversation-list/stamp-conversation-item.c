@@ -34,6 +34,7 @@ struct _StampConversationItem {
   gchar *uid;
   gint64 uid_number;
   gchar *preview;
+  GCancellable *preview_cancellable;
   gboolean unread;
   gboolean flagged;
   gboolean hidden;
@@ -303,6 +304,11 @@ stamp_conversation_item_dispose (GObject *object)
   g_clear_pointer (&self->service_uid, g_free);
   g_clear_pointer (&self->uid, g_free);
   g_clear_pointer (&self->preview, g_free);
+
+  if (self->preview_cancellable) {
+    g_cancellable_cancel (self->preview_cancellable);
+    g_clear_object (&self->preview_cancellable);
+  }
 
   G_OBJECT_CLASS (stamp_conversation_item_parent_class)->dispose (object);
 }
@@ -592,27 +598,79 @@ stamp_conversation_item_get_forwarded (StampConversationItem *self)
   return has_thread_flag_one (self->thread_node, CAMEL_MESSAGE_FORWARDED);
 }
 
+static const CamelMessageInfo *
+get_preview_info (StampConversationItem *self)
+{
+  const CamelMessageInfo *info = NULL;
+
+  for (CamelFolderThreadNode *child = camel_folder_thread_node_get_child (self->thread_node); child; child = camel_folder_thread_node_get_next (child)) {
+    info = camel_folder_thread_node_get_item (child);
+  }
+
+  if (!info)
+    info = camel_folder_thread_node_get_item (self->thread_node);
+
+  return info;
+}
+
 const gchar *
 stamp_conversation_item_get_preview (StampConversationItem *self)
 {
   if (!self->preview) {
-    const gchar *preview = NULL;
-    const CamelMessageInfo *info = NULL;
-
-    for (CamelFolderThreadNode *child = camel_folder_thread_node_get_child (self->thread_node); child; child = camel_folder_thread_node_get_next (child)) {
-      info = camel_folder_thread_node_get_item (child);
-    }
-
-    if (!info)
-      info = camel_folder_thread_node_get_item (self->thread_node);
-
-    preview = camel_message_info_get_preview (info);
+    const CamelMessageInfo *info = get_preview_info (self);
+    const gchar *preview = info ? camel_message_info_get_preview (info) : NULL;
 
     if (preview && strlen (preview) > 0)
       self->preview = g_strdup (preview);
   }
 
   return self->preview;
+}
+
+static void
+on_preview_message_ready (GObject      *source,
+                          GAsyncResult *res,
+                          gpointer      user_data)
+{
+  g_autoptr (StampConversationItem) self = user_data;
+  g_autoptr (CamelMimeMessage) message = NULL;
+  g_autoptr (GError) error = NULL;
+
+  message = camel_folder_get_message_finish (CAMEL_FOLDER (source), res, &error);
+
+  g_clear_object (&self->preview_cancellable);
+
+  if (error) {
+    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+      g_debug ("%s: Could not load message for preview: %s", G_STRFUNC, error->message);
+    return;
+  }
+
+  if (message && stamp_conversation_item_get_preview (self))
+    g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_PREVIEW]);
+}
+
+void
+stamp_conversation_item_fetch_preview (StampConversationItem *self,
+                                       CamelFolder           *folder)
+{
+  const CamelMessageInfo *info;
+
+  if (self->preview || self->preview_cancellable || !folder)
+    return;
+
+  info = get_preview_info (self);
+  if (!info || camel_message_info_get_preview (info))
+    return;
+
+  self->preview_cancellable = g_cancellable_new ();
+
+  camel_folder_get_message (folder,
+                            camel_message_info_get_uid (info),
+                            G_PRIORITY_LOW,
+                            self->preview_cancellable,
+                            on_preview_message_ready,
+                            g_object_ref (self));
 }
 
 guint

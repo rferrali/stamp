@@ -848,7 +848,7 @@ stamp_conversation_row_bind_mail (StampConversationRow  *self,
   gtk_inscription_set_text (self->topic, stamp_conversation_item_get_subject (item));
   gtk_inscription_set_text (self->participants, stamp_conversation_item_get_from (item));
   set_avatar (self, stamp_conversation_item_get_from (item));
-  gtk_inscription_set_text (self->body, stamp_conversation_item_get_preview (item));
+  add_binding (self, g_object_bind_property (item, "preview", self->body, "text", G_BINDING_SYNC_CREATE));
   gtk_widget_set_visible (GTK_WIDGET (self->attachment_icon), stamp_conversation_item_has_attachment (item));
   gtk_widget_set_visible (GTK_WIDGET (self->calendar_icon), stamp_conversation_item_get_calendar (item));
   g_object_set (self, "important", stamp_conversation_item_is_important (item), NULL);

@@ -2009,6 +2009,7 @@ on_bind_list_item (GtkListItemFactory *factory,
   model = STAMP_CONVERSATION_ITEM (gtk_list_item_get_item (list_item));
 
   stamp_conversation_row_bind_mail (STAMP_CONVERSATION_ROW (row), model, get_item_account (self, model), self->is_collection);
+  stamp_conversation_item_fetch_preview (model, self->folder);
   stamp_conversation_row_set_selection_visible (STAMP_CONVERSATION_ROW (row), self->selection_mode);
 
   check_button = stamp_conversation_row_get_check_button (STAMP_CONVERSATION_ROW (row));
