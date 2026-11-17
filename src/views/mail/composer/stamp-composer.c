@@ -2617,12 +2617,36 @@ stamp_add_addresses_to_completion (StampComposer        *self,
   return len != 0;
 }
 
+static gboolean
+is_own_address (StampComposer *self,
+                const gchar   *mail,
+                const gchar   *own_mail)
+{
+  StampAccount *account = stamp_composer_from_get_account (self->composer_from);
+  StampMailService *service = account ? stamp_account_get_mail_service (account) : NULL;
+  GHashTable *aliases = service ? stamp_mail_service_get_aliases (service) : NULL;
+  GHashTableIter iter;
+  gpointer key;
+
+  if (g_ascii_strcasecmp (mail, own_mail) == 0)
+    return TRUE;
+
+  if (!aliases)
+    return FALSE;
+
+  g_hash_table_iter_init (&iter, aliases);
+  while (g_hash_table_iter_next (&iter, &key, NULL))
+    if (key && g_ascii_strcasecmp (mail, key) == 0)
+      return TRUE;
+
+  return FALSE;
+}
+
 static void
 remove_own_address (StampComposer        *self,
                     CamelInternetAddress *address)
 {
   const gchar *own_mail;
-  gint len;
   gint idx;
 
   if (!self->composer_from)
@@ -2632,20 +2656,13 @@ remove_own_address (StampComposer        *self,
   if (!own_mail)
     return;
 
-  len = camel_address_length (CAMEL_ADDRESS (address));
-
-  for (idx = 0; idx < len; idx++) {
+  for (idx = camel_address_length (CAMEL_ADDRESS (address)) - 1; idx >= 0; idx--) {
     const gchar *ia_name;
     const gchar *ia_address;
 
-    camel_internet_address_get (address, idx, &ia_name, &ia_address);
-    if (ia_address && g_ascii_strcasecmp (ia_address, own_mail) == 0) {
-      break;
-    }
-  }
-
-  if (idx != len) {
-    camel_address_remove (CAMEL_ADDRESS (address), idx);
+    if (camel_internet_address_get (address, idx, &ia_name, &ia_address) &&
+        ia_address && is_own_address (self, ia_address, own_mail))
+      camel_address_remove (CAMEL_ADDRESS (address), idx);
   }
 }
 
@@ -2757,6 +2774,7 @@ stamp_composer_set_quote_content (StampComposer          *self,
         }
 
         if (cc && type == STAMP_COMPOSER_REPLY_ALL) {
+          remove_own_address (self, cc);
           if (stamp_add_addresses_to_completion (self, self->cc, cc))
             gtk_toggle_button_set_active (GTK_TOGGLE_BUTTON (self->toggle), TRUE);
         }
