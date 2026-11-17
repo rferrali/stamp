@@ -2,7 +2,7 @@ using Gtk 4.0;
 using Adw 1;
 
 template $StampMessageList: Adw.BreakpointBin {
-  width-request: 300;
+  width-request: 340;
   height-request: 300;
 
   GestureDrag {
@@ -32,6 +32,7 @@ template $StampMessageList: Adw.BreakpointBin {
             Button reply_btn {
               child: Adw.ButtonContent reply_content {
                 icon-name: 'mail-reply-sender-symbolic';
+                can-shrink: true;
               };
 
               tooltip-text: _("Reply");
@@ -46,6 +47,7 @@ template $StampMessageList: Adw.BreakpointBin {
             Button reply_all_btn {
               child: Adw.ButtonContent reply_all_content {
                 icon-name: 'mail-reply-all-symbolic';
+                can-shrink: true;
               };
 
               tooltip-text: _("Reply All");
@@ -60,6 +62,7 @@ template $StampMessageList: Adw.BreakpointBin {
             Button forward_btn {
               child: Adw.ButtonContent forward_content {
                 icon-name: 'mail-forward-symbolic';
+                can-shrink: true;
               };
 
               tooltip-text: _("Forward");
