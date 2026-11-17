@@ -1433,7 +1433,7 @@ stamp_account_init_async (StampAccount        *self,
                           gpointer             user_data)
 {
   g_autoptr (GTask) task = g_task_new (self, cancellable, callback, user_data);
-  gboolean mail_enabled = self->mail && e_source_get_enabled (self->mail->source);
+  gboolean mail_enabled = self->mail && self->mail->source && e_source_get_enabled (self->mail->source);
   InitContext *ctx;
   guint pending = 0;
 
