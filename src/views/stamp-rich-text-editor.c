@@ -384,12 +384,24 @@ stamp_rich_text_editor_init (StampRichTextEditor *self)
   g_autoptr (GBytes) document = NULL;
   g_autoptr (WebKitUserScript) user_script = NULL;
   WebKitUserContentManager *manager;
+  GtkEventController *shortcuts;
 
   self->cancellable = g_cancellable_new ();
   gtk_widget_init_template (GTK_WIDGET (self));
   self->actions = g_simple_action_group_new ();
   g_action_map_add_action_entries (G_ACTION_MAP (self->actions), editor_actions, G_N_ELEMENTS (editor_actions), self);
   gtk_widget_insert_action_group (GTK_WIDGET (self), "editor", G_ACTION_GROUP (self->actions));
+
+  shortcuts = gtk_shortcut_controller_new ();
+  gtk_event_controller_set_propagation_phase (shortcuts, GTK_PHASE_CAPTURE);
+  gtk_shortcut_controller_set_scope (GTK_SHORTCUT_CONTROLLER (shortcuts), GTK_SHORTCUT_SCOPE_LOCAL);
+  gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (shortcuts),
+                                        gtk_shortcut_new (gtk_keyval_trigger_new (GDK_KEY_u, GDK_CONTROL_MASK),
+                                                          gtk_named_action_new ("editor.underline")));
+  gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (shortcuts),
+                                        gtk_shortcut_new (gtk_keyval_trigger_new (GDK_KEY_k, GDK_CONTROL_MASK),
+                                                          gtk_named_action_new ("editor.insert-link")));
+  gtk_widget_add_controller (GTK_WIDGET (self), shortcuts);
 
   self->web_view = stamp_webview_new ();
   stamp_webview_set_editable (self->web_view);
