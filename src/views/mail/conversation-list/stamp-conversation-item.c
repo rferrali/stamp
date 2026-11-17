@@ -39,6 +39,7 @@ struct _StampConversationItem {
   gboolean flagged;
   gboolean hidden;
   gboolean important;
+  gint priority;
 };
 
 G_DEFINE_FINAL_TYPE (StampConversationItem, stamp_conversation_item, G_TYPE_OBJECT);
@@ -55,6 +56,7 @@ typedef enum {
   PROP_HAS_ATTACHMENT,
   PROP_HAS_CALENDAR,
   PROP_IMPORTANT,
+  PROP_PRIORITY,
   PROP_DATE,
   PROP_NUM_MESSAGES,
   PROP_LABELS,
@@ -177,6 +179,9 @@ stamp_conversation_item_get_property (GObject    *object,
     case PROP_IMPORTANT:
       g_value_set_boolean (value, stamp_conversation_item_is_important (self));
       break;
+    case PROP_PRIORITY:
+      g_value_set_int (value, self->priority);
+      break;
     case PROP_DATE:
       g_value_set_ulong (value, stamp_conversation_item_get_date (self));
       break;
@@ -223,6 +228,67 @@ get_newest_timestamp (CamelFolderThreadNode *node,
   return time;
 }
 
+static gint
+get_message_priority (const CamelMessageInfo *message)
+{
+  const gchar *tag = camel_message_info_get_user_tag (message, "importance");
+  g_autoptr (CamelNameValueArray) headers = NULL;
+  const gchar *value;
+
+  if (tag) {
+    if (g_ascii_strcasecmp (tag, "high") == 0)
+      return 1;
+    if (g_ascii_strcasecmp (tag, "low") == 0)
+      return -1;
+    return 0;
+  }
+
+  headers = camel_message_info_dup_headers (message);
+  if (!headers)
+    return 0;
+
+  value = camel_name_value_array_get_named (headers, CAMEL_COMPARE_CASE_INSENSITIVE, "Importance");
+  if (value) {
+    if (g_ascii_strcasecmp (value, "high") == 0)
+      return 1;
+    if (g_ascii_strcasecmp (value, "low") == 0)
+      return -1;
+  }
+
+  value = camel_name_value_array_get_named (headers, CAMEL_COMPARE_CASE_INSENSITIVE, "X-Priority");
+  if (value) {
+    gint priority = atoi (value);
+
+    if (priority >= 1 && priority <= 2)
+      return 1;
+    if (priority >= 4 && priority <= 5)
+      return -1;
+  }
+
+  return 0;
+}
+
+static gint
+get_thread_priority (CamelFolderThreadNode *node)
+{
+  gint priority = 0;
+
+  if (!node)
+    return 0;
+
+  if (camel_folder_thread_node_get_item (node))
+    priority = get_message_priority (camel_folder_thread_node_get_item (node));
+
+  for (CamelFolderThreadNode *child = camel_folder_thread_node_get_child (node); child && priority < 1; child = camel_folder_thread_node_get_next (child)) {
+    gint child_priority = get_thread_priority (child);
+
+    if (child_priority > priority || (priority == 0 && child_priority < 0))
+      priority = child_priority;
+  }
+
+  return priority;
+}
+
 static gboolean
 is_important (StampConversationItem *self)
 {
@@ -262,6 +328,7 @@ stamp_conversation_item_set_property (GObject      *object,
       self->unread = !has_thread_flag_all (self->thread_node, CAMEL_MESSAGE_SEEN);
       self->flagged = has_thread_flag_one (self->thread_node, CAMEL_MESSAGE_FLAGGED);
       self->important = is_important (self);
+      self->priority = get_thread_priority (self->thread_node);
 
       if (self->thread_node) {
         const CamelMessageInfo *message;
@@ -283,6 +350,7 @@ stamp_conversation_item_set_property (GObject      *object,
     case PROP_HAS_ATTACHMENT:
     case PROP_HAS_CALENDAR:
     case PROP_IMPORTANT:
+    case PROP_PRIORITY:
     case PROP_DATE:
     case PROP_NUM_MESSAGES:
     case PROP_LABELS:
@@ -383,6 +451,11 @@ stamp_conversation_item_class_init (StampConversationItemClass *klass)
                                                      NULL,
                                                      FALSE,
                                                      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+  properties[PROP_PRIORITY] = g_param_spec_int ("priority",
+                                                NULL,
+                                                NULL,
+                                                -1, 1, 0,
+                                                G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
   properties[PROP_DATE] = g_param_spec_ulong ("date",
                                               NULL,
                                               NULL,
@@ -773,8 +846,10 @@ stamp_conversation_item_update (StampConversationItem *self,
   self->unread = !has_thread_flag_all (self->thread_node, CAMEL_MESSAGE_SEEN);
   self->flagged = has_thread_flag_one (self->thread_node, CAMEL_MESSAGE_FLAGGED);
   self->important = is_important (self);
+  self->priority = get_thread_priority (self->thread_node);
 
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_UNREAD]);
+  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_PRIORITY]);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FLAGGED]);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_ANSWERED]);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FORWARDED]);

@@ -49,6 +49,7 @@ struct _StampConversationRow {
   GtkInscription *body;
   GtkLabel *counter;
   GtkImage *flagged_icon;
+  GtkImage *priority_icon;
   GtkScrolledWindow *left_action;
   GtkLabel *left_action_label;
   GtkImage *left_action_image;
@@ -518,6 +519,7 @@ stamp_conversation_row_class_init (StampConversationRowClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, body);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, counter);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, flagged_icon);
+  gtk_widget_class_bind_template_child (widget_class, StampConversationRow, priority_icon);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, left_action);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, left_action_label);
   gtk_widget_class_bind_template_child (widget_class, StampConversationRow, left_action_image);
@@ -624,6 +626,35 @@ on_get_photo (gpointer texture,
     adw_avatar_set_custom_image (ADW_AVATAR (self->avatar), NULL);
 
   g_free (token);
+}
+
+static gboolean
+transform_priority_to (GBinding     *binding,
+                       const GValue *from_value,
+                       GValue       *to_value,
+                       gpointer      user_data)
+{
+  gint priority = g_value_get_int (from_value);
+  g_autoptr (GObject) target = g_binding_dup_target (binding);
+
+  if (priority > 0)
+    g_value_set_static_string (to_value, "emblem-important-symbolic");
+  else
+    g_value_set_static_string (to_value, "go-down-symbolic");
+
+  if (GTK_IS_WIDGET (target)) {
+    gtk_widget_set_visible (GTK_WIDGET (target), priority != 0);
+    gtk_widget_set_tooltip_text (GTK_WIDGET (target), priority > 0 ? _("High priority") : _("Low priority"));
+    if (priority > 0) {
+      gtk_widget_add_css_class (GTK_WIDGET (target), "error");
+      gtk_widget_remove_css_class (GTK_WIDGET (target), "success");
+    } else {
+      gtk_widget_remove_css_class (GTK_WIDGET (target), "error");
+      gtk_widget_add_css_class (GTK_WIDGET (target), "success");
+    }
+  }
+
+  return TRUE;
 }
 
 static gboolean
@@ -856,6 +887,7 @@ stamp_conversation_row_bind_mail (StampConversationRow  *self,
   set_num_messages (self, stamp_conversation_item_get_num_messages (item));
 
   add_binding (self, g_object_bind_property (item, "unread", self, "unread", G_BINDING_SYNC_CREATE));
+  add_binding (self, g_object_bind_property_full (item, "priority", self->priority_icon, "icon-name", G_BINDING_SYNC_CREATE, transform_priority_to, NULL, self, NULL));
   add_binding (self, g_object_bind_property_full (item, "flagged", self->flagged_icon, "icon-name", G_BINDING_SYNC_CREATE, transform_flagged_to, NULL, self, NULL));
   add_binding (self, g_object_bind_property (item, "answered", self->reply_icon, "visible", G_BINDING_SYNC_CREATE));
   add_binding (self, g_object_bind_property (item, "forwarded", self->forwarded_icon, "visible", G_BINDING_SYNC_CREATE));
