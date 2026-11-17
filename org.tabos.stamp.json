@@ -137,9 +137,9 @@
       ],
       "sources": [
         {
-          "type": "archive",
-          "url": "https://download.gnome.org/sources/evolution-data-server/3.62/evolution-data-server-3.62.0.tar.xz",
-          "sha256": "78be88e9a511f5afe7ff2e363eade84b622dd0282647fc576edb2d4ff2962cba"
+          "type": "git",
+          "url": "https://gitlab.gnome.org/GNOME/evolution-data-server.git",
+          "branch": "master"
         }
       ],
       "modules": [
@@ -167,17 +167,17 @@
             "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
             "-DCMAKE_INSTALL_LIBDIR=/app/lib",
             "-DWITH_CXX_BINDINGS=false",
-            "-DSHARED_ONLY=true",
             "-DGOBJECT_INTROSPECTION=true",
             "-DICAL_BUILD_DOCS=false",
             "-DICAL_GLIB_VAPI=true",
+            "-DLIBICAL_JAVA_BINDINGS=false",
             "-DLIBICAL_BUILD_TESTING=false"
           ],
           "sources": [
             {
               "type": "git",
               "url": "https://github.com/libical/libical.git",
-              "tag": "v3.0.20"
+              "tag": "v4.0.8"
             }
           ]
         }
@@ -209,17 +209,12 @@
       "sources": [
         {
           "type": "git",
-          "url": "https://gitlab.gnome.org/jbrummer/evolution-ews.git",
-          "branch": "priority"
-        },
-        {
-          "type": "file",
-          "path": "build-aux/install-evolution-ews-devel.py"
+          "url": "https://gitlab.gnome.org/GNOME/evolution-ews.git",
+          "branch": "master"
         }
       ],
       "post-install": [
-        "cp NEWS /app/share/NEWS.ews",
-        "python3 install-evolution-ews-devel.py"
+        "cp NEWS /app/share/NEWS.ews"
       ]
     },
     {

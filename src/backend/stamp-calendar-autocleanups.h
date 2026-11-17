@@ -21,9 +21,4 @@
 
 #include <libecal/libecal.h>
 
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (ICalComponent, g_object_unref)
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (ICalProperty, g_object_unref)
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (ICalParameter, g_object_unref)
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (ICalTime, g_object_unref)
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (ICalDuration, g_object_unref)
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (ECalClient, g_object_unref)

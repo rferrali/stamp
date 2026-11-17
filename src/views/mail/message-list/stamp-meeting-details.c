@@ -344,7 +344,7 @@ stamp_meeting_details_new (StampAccount          *account,
   period = format_period (calendar, event);
   if (period && (i_cal_component_count_properties (event, I_CAL_DTEND_PROPERTY) || i_cal_component_count_properties (event, I_CAL_DURATION_PROPERTY))) {
     g_autoptr (ICalDuration) duration = i_cal_component_get_duration (event);
-    gint seconds = duration ? i_cal_duration_as_int (duration) : 0;
+    gint seconds = duration ? i_cal_duration_as_seconds (duration) : 0;
 
     if (seconds > 0) {
       g_autoptr (ICalTime) dtstart = i_cal_component_get_dtstart (event);
