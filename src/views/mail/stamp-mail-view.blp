@@ -11,7 +11,10 @@ template $StampMailView: Adw.BreakpointBin {
     unapply => $on_apply_view();
 
     setters {
-      mail_layout.layout-name: "tablet";
+      outer_osv.collapsed: true;
+      outer_osv.show-sidebar: false;
+      outer_osv.min-sidebar-width: 300;
+      outer_osv.max-sidebar-width: 360;
     }
   }
 
@@ -77,47 +80,6 @@ template $StampMailView: Adw.BreakpointBin {
           };
 
           content: Paned desktop_paned {
-            orientation: horizontal;
-            position: 400;
-            shrink-start-child: false;
-            shrink-end-child: false;
-            resize-start-child: false;
-            resize-end-child: true;
-
-            start-child: Adw.LayoutSlot {
-              id: "list";
-            };
-
-            end-child: Adw.LayoutSlot {
-              id: "content";
-            };
-          };
-        };
-      }
-
-      Adw.Layout {
-        name: "tablet";
-
-        content: Adw.OverlaySplitView tablet_osv {
-          sidebar-width-fraction: 0.28;
-          min-sidebar-width: 300;
-          max-sidebar-width: 360;
-          collapsed: true;
-
-          sidebar: Adw.ToolbarView {
-            bottom-bar-style: raised;
-
-            content: Adw.LayoutSlot {
-              id: "sidebar";
-            };
-
-            [bottom]
-            Adw.LayoutSlot {
-              id: "switcher";
-            }
-          };
-
-          content: Paned tablet_paned {
             orientation: horizontal;
             position: 400;
             shrink-start-child: false;

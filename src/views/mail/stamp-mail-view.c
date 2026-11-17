@@ -34,14 +34,13 @@ struct _StampMailView {
   AdwBreakpointBin parent_instance;
 
   AdwMultiLayoutView *mail_layout;
-  AdwOverlaySplitView *tablet_osv;
+  AdwOverlaySplitView *outer_osv;
   AdwOverlaySplitView *mobile_osv;
   AdwNavigationView *mobile_nav;
   StampFolderList *folder_list;
   StampMessageList *message_list;
   StampConversationList *conversation_list;
   GtkPaned *desktop_paned;
-  GtkPaned *tablet_paned;
   AdwToastOverlay *toast_overlay;
   AdwToast *trash_toast;
 
@@ -68,11 +67,11 @@ get_current_osv (StampMailView *self)
 {
   const gchar *layout = adw_multi_layout_view_get_layout_name (self->mail_layout);
 
-  if (g_strcmp0 (layout, "tablet") == 0)
-    return self->tablet_osv;
-
   if (g_strcmp0 (layout, "mobile") == 0)
     return self->mobile_osv;
+
+  if (adw_overlay_split_view_get_collapsed (self->outer_osv))
+    return self->outer_osv;
 
   return NULL;
 }
@@ -428,8 +427,7 @@ stamp_mail_view_class_init (StampMailViewClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampMailView, conversation_list);
   gtk_widget_class_bind_template_child (widget_class, StampMailView, toast_overlay);
   gtk_widget_class_bind_template_child (widget_class, StampMailView, desktop_paned);
-  gtk_widget_class_bind_template_child (widget_class, StampMailView, tablet_paned);
-  gtk_widget_class_bind_template_child (widget_class, StampMailView, tablet_osv);
+  gtk_widget_class_bind_template_child (widget_class, StampMailView, outer_osv);
   gtk_widget_class_bind_template_child (widget_class, StampMailView, mobile_osv);
   gtk_widget_class_bind_template_child (widget_class, StampMailView, mobile_nav);
   gtk_widget_class_bind_template_callback (widget_class, on_details_hidden);
@@ -628,31 +626,55 @@ on_toggle_sidebar (GtkToggleButton *btn G_GNUC_UNUSED,
 }
 
 static void
+update_paned_orientation (StampMailView *self)
+{
+  gboolean vertical = g_settings_get_boolean (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_VERTICAL_VIEW) &&
+                      !adw_overlay_split_view_get_collapsed (self->outer_osv);
+
+  gtk_orientable_set_orientation (GTK_ORIENTABLE (self->desktop_paned),
+                                  vertical ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
+  update_title_buttons (self);
+}
+
+static void
+update_narrow (StampMailView *self)
+{
+  GtkToggleButton *toggle_button = stamp_conversation_list_get_sidebar_button (self->conversation_list);
+  gboolean tablet = adw_overlay_split_view_get_collapsed (self->outer_osv);
+
+  gtk_widget_set_visible (GTK_WIDGET (toggle_button), tablet || is_mobile_view (self));
+}
+
+static void
+on_tablet_changed (StampMailView *self)
+{
+  stamp_paned_set_settings_key (self->desktop_paned,
+                                adw_overlay_split_view_get_collapsed (self->outer_osv) ? STAMP_PREFS_MAIL_TABLET_LIST_PANE_WIDTH
+                                                                                       : STAMP_PREFS_MAIL_DESKTOP_LIST_PANE_WIDTH);
+  update_narrow (self);
+  update_paned_orientation (self);
+  on_sidebar_visibility_changed (self);
+}
+
+static void
 on_layout_changed (AdwMultiLayoutView *view,
                    GParamSpec *ps      G_GNUC_UNUSED,
                    gpointer            user_data)
 {
   StampMailView *self = STAMP_MAIL_VIEW (user_data);
-  const gchar *name = adw_multi_layout_view_get_layout_name (view);
-  gboolean narrow = g_strcmp0 (name, "desktop") != 0;
-  GtkToggleButton *toggle_button = stamp_conversation_list_get_sidebar_button (self->conversation_list);
 
-  gtk_widget_set_visible (GTK_WIDGET (toggle_button), narrow);
-
-  stamp_message_list_set_mobile_mode (self->message_list, g_strcmp0 (name, "mobile") == 0);
+  update_narrow (self);
+  stamp_message_list_set_mobile_mode (self->message_list, is_mobile_view (self));
   update_title_buttons (self);
+  on_sidebar_visibility_changed (self);
 }
 
 static void
-on_vertical_view_changed (GSettings   *settings,
-                          const gchar *key,
-                          gpointer     user_data)
+on_vertical_view_changed (GSettings *settings G_GNUC_UNUSED,
+                          const gchar *key    G_GNUC_UNUSED,
+                          gpointer            user_data)
 {
-  StampMailView *self = STAMP_MAIL_VIEW (user_data);
-
-  gtk_orientable_set_orientation (GTK_ORIENTABLE (self->desktop_paned),
-                                  g_settings_get_boolean (settings, key) ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL);
-  update_title_buttons (self);
+  update_paned_orientation (STAMP_MAIL_VIEW (user_data));
 }
 
 typedef struct {
@@ -722,7 +744,6 @@ stamp_mail_view_init (StampMailView *self)
   g_signal_connect (self->mail_layout, "notify::layout-name", G_CALLBACK (on_layout_changed), self);
 
   stamp_paned_remember_position (self->desktop_paned, STAMP_PREFS_MAIL_DESKTOP_LIST_PANE_WIDTH);
-  stamp_paned_remember_position (self->tablet_paned, STAMP_PREFS_MAIL_TABLET_LIST_PANE_WIDTH);
 
   g_signal_connect (self->mail_layout, "notify::layout-name", G_CALLBACK (on_layout_changed), self);
   g_signal_connect (stamp_conversation_list_get_sidebar_button (self->conversation_list), "clicked", G_CALLBACK (on_toggle_sidebar), self);
@@ -733,7 +754,8 @@ stamp_mail_view_init (StampMailView *self)
   g_signal_connect_object (STAMP_SETTINGS_MAIL, "changed::" STAMP_PREFS_MAIL_VERTICAL_VIEW, G_CALLBACK (on_vertical_view_changed), self, G_CONNECT_DEFAULT);
 
   /* Synchronize button state with show-sidebar */
-  g_signal_connect_swapped (self->tablet_osv, "notify::show-sidebar", G_CALLBACK (on_sidebar_visibility_changed), self);
+  g_signal_connect_swapped (self->outer_osv, "notify::show-sidebar", G_CALLBACK (on_sidebar_visibility_changed), self);
+  g_signal_connect_swapped (self->outer_osv, "notify::collapsed", G_CALLBACK (on_tablet_changed), self);
   g_signal_connect_swapped (self->mobile_osv, "notify::show-sidebar", G_CALLBACK (on_sidebar_visibility_changed), self);
 
   g_signal_connect_swapped (self->message_list, "switch-conversation",

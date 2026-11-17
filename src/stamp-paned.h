@@ -27,4 +27,8 @@ void
 stamp_paned_remember_position (GtkPaned    *paned,
                                const gchar *settings_key);
 
+void
+stamp_paned_set_settings_key (GtkPaned    *paned,
+                              const gchar *settings_key);
+
 G_END_DECLS

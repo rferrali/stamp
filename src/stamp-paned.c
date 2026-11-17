@@ -141,3 +141,23 @@ stamp_paned_remember_position (GtkPaned    *paned,
   g_signal_connect (paned, "notify::position", G_CALLBACK (on_position_changed), state);
   g_signal_connect (paned, "unmap", G_CALLBACK (on_unmap), state);
 }
+
+void
+stamp_paned_set_settings_key (GtkPaned    *paned,
+                              const gchar *settings_key)
+{
+  PanedState *state = g_object_get_data (G_OBJECT (paned), "stamp-paned-state");
+
+  if (!state || g_strcmp0 (state->settings_key, settings_key) == 0)
+    return;
+
+  if (state->save_handler) {
+    g_clear_handle_id (&state->save_handler, g_source_remove);
+    save_position (state);
+  }
+
+  g_set_str (&state->settings_key, settings_key);
+  state->position = CLAMP (g_settings_get_int (STAMP_SETTINGS, settings_key), 250, 2000);
+  state->last_width = 0;
+  gtk_paned_set_position (paned, state->position);
+}
