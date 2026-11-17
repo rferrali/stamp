@@ -246,14 +246,6 @@ build_message (StampComposer *self,
 
   g_clear_object (&part);
 
-  for (GList *attachment = self->attachments; attachment && attachment->data; attachment = g_list_next (attachment)) {
-    StampAttachmentButton *button = STAMP_ATTACHMENT_BUTTON (attachment->data);
-
-    part = stamp_attachment_button_get_mime_part (button);
-    camel_multipart_add_part (body, part);
-    g_clear_object (&part);
-  }
-
   message = camel_mime_message_new ();
   camel_mime_message_set_subject (message, gtk_editable_get_text (GTK_EDITABLE (self->subject)));
   camel_mime_message_set_date (message, CAMEL_MESSAGE_DATE_CURRENT, 0);
@@ -300,7 +292,27 @@ build_message (StampComposer *self,
     }
   }
 
-  camel_medium_set_content (CAMEL_MEDIUM (message), CAMEL_DATA_WRAPPER (body));
+  if (self->attachments) {
+    g_autoptr (CamelMultipart) mixed = camel_multipart_new ();
+    g_autoptr (CamelMimePart) alt_part = camel_mime_part_new ();
+
+    camel_data_wrapper_set_mime_type (CAMEL_DATA_WRAPPER (mixed), "multipart/mixed");
+    camel_multipart_set_boundary (mixed, NULL);
+
+    camel_medium_set_content (CAMEL_MEDIUM (alt_part), CAMEL_DATA_WRAPPER (body));
+    camel_multipart_add_part (mixed, alt_part);
+
+    for (GList *attachment = self->attachments; attachment && attachment->data; attachment = g_list_next (attachment)) {
+      StampAttachmentButton *button = STAMP_ATTACHMENT_BUTTON (attachment->data);
+      g_autoptr (CamelMimePart) att_part = stamp_attachment_button_get_mime_part (button);
+
+      camel_multipart_add_part (mixed, att_part);
+    }
+
+    camel_medium_set_content (CAMEL_MEDIUM (message), CAMEL_DATA_WRAPPER (mixed));
+  } else {
+    camel_medium_set_content (CAMEL_MEDIUM (message), CAMEL_DATA_WRAPPER (body));
+  }
 
   if (gtk_toggle_button_get_active (GTK_TOGGLE_BUTTON (self->request_disposition))) {
     const gchar *mail = stamp_composer_from_get_mail (self->composer_from);
