@@ -276,6 +276,10 @@ stamp_account_get_mail_trash_folder (StampAccount *self);
 CamelFolder *
 stamp_account_get_mail_drafts_folder (StampAccount *self);
 
+guint
+stamp_account_get_folder_badge_count (StampAccount *self,
+                                      CamelFolder  *folder);
+
 CamelFolder *
 stamp_account_get_mail_sent_folder (StampAccount *self);
 

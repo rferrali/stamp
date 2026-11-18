@@ -73,18 +73,15 @@ on_source_folder_changed (CamelFolder           *folder,
                           gpointer               user_data)
 {
   StampCollectionItem *self = STAMP_COLLECTION_ITEM (user_data);
-  CamelFolderSummary *summary;
 
   if (!(changes->uid_added || changes->uid_removed || changes->uid_changed))
     return;
-
-  summary = camel_folder_get_folder_summary (folder);
 
   for (GList *iter = self->sources; iter; iter = iter->next) {
     StampCollectionSource *source = iter->data;
 
     if (source->folder == folder) {
-      source->unread = camel_folder_summary_get_unread_count (summary);
+      source->unread = stamp_account_get_folder_badge_count (source->account, folder);
       source->loaded = TRUE;
       break;
     }
@@ -123,12 +120,8 @@ on_get_folder (GObject      *source,
         g_signal_connect_object (folder, "changed", G_CALLBACK (on_source_folder_changed), self, G_CONNECT_DEFAULT);
       }
 
-      {
-        CamelFolderSummary *summary = camel_folder_get_folder_summary (folder);
-
-        cur_source->unread = camel_folder_summary_get_unread_count (summary);
-        cur_source->loaded = TRUE;
-      }
+      cur_source->unread = stamp_account_get_folder_badge_count (cur_source->account, folder);
+      cur_source->loaded = TRUE;
       break;
     }
   }

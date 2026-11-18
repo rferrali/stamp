@@ -143,10 +143,7 @@ stamp_folder_item_set_folder_info (StampFolderItem *self,
   }
 
   if (self->folder) {
-    CamelFolderSummary *summary;
-
-    summary = camel_folder_get_folder_summary (self->folder);
-    self->unread = camel_folder_summary_get_unread_count (summary);
+    self->unread = stamp_account_get_folder_badge_count (stamp_item_get_account (STAMP_ITEM (self)), self->folder);
     g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_UNREAD]);
   }
 }
@@ -299,8 +296,7 @@ on_folder_item_folder_changed (CamelFolder           *folder,
   g_autofree char *mode = g_settings_get_string (account_settings, "notification-mode");
   gboolean notify = TRUE;
 
-  summary = camel_folder_get_folder_summary (folder);
-  self->unread = camel_folder_summary_get_unread_count (summary);
+  self->unread = stamp_account_get_folder_badge_count (account, folder);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_UNREAD]);
 
   withdraw_notification_if_all_read (folder);
@@ -383,8 +379,7 @@ on_get_folder (GObject      *source,
 
   g_signal_connect_object (self->folder, "changed", G_CALLBACK (on_folder_item_folder_changed), self, G_CONNECT_DEFAULT);
 
-  summary = camel_folder_get_folder_summary (self->folder);
-  self->unread = camel_folder_summary_get_unread_count (summary);
+  self->unread = stamp_account_get_folder_badge_count (stamp_item_get_account (STAMP_ITEM (self)), self->folder);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_UNREAD]);
 }
 

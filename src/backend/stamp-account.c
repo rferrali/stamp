@@ -2095,6 +2095,18 @@ stamp_account_get_mail_drafts_folder (StampAccount *self)
   return self->mail->drafts_folder;
 }
 
+guint
+stamp_account_get_folder_badge_count (StampAccount *self,
+                                      CamelFolder  *folder)
+{
+  CamelFolderSummary *summary = camel_folder_get_folder_summary (folder);
+
+  if (folder == self->mail->drafts_folder)
+    return camel_folder_summary_get_saved_count (summary);
+
+  return camel_folder_summary_get_unread_count (summary);
+}
+
 void
 stamp_account_clear_negative_photo_cache (StampAccount *self)
 {
