@@ -412,7 +412,7 @@ on_search_conversations (GObject      *source,
   completion_search_done (search);
 }
 
-static gboolean
+static void
 start_completion_search (gpointer user_data)
 {
   StampContactCompletion *self = STAMP_CONTACT_COMPLETION (user_data);
@@ -423,7 +423,7 @@ start_completion_search (gpointer user_data)
 
   self->search_timeout_id = 0;
   if (!self->account || !*text)
-    return G_SOURCE_REMOVE;
+    return;
 
   self->cancellable = g_cancellable_new ();
 
@@ -460,7 +460,6 @@ start_completion_search (gpointer user_data)
   stamp_account_search_conversations (self->account, text, self->cancellable, on_search_conversations, search);
 
   completion_search_done (search);
-  return G_SOURCE_REMOVE;
 }
 
 static void
@@ -507,7 +506,7 @@ on_changed (GtkEditable *ed,
     gtk_filter_changed (self->filter, GTK_FILTER_CHANGE_DIFFERENT);
 
     if (new_string->len > 0 && self->account)
-      self->search_timeout_id = g_timeout_add (300, start_completion_search, self);
+      self->search_timeout_id = g_timeout_add_once (300, start_completion_search, self);
   }
 
   self->block = FALSE;
@@ -565,10 +564,7 @@ stamp_contact_completion_dispose (GObject *object)
 
   cancel_search (self);
 
-  if (self->popover) {
-    gtk_widget_unparent (self->popover);
-    self->popover = NULL;
-  }
+  g_clear_pointer (&self->popover, gtk_widget_unparent);
 
   g_clear_object (&self->model);
   g_clear_object (&self->filter);

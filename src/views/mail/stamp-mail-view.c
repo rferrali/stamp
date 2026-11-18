@@ -271,9 +271,12 @@ on_trash_dismissed (AdwToast *toast,
 }
 
 static void
-trash (StampMailView         *self,
-       StampConversationItem *item)
+move_pending (StampMailView         *self,
+              StampConversationItem *item,
+              StampPendingMove       move)
 {
+  gboolean select_next = !is_mobile_view (self);
+
   if (self->trash_toast) {
     g_autoptr (AdwToast) previous_toast = g_steal_pointer (&self->trash_toast);
 
@@ -281,10 +284,24 @@ trash (StampMailView         *self,
     adw_toast_dismiss (previous_toast);
   }
 
-  if (stamp_conversation_list_trash (self->conversation_list, item)) {
+  if (stamp_conversation_list_queue_move (self->conversation_list, item, move, select_next)) {
     AdwToast *toast;
+    const gchar *title;
 
-    toast = adw_toast_new (_("Conversations moved to trash"));
+    switch (move) {
+      case STAMP_PENDING_MOVE_ARCHIVE:
+        title = _("Conversations moved to archives");
+        break;
+      case STAMP_PENDING_MOVE_JUNK:
+        title = _("Conversations moved to junk");
+        break;
+      case STAMP_PENDING_MOVE_TRASH:
+      default:
+        title = _("Conversations moved to trash");
+        break;
+    }
+
+    toast = adw_toast_new (title);
     adw_toast_set_button_label (toast, _("_Undo"));
     adw_toast_set_timeout (toast, 5);
     g_signal_connect (toast, "button-clicked", G_CALLBACK (on_trash_undo), self);
@@ -293,10 +310,18 @@ trash (StampMailView         *self,
     adw_toast_overlay_add_toast (self->toast_overlay, toast);
   }
 
-  stamp_message_list_set_conversation (self->message_list, NULL, NULL);
+  if (move == STAMP_PENDING_MOVE_TRASH || !select_next)
+    stamp_message_list_set_conversation (self->message_list, NULL, NULL);
 
   if (is_mobile_view (self))
     adw_navigation_view_pop_to_tag (self->mobile_nav, "main");
+}
+
+static void
+trash (StampMailView         *self,
+       StampConversationItem *item)
+{
+  move_pending (self, item, STAMP_PENDING_MOVE_TRASH);
 }
 
 static void
@@ -536,12 +561,7 @@ static void
 junk (StampMailView         *self,
       StampConversationItem *item)
 {
-  AdwToast *toast;
-
-  stamp_conversation_list_junk (self->conversation_list, item);
-
-  toast = adw_toast_new (_("Conversations moved to junk"));
-  adw_toast_overlay_add_toast (self->toast_overlay, toast);
+  move_pending (self, item, STAMP_PENDING_MOVE_JUNK);
 }
 
 static void
@@ -560,12 +580,8 @@ on_archive (GSimpleAction *action,
             gpointer       user_data)
 {
   StampMailView *self = STAMP_MAIL_VIEW (user_data);
-  AdwToast *toast;
 
-  stamp_conversation_list_archive (self->conversation_list, NULL);
-
-  toast = adw_toast_new (_("Conversations moved to archives"));
-  adw_toast_overlay_add_toast (self->toast_overlay, toast);
+  move_pending (self, NULL, STAMP_PENDING_MOVE_ARCHIVE);
 }
 
 static void
@@ -694,13 +710,28 @@ static const Shortcut MailShortcuts[] = {
   { "mail.print-current", "<primary>p" },
   { "mail.trash", "<primary>d" },
   { "mail.junk", "<primary>j" },
-  { "mail.archive", "<primary>a" },
   { "mail.trash", "Delete" },
   { "mail.undo-trash", "<primary>z" },
   { "mail.view-source", "<primary>s" },
   { "mail.refresh", "F5" },
   { "mail.toggle-collapsed", "F9" },
 };
+
+static gboolean
+on_archive_shortcut (GtkWidget *widget,
+                     GVariant  *args,
+                     gpointer   user_data)
+{
+  GtkRoot *root = gtk_widget_get_root (widget);
+  GtkWidget *focus = root ? gtk_root_get_focus (root) : NULL;
+
+  if (focus && (GTK_IS_EDITABLE (focus) || GTK_IS_TEXT_VIEW (focus)))
+    return FALSE;
+
+  on_archive (NULL, NULL, widget);
+
+  return TRUE;
+}
 
 static void
 stamp_mail_view_navigate_back (StampMailView *self)
@@ -740,6 +771,13 @@ stamp_mail_view_init (StampMailView *self)
     shortcut = gtk_shortcut_new (gtk_shortcut_trigger_parse_string (MailShortcuts[idx].shortcut), gtk_named_action_new (MailShortcuts[idx].action));
     gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller), shortcut);
   }
+
+  controller = gtk_shortcut_controller_new ();
+  gtk_event_controller_set_propagation_phase (controller, GTK_PHASE_CAPTURE);
+  gtk_widget_add_controller (GTK_WIDGET (self), controller);
+  gtk_shortcut_controller_add_shortcut (GTK_SHORTCUT_CONTROLLER (controller),
+                                        gtk_shortcut_new (gtk_shortcut_trigger_parse_string ("<primary>a"),
+                                                          gtk_callback_action_new (on_archive_shortcut, self, NULL)));
 
   g_signal_connect (self->mail_layout, "notify::layout-name", G_CALLBACK (on_layout_changed), self);
 

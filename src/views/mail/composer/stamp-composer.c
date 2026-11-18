@@ -1299,7 +1299,7 @@ on_schedule_activated (GSimpleAction *action,
   g_object_set_data (G_OBJECT (page), "twelve-hour", GINT_TO_POINTER (use_twelve_hour));
   g_object_set_data (G_OBJECT (page), "am-pm", GINT_TO_POINTER (is_pm));
   g_object_set_data (G_OBJECT (time_row), "page", page);
-  g_signal_connect_object (interface_settings, "changed::clock-format", G_CALLBACK (on_clock_format_changed), time_row, 0);
+  g_signal_connect_object (interface_settings, "changed::clock-format", G_CALLBACK (on_clock_format_changed), time_row, G_CONNECT_DEFAULT);
   g_object_set_data_full (G_OBJECT (page), "interface-settings", g_object_ref (interface_settings), g_object_unref);
 
   adw_alert_dialog_set_extra_child (ADW_ALERT_DIALOG (dialog), page);

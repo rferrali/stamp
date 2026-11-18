@@ -76,6 +76,18 @@ stamp_conversation_list_mark_flag_selected_messages (StampConversationList *self
 void
 stamp_conversation_list_unselect (StampConversationList *self);
 
+typedef enum {
+  STAMP_PENDING_MOVE_TRASH,
+  STAMP_PENDING_MOVE_ARCHIVE,
+  STAMP_PENDING_MOVE_JUNK,
+} StampPendingMove;
+
+gboolean
+stamp_conversation_list_queue_move (StampConversationList *self,
+                                    StampConversationItem *item,
+                                    StampPendingMove       move,
+                                    gboolean               select_next);
+
 gboolean
 stamp_conversation_list_trash (StampConversationList *self,
                                 StampConversationItem *item);
@@ -112,14 +124,6 @@ stamp_conversation_list_select_relative (StampConversationList *self,
 StampConversationItem *
 stamp_conversation_list_get_adjacent_item (StampConversationList *self,
                                            gint                    offset);
-
-void
-stamp_conversation_list_junk (StampConversationList *self,
-                               StampConversationItem *item);
-
-void
-stamp_conversation_list_archive (StampConversationList *self,
-                                  StampConversationItem *item);
 
 void
 stamp_conversation_list_move_conversation (StampConversationList *self,
