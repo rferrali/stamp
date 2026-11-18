@@ -48,7 +48,18 @@ on_user_message_received (WebKitWebPage     *page,
       (void)flush;
     }
 
-    html_value = jsc_context_evaluate (jsc_context, "document.querySelector('body').innerHTML;", -1);
+    html_value = jsc_context_evaluate (jsc_context,
+                                       "(function () {"
+                                       "  var b = document.body.cloneNode(true);"
+                                       "  [].forEach.call(b.querySelectorAll('.stamp-quote-expand-btn'), function (e) { e.remove(); });"
+                                       "  [].forEach.call(b.querySelectorAll('blockquote.stamp-quote-processed'), function (q) {"
+                                       "    q.classList.remove('stamp-quote-processed', 'stamp-quote-collapsed');"
+                                       "    q.style.removeProperty('margin-bottom');"
+                                       "    if (!q.getAttribute('class')) q.removeAttribute('class');"
+                                       "    if (!q.getAttribute('style')) q.removeAttribute('style');"
+                                       "  });"
+                                       "  return b.innerHTML;"
+                                       "})();", -1);
     plain_value = jsc_context_evaluate (jsc_context, "document.querySelector('body').innerText;", -1);
     unquoted_value = jsc_context_evaluate (jsc_context,
                                            "(function(){var c=document.body.cloneNode(true);"
