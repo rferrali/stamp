@@ -522,16 +522,18 @@ stamp_webview_get_body_html (StampWebView        *self,
 }
 
 gchar *
-stamp_webview_get_body_html_finish (StampWebView  *self,
-                                    GAsyncResult  *res,
-                                    gchar        **out_plain_text,
-                                    GError       **error)
+stamp_webview_get_body_html_finish_full (StampWebView  *self,
+                                         GAsyncResult  *res,
+                                         gchar        **out_plain_text,
+                                         gchar        **out_unquoted_text,
+                                         GError       **error)
 {
   g_autoptr (GError) local_error = NULL;
   g_autoptr (WebKitUserMessage) response = webkit_web_view_send_message_to_page_finish (WEBKIT_WEB_VIEW (self), res, &local_error);
   GVariant *parameters;
   const gchar *html;
   const gchar *plain;
+  const gchar *unquoted;
 
   if (local_error) {
     g_propagate_error (error, g_steal_pointer (&local_error));
@@ -551,12 +553,24 @@ stamp_webview_get_body_html_finish (StampWebView  *self,
     return NULL;
   }
 
-  g_variant_get (parameters, "(&s&s)", &html, &plain);
+  g_variant_get (parameters, "(&s&s&s)", &html, &plain, &unquoted);
 
   if (out_plain_text)
     *out_plain_text = g_strdup (plain);
 
+  if (out_unquoted_text)
+    *out_unquoted_text = g_strdup (unquoted);
+
   return g_strdup (html);
+}
+
+gchar *
+stamp_webview_get_body_html_finish (StampWebView  *self,
+                                    GAsyncResult  *res,
+                                    gchar        **out_plain_text,
+                                    GError       **error)
+{
+  return stamp_webview_get_body_html_finish_full (self, res, out_plain_text, NULL, error);
 }
 
 static void

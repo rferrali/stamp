@@ -41,6 +41,7 @@ on_user_message_received (WebKitWebPage     *page,
     WebKitUserMessage *reply;
     g_autoptr (JSCValue) html_value = NULL;
     g_autoptr (JSCValue) plain_value = NULL;
+    g_autoptr (JSCValue) unquoted_value = NULL;
 
     if (g_variant_get_boolean (parameters)) {
       g_autoptr (JSCValue) flush = jsc_context_evaluate (jsc_context, "", -1);
@@ -49,11 +50,16 @@ on_user_message_received (WebKitWebPage     *page,
 
     html_value = jsc_context_evaluate (jsc_context, "document.querySelector('body').innerHTML;", -1);
     plain_value = jsc_context_evaluate (jsc_context, "document.querySelector('body').innerText;", -1);
+    unquoted_value = jsc_context_evaluate (jsc_context,
+                                           "(function(){var c=document.body.cloneNode(true);"
+                                           "c.querySelectorAll('blockquote').forEach(function(e){e.remove();});"
+                                           "return c.textContent;})();", -1);
 
     reply = webkit_user_message_new ("get-body-html",
-                                     g_variant_new ("(ss)",
+                                     g_variant_new ("(sss)",
                                                     jsc_value_to_string (html_value),
-                                                    jsc_value_to_string (plain_value)));
+                                                    jsc_value_to_string (plain_value),
+                                                    jsc_value_to_string (unquoted_value)));
     webkit_user_message_send_reply (message, reply);
   } else if (g_strcmp0 (name, "get-page-height") == 0) {
     g_autoptr (JSCValue) value = NULL;

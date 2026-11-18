@@ -607,13 +607,17 @@ check_attachment_reminder (StampComposer *self,
     "see attached",
     NULL
   };
+  g_autofree char *body_lower = NULL;
 
   if (self->attachments != NULL)
     return FALSE;
 
-  for (gint i = 0; keywords[i] != NULL; i++) {
-    g_autofree char *body_lower = g_ascii_strdown (body, -1);
+  if (body == NULL)
+    return FALSE;
 
+  body_lower = g_utf8_strdown (body, -1);
+
+  for (gint i = 0; keywords[i] != NULL; i++) {
     if (g_strrstr (body_lower, keywords[i]))
       return TRUE;
   }
@@ -667,7 +671,8 @@ on_get_body_html (GObject      *source_object,
   StampAccount *account;
   g_autoptr (GError) error = NULL;
   g_autofree char *body_plain = NULL;
-  g_autofree char *body = stamp_webview_get_body_html_finish (web_view, res, &body_plain, &error);
+  g_autofree char *body_unquoted = NULL;
+  g_autofree char *body = stamp_webview_get_body_html_finish_full (web_view, res, &body_plain, &body_unquoted, &error);
   g_autoptr (CamelMimeMessage) mime_message = NULL;
   g_autoptr (CamelInternetAddress) sender = NULL;
   g_autoptr (CamelInternetAddress) recipient = NULL;
@@ -693,7 +698,7 @@ on_get_body_html (GObject      *source_object,
     return;
   }
 
-  if (!self->ignore_missing_attachments && check_attachment_reminder (self, body)) {
+  if (!self->ignore_missing_attachments && check_attachment_reminder (self, body_unquoted)) {
     set_send_in_progress (self, FALSE);
     set_send_action_enabled (self, FALSE);
     mark_dirty (self);

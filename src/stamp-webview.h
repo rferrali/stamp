@@ -55,6 +55,13 @@ stamp_webview_get_body_html (StampWebView        *self,
                              gpointer             user_data);
 
 gchar *
+stamp_webview_get_body_html_finish_full (StampWebView  *self,
+                                         GAsyncResult  *res,
+                                         gchar        **out_plain_text,
+                                         gchar        **out_unquoted_text,
+                                         GError       **error);
+
+gchar *
 stamp_webview_get_body_html_finish (StampWebView  *self,
                                     GAsyncResult  *res,
                                     gchar         **out_plain_text,
