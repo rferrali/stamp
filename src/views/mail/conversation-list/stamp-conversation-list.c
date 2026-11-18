@@ -41,6 +41,7 @@ enum FilterMode {
   FILTER_MODE_STARRED,
   FILTER_MODE_ATTACHMENT,
   FILTER_MODE_UNREAD,
+  FILTER_MODE_CATEGORY,
 };
 
 enum SortMode {
@@ -113,6 +114,9 @@ struct _StampConversationList {
   GList *collection_folders;
 
   enum FilterMode filter_mode;
+  gchar *filter_category;
+  GMenu *category_menu;
+  gchar *category_menu_key;
   enum SortMode sort_mode;
   gboolean important_first;
   gboolean claimed;
@@ -568,6 +572,19 @@ filter_func (gpointer object,
       return stamp_conversation_item_get_flagged (item);
     case FILTER_MODE_ATTACHMENT:
       return stamp_conversation_item_has_attachment (item);
+    case FILTER_MODE_CATEGORY: {
+      g_autoptr (GPtrArray) labels = stamp_conversation_item_get_labels (item);
+
+      if (!labels || !self->filter_category)
+        return FALSE;
+
+      for (guint idx = 0; idx < labels->len; idx++) {
+        if (g_strcmp0 (labels->pdata[idx], self->filter_category) == 0)
+          return TRUE;
+      }
+
+      return FALSE;
+    }
     case FILTER_MODE_ALL:
     default:
       break;
@@ -599,6 +616,54 @@ on_category_toggled (GSimpleAction *action,
 }
 
 static void
+rebuild_category_filter_menu (StampConversationList *self,
+                              GList                 *categories)
+{
+  g_autoptr (GString) key = g_string_new (NULL);
+
+  if (!self->category_menu)
+    return;
+
+  for (GList *iter = categories; iter && iter->data; iter = g_list_next (iter))
+    g_string_append_printf (key, "%s\n", stamp_category_get_name (iter->data));
+
+  if (g_strcmp0 (key->str, self->category_menu_key) == 0)
+    return;
+
+  g_set_str (&self->category_menu_key, key->str);
+
+  g_menu_remove_all (self->category_menu);
+
+  for (GList *iter = categories; iter && iter->data; iter = g_list_next (iter)) {
+    g_autoptr (GString) name = g_string_new (stamp_category_get_name (iter->data));
+    g_autofree gchar *target = NULL;
+    g_autoptr (GMenuItem) item = NULL;
+
+    g_string_replace (name, " ", "_", 0);
+    target = g_strdup_printf ("category:%s", name->str);
+
+    item = g_menu_item_new (stamp_category_get_name (iter->data), NULL);
+    g_menu_item_set_action_and_target_value (item, "app.mail-filter", g_variant_new_string (target));
+    g_menu_append_item (self->category_menu, item);
+  }
+
+  if (self->filter_mode == FILTER_MODE_CATEGORY) {
+    g_autofree gchar *current = g_strdup (self->filter_category);
+    gboolean found = FALSE;
+
+    for (GList *iter = categories; iter && iter->data && !found; iter = g_list_next (iter)) {
+      g_autoptr (GString) name = g_string_new (stamp_category_get_name (iter->data));
+
+      g_string_replace (name, " ", "_", 0);
+      found = g_strcmp0 (name->str, current) == 0;
+    }
+
+    if (!found)
+      g_action_group_activate_action (G_ACTION_GROUP (g_application_get_default ()), "mail-filter", g_variant_new_string ("all-mails"));
+  }
+}
+
+static void
 rebuild_category_actions (StampConversationList *self)
 {
   GActionMap *map = G_ACTION_MAP (self->actions);
@@ -610,6 +675,7 @@ rebuild_category_actions (StampConversationList *self)
     return;
 
   categories = stamp_account_get_categories (self->account);
+  rebuild_category_filter_menu (self, categories);
 
   if (old_names) {
     for (guint idx = 0; old_names[idx]; idx++)
@@ -2365,6 +2431,10 @@ stamp_conversation_list_dispose (GObject *object)
   g_clear_handle_id (&self->banner_timer, g_source_remove);
   g_clear_handle_id (&self->progress_timer, g_source_remove);
 
+  g_clear_pointer (&self->filter_category, g_free);
+  g_clear_pointer (&self->category_menu_key, g_free);
+  g_clear_object (&self->category_menu);
+
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
 
@@ -2631,6 +2701,10 @@ on_filter_activate (GSimpleAction *action,
     self->filter_mode = FILTER_MODE_ATTACHMENT;
   else if (g_strcmp0 (value, "unread") == 0)
     self->filter_mode = FILTER_MODE_UNREAD;
+  else if (g_str_has_prefix (value, "category:")) {
+    self->filter_mode = FILTER_MODE_CATEGORY;
+    g_set_str (&self->filter_category, value + strlen ("category:"));
+  }
 
   gtk_widget_set_visible (GTK_WIDGET (self->sort_is_active), g_strcmp0 (value, "all-mails") != 0);
 
@@ -3037,6 +3111,9 @@ stamp_conversation_list_init (StampConversationList *self)
   g_menu_append (filter_menu, _("Attachment"), "app.mail-filter::attachment");
   g_menu_append (filter_menu, _("Unread"), "app.mail-filter::unread");
   g_menu_append_section (menu, _("Filter"), G_MENU_MODEL (filter_menu));
+
+  self->category_menu = g_menu_new ();
+  g_menu_append_section (menu, _("Categories"), G_MENU_MODEL (self->category_menu));
 
   sort_menu = g_menu_new ();
   g_menu_append_section (menu, _("Sort Order"), G_MENU_MODEL (sort_menu));
