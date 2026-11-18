@@ -359,30 +359,40 @@ get_combined_thread (StampAccount *account,
   g_autoptr (GPtrArray) items = NULL;
   g_autoptr (GPtrArray) uids = NULL;
   g_autoptr (GPtrArray) sent_uids = NULL;
+  g_autoptr (GHashTable) seen_ids = NULL;
 
   sent_folder = stamp_account_get_mail_sent_folder (account);
   if (!sent_folder || sent_folder == folder)
     return camel_folder_thread_new (folder, NULL, CAMEL_FOLDER_THREAD_FLAG_SORT);
 
   items = g_ptr_array_new_full (0, g_object_unref);
+  seen_ids = g_hash_table_new_full (g_int64_hash, g_int64_equal, g_free, NULL);
 
   camel_folder_summary_prepare_fetch_all (camel_folder_get_folder_summary (folder), NULL);
   camel_folder_summary_prepare_fetch_all (camel_folder_get_folder_summary (sent_folder), NULL);
 
   uids = camel_folder_dup_uids (folder);
-  for (guint i = 0; i < uids->len; i++) {
-    CamelMessageInfo *info = camel_folder_get_message_info (folder, uids->pdata[i]);
-
-    if (info)
-      g_ptr_array_add (items, info);
-  }
-
   sent_uids = camel_folder_dup_uids (sent_folder);
-  for (guint i = 0; i < sent_uids->len; i++) {
-    CamelMessageInfo *info = camel_folder_get_message_info (sent_folder, sent_uids->pdata[i]);
 
-    if (info)
+  for (guint pass = 0; pass < 2; pass++) {
+    CamelFolder *src = pass == 0 ? folder : sent_folder;
+    GPtrArray *src_uids = pass == 0 ? uids : sent_uids;
+
+    for (guint i = 0; i < src_uids->len; i++) {
+      CamelMessageInfo *info = camel_folder_get_message_info (src, src_uids->pdata[i]);
+      guint64 id;
+
+      if (!info)
+        continue;
+
+      id = camel_message_info_get_message_id (info);
+      if (id && !g_hash_table_add (seen_ids, g_memdup2 (&id, sizeof (id)))) {
+        g_object_unref (info);
+        continue;
+      }
+
       g_ptr_array_add (items, info);
+    }
   }
 
   if (items->len == 0)
