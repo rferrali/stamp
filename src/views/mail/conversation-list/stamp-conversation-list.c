@@ -53,6 +53,10 @@ enum SortMode {
 static void
 trash_entry_free (gpointer data);
 
+#define REBUILD_THROTTLE_MS 300
+#define BANNER_DELAY_MS 3000
+#define PROGRESS_INTERVAL_MS 1000
+
 struct _StampConversationList {
   AdwBin parent_instance;
 
@@ -72,6 +76,8 @@ struct _StampConversationList {
   gboolean keep_scroll;
   GtkWidget *sort_or_filter_button;
   GtkWidget *mail_list_stack;
+  GtkWidget *loading_banner;
+  gboolean refreshing;
   GtkBitset *selected;
   GtkToggleButton *sidebar_button;
   GtkBox *sort_is_active;
@@ -86,6 +92,8 @@ struct _StampConversationList {
   GtkNoSelection *multi_selection;
   GCancellable *cancellable;
   GCancellable *thread_cancellable;
+  gboolean building;
+  gboolean rebuild_again;
   GCancellable *transfer_cancellable;
   GHashTable *folders;
   GList *moved_messages;
@@ -121,6 +129,9 @@ struct _StampConversationList {
   GSimpleActionGroup *actions;
   GMenu *move_menu;
   guint load_folder_handler;
+  guint banner_timer;
+  guint progress_timer;
+  guint progress_count;
 };
 
 G_DEFINE_FINAL_TYPE (StampConversationList, stamp_conversation_list, ADW_TYPE_BIN);
@@ -134,6 +145,7 @@ static GParamSpec *properties[PROP_STATE + 1];
 enum {
   CONVERSATION_SELECTED,
   CONVERSATION_TRASH,
+  REFRESH_STATE,
   LAST_SIGNAL
 };
 
@@ -233,14 +245,88 @@ remember_selected_uid (StampConversationList *self)
 }
 
 static void
+schedule_rebuild (StampConversationList *self)
+{
+  if (self->building) {
+    self->rebuild_again = TRUE;
+    return;
+  }
+
+  g_clear_handle_id (&self->load_folder_handler, g_source_remove);
+  self->load_folder_handler = g_timeout_add_once (REBUILD_THROTTLE_MS, update_folder_idle, self);
+}
+
+static void
+update_banner_text (StampConversationList *self)
+{
+  g_autofree gchar *text = NULL;
+  guint count = camel_folder_summary_count (camel_folder_get_folder_summary (self->folder));
+
+  self->progress_count = count;
+  text = g_strdup_printf (ngettext ("Loading mails… %u mail received", "Loading mails… %u mails received", count), count);
+  adw_banner_set_title (ADW_BANNER (self->loading_banner), text);
+}
+
+static void
+reveal_loading_banner (gpointer user_data)
+{
+  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+
+  self->banner_timer = 0;
+  if (self->refreshing)
+    adw_banner_set_revealed (ADW_BANNER (self->loading_banner), TRUE);
+}
+
+static gboolean
+on_progress_timeout (gpointer user_data)
+{
+  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+  guint count;
+
+  if (!self->folder || !self->refreshing) {
+    self->progress_timer = 0;
+    return G_SOURCE_REMOVE;
+  }
+
+  count = camel_folder_summary_count (camel_folder_get_folder_summary (self->folder));
+  if (count != self->progress_count) {
+    update_banner_text (self);
+    schedule_rebuild (self);
+  }
+
+  return G_SOURCE_CONTINUE;
+}
+
+static void
+update_loading_progress (StampConversationList *self)
+{
+  if (!self->folder || !self->refreshing || self->is_collection) {
+    g_clear_handle_id (&self->banner_timer, g_source_remove);
+    g_clear_handle_id (&self->progress_timer, g_source_remove);
+    adw_banner_set_revealed (ADW_BANNER (self->loading_banner), FALSE);
+    return;
+  }
+
+  if (!self->progress_timer)
+    self->progress_timer = g_timeout_add (PROGRESS_INTERVAL_MS, on_progress_timeout, self);
+  update_banner_text (self);
+
+  if (!adw_banner_get_revealed (ADW_BANNER (self->loading_banner)) && !self->banner_timer)
+    self->banner_timer = g_timeout_add_once (BANNER_DELAY_MS, reveal_loading_banner, self);
+}
+
+static void
 on_conversation_list_folder_changed (CamelFolder           *folder,
                                      CamelFolderChangeInfo *changes,
                                      gpointer               user_data)
 {
   StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+  gboolean unknown_changed = FALSE;
 
   if (self->full_name)
     g_hash_table_remove (self->thread_cache, self->full_name);
+
+  update_loading_progress (self);
 
   if (changes->uid_changed && changes->uid_changed->len > 0) {
     GPtrArray *changed = changes->uid_changed;
@@ -253,13 +339,15 @@ on_conversation_list_folder_changed (CamelFolder           *folder,
 
       if (item)
         stamp_conversation_item_update (item, message_info);
+      else
+        unknown_changed = TRUE;
     }
   }
 
-  if ((changes->uid_added && changes->uid_added->len > 0) || (changes->uid_removed && changes->uid_removed->len > 0)) {
+  if (unknown_changed || (changes->uid_added && changes->uid_added->len > 0) || (changes->uid_removed && changes->uid_removed->len > 0)) {
     remember_selected_uid (self);
-    g_clear_handle_id (&self->load_folder_handler, g_source_remove);
-    self->load_folder_handler = g_idle_add_once (update_folder_idle, self);
+
+    schedule_rebuild (self);
   }
 }
 
@@ -539,6 +627,25 @@ rebuild_category_actions (StampConversationList *self)
 }
 
 static void
+update_stack_page (StampConversationList *self)
+{
+  gboolean loading = !self->is_collection && self->folder && (self->refreshing || self->building);
+  gboolean empty = g_list_model_get_n_items (G_LIST_MODEL (self->list_store)) == 0;
+
+  gtk_stack_set_visible_child_name (GTK_STACK (self->mail_list_stack), empty && !loading ? "empty" : "list");
+}
+
+static void
+reset_loading_state (StampConversationList *self)
+{
+  self->refreshing = FALSE;
+  self->building = FALSE;
+  self->rebuild_again = FALSE;
+  g_cancellable_cancel (self->thread_cancellable);
+  update_loading_progress (self);
+}
+
+static void
 on_items_changed (GListModel *model,
                   guint       position,
                   guint       removed,
@@ -546,14 +653,8 @@ on_items_changed (GListModel *model,
                   gpointer    user_data)
 {
   StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
-  guint n_items = g_list_model_get_n_items (model);
 
-  if (n_items == 0) {
-    gtk_stack_set_visible_child_name (GTK_STACK (self->mail_list_stack), "empty");
-  } else {
-    gtk_stack_set_visible_child_name (GTK_STACK (self->mail_list_stack), "list");
-  }
-
+  update_stack_page (self);
   rebuild_category_actions (self);
 }
 
@@ -941,14 +1042,23 @@ on_thread_built (GObject      *source_object,
       g_task_get_cancellable (task) != self->thread_cancellable) {
     g_clear_pointer (&built, thread_result_free);
 
-    if (g_task_get_cancellable (task) == self->thread_cancellable)
+    if (g_task_get_cancellable (task) == self->thread_cancellable) {
+      self->building = FALSE;
       gtk_widget_set_visible (self->spinner, FALSE);
+    }
 
     return;
   }
 
+  self->building = FALSE;
+
   display_thread (self, built->thread, built->items);
-  cache_thread (self, self->full_name, self->folder, built->thread);
+  update_stack_page (self);
+
+  if (self->rebuild_again)
+    schedule_rebuild (self);
+  else
+    cache_thread (self, self->full_name, self->folder, built->thread);
   thread_result_free (built);
 }
 
@@ -969,9 +1079,11 @@ rebuild_list (StampConversationList *self)
   else
     cached = NULL;
 
-  gtk_stack_set_visible_child_name (GTK_STACK (self->mail_list_stack), "list");
+  self->building = TRUE;
+  update_stack_page (self);
   gtk_widget_set_visible (self->spinner, TRUE);
 
+  self->rebuild_again = FALSE;
   g_cancellable_cancel (self->thread_cancellable);
   g_clear_object (&self->thread_cancellable);
   self->thread_cancellable = g_cancellable_new ();
@@ -989,20 +1101,72 @@ rebuild_list (StampConversationList *self)
   g_task_run_in_thread (task, thread_build_task);
 }
 
+typedef struct {
+  StampConversationList *self;
+  StampAccount *account;
+  gchar *full_name;
+} RefreshData;
+
+static void
+refresh_data_free (RefreshData *data)
+{
+  g_clear_object (&data->self);
+  g_clear_object (&data->account);
+  g_free (data->full_name);
+  g_free (data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (RefreshData, refresh_data_free)
+
 static void
 on_folder_refreshed (GObject      *source,
                      GAsyncResult *res,
                      gpointer      user_data)
 {
-  StampConversationList *self = STAMP_CONVERSATION_LIST (user_data);
+  g_autoptr (RefreshData) data = user_data;
+  StampConversationList *self = data->self;
+  StampAccount *account = data->account;
+  const gchar *full_name = data->full_name;
   CamelFolder *folder = CAMEL_FOLDER (source);
   g_autoptr (GError) error = NULL;
+  gboolean ok;
 
-  if (!camel_folder_refresh_info_finish (folder, res, &error))
+  g_signal_emit (self, signals[REFRESH_STATE], 0, account, full_name, FALSE);
+  stamp_account_set_photo_lookups_paused (account, FALSE);
+
+  ok = camel_folder_refresh_info_finish (folder, res, &error);
+
+  if (folder == self->folder) {
+    self->refreshing = FALSE;
+    update_loading_progress (self);
+  }
+
+  if (!ok && g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
+    return;
+
+  if (!ok)
     g_warning ("Could not refresh folder %s: %s", camel_folder_get_display_name (folder), error->message);
 
   if (folder == self->folder && !self->is_collection)
     rebuild_list (self);
+  else if (folder == self->folder)
+    update_stack_page (self);
+}
+
+static void
+refresh_folder (StampConversationList *self)
+{
+  RefreshData *data = g_new0 (RefreshData, 1);
+
+  data->self = g_object_ref (self);
+  data->account = g_object_ref (self->account);
+  data->full_name = g_strdup (self->full_name);
+
+  self->refreshing = TRUE;
+  update_loading_progress (self);
+  g_signal_emit (self, signals[REFRESH_STATE], 0, data->account, data->full_name, TRUE);
+  stamp_account_set_photo_lookups_paused (data->account, TRUE);
+  camel_folder_refresh_info (self->folder, G_PRIORITY_HIGH, self->cancellable, on_folder_refreshed, data);
 }
 
 static void
@@ -1039,6 +1203,8 @@ on_get_folder (GObject      *source,
   self->folder = g_object_ref (folder);
   g_signal_connect_object (folder, "changed", G_CALLBACK (on_conversation_list_folder_changed), self, G_CONNECT_DEFAULT);
 
+  refresh_folder (self);
+
   rebuild_list (self);
 }
 
@@ -1056,6 +1222,7 @@ stamp_conversation_list_load_folder (StampConversationList *self,
 
   g_clear_handle_id (&self->load_folder_handler, g_source_remove);
   self->keep_scroll = FALSE;
+  reset_loading_state (self);
 
   if (!account)
     return;
@@ -1081,7 +1248,7 @@ stamp_conversation_list_refresh (StampConversationList *self)
     return;
 
   self->keep_scroll = TRUE;
-  camel_folder_refresh_info (self->folder, G_PRIORITY_DEFAULT, self->cancellable, on_folder_refreshed, self);
+  refresh_folder (self);
 }
 
 typedef struct {
@@ -1245,6 +1412,7 @@ stamp_conversation_list_load_collection (StampConversationList *self,
   }
 
   g_clear_handle_id (&self->load_folder_handler, g_source_remove);
+  reset_loading_state (self);
 
   for (iter = self->collection_folders; iter; iter = iter->next)
     g_signal_handlers_disconnect_by_func (iter->data, on_collection_folder_changed, self);
@@ -2183,6 +2351,9 @@ stamp_conversation_list_dispose (GObject *object)
 {
   StampConversationList *self = STAMP_CONVERSATION_LIST (object);
 
+  g_clear_handle_id (&self->banner_timer, g_source_remove);
+  g_clear_handle_id (&self->progress_timer, g_source_remove);
+
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
 
@@ -2269,6 +2440,7 @@ stamp_conversation_list_class_init (StampConversationListClass *klass)
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, spinner);
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, sort_or_filter_button);
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, mail_list_stack);
+  gtk_widget_class_bind_template_child (widget_class, StampConversationList, loading_banner);
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, sidebar_button);
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, sort_is_active);
   gtk_widget_class_bind_template_child (widget_class, StampConversationList, context_menu_model);
@@ -2298,6 +2470,12 @@ stamp_conversation_list_class_init (StampConversationListClass *klass)
                                               0, NULL, NULL, NULL,
                                               G_TYPE_NONE,
                                               1, STAMP_TYPE_CONVERSATION_ITEM);
+
+  signals[REFRESH_STATE] = g_signal_new ("refresh-state", G_OBJECT_CLASS_TYPE (klass),
+                                         G_SIGNAL_RUN_LAST,
+                                         0, NULL, NULL, NULL,
+                                         G_TYPE_NONE,
+                                         3, STAMP_TYPE_ACCOUNT, G_TYPE_STRING, G_TYPE_BOOLEAN);
 
   properties[PROP_STATE] = g_param_spec_boolean ("state",
                                                  NULL,

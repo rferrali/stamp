@@ -59,6 +59,36 @@ enum {
 
 static gint signals[LAST_SIGNAL] = { 0 };
 
+static StampAccountItem *
+find_account_item (StampFolderList *self,
+                   StampAccount    *account)
+{
+  guint n_items = g_list_model_get_n_items (G_LIST_MODEL (self->list_store));
+
+  for (guint idx = 0; idx < n_items; idx++) {
+    g_autoptr (StampItem) item = g_list_model_get_item (G_LIST_MODEL (self->list_store), idx);
+
+    if (STAMP_IS_ACCOUNT_ITEM (item) && stamp_item_get_account (item) == account)
+      return STAMP_ACCOUNT_ITEM (item);
+  }
+
+  return NULL;
+}
+
+static void
+on_refresh_state (StampConversationList *list,
+                  StampAccount          *account,
+                  const gchar           *full_name,
+                  gboolean               busy,
+                  gpointer               user_data)
+{
+  StampFolderList *self = STAMP_FOLDER_LIST (user_data);
+  StampAccountItem *account_item = find_account_item (self, account);
+
+  if (account_item)
+    stamp_account_item_set_selected_busy (account_item, full_name, busy);
+}
+
 static void
 on_selection_changed (GtkSelectionModel *selection,
                       guint              position,
@@ -83,6 +113,13 @@ on_selection_changed (GtkSelectionModel *selection,
     const gchar *full_name = stamp_folder_item_get_full_name (STAMP_FOLDER_ITEM (item));
 
     g_settings_set (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_SELECTED_FOLDER, "(ss)", stamp_account_get_name (account), full_name);
+
+    for (guint idx = 0; idx < g_list_model_get_n_items (G_LIST_MODEL (self->list_store)); idx++) {
+      g_autoptr (StampItem) account_item = g_list_model_get_item (G_LIST_MODEL (self->list_store), idx);
+
+      if (STAMP_IS_ACCOUNT_ITEM (account_item))
+        stamp_account_item_set_selected_folder (STAMP_ACCOUNT_ITEM (account_item), stamp_item_get_account (account_item) == account ? full_name : NULL);
+    }
 
     g_signal_emit (self, signals[FOLDER_SELECTED], 0, account, full_name);
   }
@@ -789,6 +826,7 @@ stamp_folder_list_set_conversation_list (StampFolderList       *self,
   g_return_if_fail (STAMP_IS_FOLDER_LIST (self));
 
   self->conversation_list = conversation_list;
+  g_signal_connect_object (conversation_list, "refresh-state", G_CALLBACK (on_refresh_state), self, G_CONNECT_DEFAULT);
 }
 
 static void

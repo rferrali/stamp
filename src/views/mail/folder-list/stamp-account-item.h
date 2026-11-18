@@ -36,5 +36,14 @@ stamp_account_item_new (StampAccount *account);
 void
 stamp_account_item_load (StampAccountItem *self);
 
+void
+stamp_account_item_set_selected_folder (StampAccountItem *self,
+                                        const gchar      *full_name);
+
+void
+stamp_account_item_set_selected_busy (StampAccountItem *self,
+                                      const gchar      *full_name,
+                                      gboolean          busy);
+
 G_END_DECLS
 

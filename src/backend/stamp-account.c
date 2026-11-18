@@ -471,6 +471,14 @@ stamp_account_get_photo (StampAccount *self,
   stamp_photo_cache_lookup_async (self->photo_cache, sender, NULL, cancellable, callback, user_data);
 }
 
+void
+stamp_account_set_photo_lookups_paused (StampAccount *self,
+                                        gboolean      paused)
+{
+  if (self->photo_cache)
+    stamp_photo_cache_set_paused (self->photo_cache, paused);
+}
+
 gpointer
 stamp_account_get_photo_finish (StampAccount  *session,
                                 GAsyncResult  *result,

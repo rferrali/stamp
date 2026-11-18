@@ -163,6 +163,10 @@ stamp_account_address_book_is_search_only (StampAccount *self,
                                            EClient      *client);
 
 void
+stamp_account_set_photo_lookups_paused (StampAccount *self,
+                                        gboolean      paused);
+
+void
 stamp_account_get_photo (StampAccount        *self,
                          const gchar          *sender,
                          GCancellable        *cancellable,

@@ -35,6 +35,10 @@ void
 stamp_photo_cache_free (StampPhotoCache *cache);
 
 void
+stamp_photo_cache_set_paused (StampPhotoCache *cache,
+                              gboolean         paused);
+
+void
 stamp_photo_cache_lookup_async (StampPhotoCache *cache,
                                 const gchar     *search_string,
                                 const gchar     *book_uid,

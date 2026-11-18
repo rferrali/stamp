@@ -38,7 +38,9 @@ struct _StampAccountItem {
 
   GQueue *refresh_queue;
   gboolean refresh_queue_running;
-  gboolean first_refresh;
+  gchar *selected_folder;
+  GCancellable *queue_cancellable;
+  gchar *busy_folder;
   guint refresh_folder_handler;
 };
 
@@ -452,6 +454,11 @@ stamp_account_item_start_next_refresh (StampAccountItem *self)
 {
   GListStore *store = stamp_item_get_list_store (STAMP_ITEM (self));
 
+  if (self->busy_folder) {
+    self->refresh_queue_running = FALSE;
+    return FALSE;
+  }
+
   while (!g_queue_is_empty (self->refresh_queue)) {
     g_autoptr (StampFolderItem) folder_item = g_queue_pop_head (self->refresh_queue);
     CamelFolder *folder = stamp_folder_item_get_folder (folder_item);
@@ -461,7 +468,9 @@ stamp_account_item_start_next_refresh (StampAccountItem *self)
 
       g_debug ("%s: Refreshing %s", G_STRFUNC, camel_folder_get_display_name (folder));
       stamp_item_set_loading (STAMP_ITEM (folder_item), TRUE);
-      camel_folder_refresh_info (folder, G_PRIORITY_DEFAULT, self->cancellable, on_refresh, self);
+      g_clear_object (&self->queue_cancellable);
+      self->queue_cancellable = g_cancellable_new ();
+      camel_folder_refresh_info (folder, G_PRIORITY_DEFAULT, self->queue_cancellable, on_refresh, self);
 
       return TRUE;
     }
@@ -487,6 +496,11 @@ on_refresh (GObject      *source,
     stamp_item_set_loading (STAMP_ITEM (folder_item), FALSE);
 
   if (!camel_folder_refresh_info_finish (folder, result, &error)) {
+    if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+      stamp_account_item_start_next_refresh (self);
+      return;
+    }
+
     if (!folder_item || !stamp_item_get_error (STAMP_ITEM (folder_item)))
       g_warning ("Could not refresh folder %s: %s", camel_folder_get_display_name (folder), error->message);
 
@@ -500,75 +514,121 @@ on_refresh (GObject      *source,
   stamp_account_item_start_next_refresh (self);
 }
 
+typedef enum {
+  REFRESH_PRIO_SELECTED,
+  REFRESH_PRIO_INBOX,
+  REFRESH_PRIO_SPECIAL,
+  REFRESH_PRIO_NORMAL,
+  REFRESH_PRIO_HEAVY,
+  REFRESH_PRIO_LAST
+} RefreshPriority;
+
+static RefreshPriority
+get_refresh_priority (StampAccountItem *self,
+                      StampFolderItem  *folder_item)
+{
+  const gchar *full_name = stamp_folder_item_get_full_name (folder_item);
+  gint type = stamp_folder_item_get_flags (folder_item) & CAMEL_FOLDER_TYPE_MASK;
+
+  if (self->selected_folder && g_strcmp0 (full_name, self->selected_folder) == 0)
+    return REFRESH_PRIO_SELECTED;
+
+  if (type == CAMEL_FOLDER_TYPE_INBOX)
+    return REFRESH_PRIO_INBOX;
+
+  if (type == CAMEL_FOLDER_TYPE_SENT || type == CAMEL_FOLDER_TYPE_DRAFTS)
+    return REFRESH_PRIO_SPECIAL;
+
+  if (type == CAMEL_FOLDER_TYPE_TRASH || type == CAMEL_FOLDER_TYPE_JUNK || type == CAMEL_FOLDER_TYPE_ARCHIVE)
+    return REFRESH_PRIO_HEAVY;
+
+  return REFRESH_PRIO_NORMAL;
+}
+
 static void
-create_queue (StampAccountItem *self,
-              GListStore       *store)
+collect_queue (StampAccountItem *self,
+               GListStore       *store,
+               GQueue           *buckets)
 {
   guint len = g_list_model_get_n_items (G_LIST_MODEL (store));
-  g_autoptr (GPtrArray) priority_folders = g_ptr_array_new_with_free_func (g_object_unref);
-  g_autoptr (GPtrArray) normal_folders = g_ptr_array_new_with_free_func (g_object_unref);
 
   for (guint idx = 0; idx < len; idx++) {
     g_autoptr (StampFolderItem) folder_item = STAMP_FOLDER_ITEM (g_list_model_get_item (G_LIST_MODEL (store), idx));
     GListStore *child_store = stamp_item_get_list_store (STAMP_ITEM (folder_item));
-    CamelFolder *folder = stamp_folder_item_get_folder (folder_item);
-    const gchar *full_name;
 
-    /* First process child folders if present */
-    if (child_store) {
-      create_queue (self, child_store);
-    }
+    if (CAMEL_IS_FOLDER (stamp_folder_item_get_folder (folder_item)))
+      g_queue_push_tail (&buckets[get_refresh_priority (self, folder_item)], g_object_ref (folder_item));
 
-    if (!CAMEL_IS_FOLDER (folder)) {
-      continue;
-    }
-
-    full_name = stamp_folder_item_get_full_name (folder_item);
-
-    /* Prioritize INBOX and its subfolders (including German names) */
-    if (g_str_has_prefix (full_name, "INBOX") ||
-        g_strcmp0 (full_name, "Inbox") == 0 ||
-        g_strcmp0 (full_name, "INBOX") == 0 ||
-        g_strcmp0 (full_name, "Posteingang") == 0 ||
-        g_str_has_prefix (full_name, "Posteingang/")) {
-      g_ptr_array_add (priority_folders, g_steal_pointer (&folder_item));
-    } else {
-      g_ptr_array_add (normal_folders, g_steal_pointer (&folder_item));
-    }
-  }
-
-  /* Add priority folders first (INBOX) */
-  for (guint idx = 0; idx < priority_folders->len; idx++) {
-    StampFolderItem *folder_item = priority_folders->pdata[idx];
-    g_queue_push_tail (self->refresh_queue, g_object_ref (folder_item));
-  }
-
-  /* Then normal folders */
-  for (guint idx = 0; idx < normal_folders->len; idx++) {
-    StampFolderItem *folder_item = normal_folders->pdata[idx];
-    g_queue_push_tail (self->refresh_queue, g_object_ref (folder_item));
+    if (child_store)
+      collect_queue (self, child_store, buckets);
   }
 }
 
-static StampFolderItem *
-find_priority_folder_item (StampAccountItem *self)
+static void
+create_queue (StampAccountItem *self,
+              GListStore       *store)
 {
-  GList *iter;
+  GQueue buckets[REFRESH_PRIO_LAST];
 
-  for (iter = self->refresh_queue->head; iter; iter = g_list_next (iter)) {
-    StampFolderItem *folder_item = STAMP_FOLDER_ITEM (iter->data);
-    const gchar *full_name = stamp_folder_item_get_full_name (folder_item);
+  for (guint idx = 0; idx < REFRESH_PRIO_LAST; idx++)
+    g_queue_init (&buckets[idx]);
 
-    if (g_str_has_prefix (full_name, "INBOX") ||
-        g_strcmp0 (full_name, "Inbox") == 0 ||
-        g_strcmp0 (full_name, "INBOX") == 0 ||
-        g_strcmp0 (full_name, "Posteingang") == 0 ||
-        g_str_has_prefix (full_name, "Posteingang/")) {
-      return folder_item;
-    }
+  collect_queue (self, store, buckets);
+
+  for (guint idx = 0; idx < REFRESH_PRIO_LAST; idx++) {
+    for (GList *link = buckets[idx].head; link; link = link->next)
+      g_queue_push_tail (self->refresh_queue, link->data);
+
+    g_queue_clear (&buckets[idx]);
   }
+}
 
-  return NULL;
+void
+stamp_account_item_set_selected_busy (StampAccountItem *self,
+                                      const gchar      *full_name,
+                                      gboolean          busy)
+{
+  g_autoptr (StampFolderItem) folder_item = NULL;
+
+  g_return_if_fail (STAMP_IS_ACCOUNT_ITEM (self));
+
+  if (!full_name)
+    return;
+
+  folder_item = stamp_account_item_find_item (stamp_item_get_list_store (STAMP_ITEM (self)), full_name);
+  if (folder_item)
+    stamp_item_set_loading (STAMP_ITEM (folder_item), busy);
+
+  if (busy) {
+    g_set_str (&self->busy_folder, full_name);
+    g_cancellable_cancel (self->queue_cancellable);
+
+    if (folder_item && g_queue_remove (self->refresh_queue, folder_item))
+      g_object_unref (folder_item);
+  } else if (g_strcmp0 (self->busy_folder, full_name) == 0) {
+    g_clear_pointer (&self->busy_folder, g_free);
+
+    if (!self->refresh_queue_running)
+      stamp_account_item_start_next_refresh (self);
+  }
+}
+
+void
+stamp_account_item_set_selected_folder (StampAccountItem *self,
+                                        const gchar      *full_name)
+{
+  g_return_if_fail (STAMP_IS_ACCOUNT_ITEM (self));
+
+  if (!g_set_str (&self->selected_folder, full_name))
+    return;
+
+  g_cancellable_cancel (self->queue_cancellable);
+
+  if (g_strcmp0 (self->busy_folder, full_name) != 0)
+    g_clear_pointer (&self->busy_folder, g_free);
+
+  if (!self->refresh_queue_running)
+    stamp_account_item_start_next_refresh (self);
 }
 
 static gboolean
@@ -576,7 +636,6 @@ refresh_folder_main (gpointer user_data)
 {
   StampAccountItem *self = STAMP_ACCOUNT_ITEM (user_data);
   GListStore *store;
-  StampFolderItem *folder_item = NULL;
 
   if (g_cancellable_is_cancelled (self->cancellable)) {
     self->refresh_folder_handler = 0;
@@ -588,24 +647,9 @@ refresh_folder_main (gpointer user_data)
   /* Always refresh the first folder in the queue (which is now prioritized) */
   if (!self->refresh_queue_running) {
     /* Clear the queue before adding new items */
-    g_queue_clear (self->refresh_queue);
+    g_queue_clear_full (self->refresh_queue, g_object_unref);
 
     create_queue (self, store);
-
-    /* On first refresh, prioritize INBOX/Posteingang */
-    if (self->first_refresh) {
-      self->first_refresh = FALSE;
-      folder_item = find_priority_folder_item (self);
-      g_debug ("%s: First refresh - looking for INBOX, found: %p", G_STRFUNC, folder_item);
-
-      if (folder_item) {
-        if (g_queue_find (self->refresh_queue, folder_item)) {
-          g_queue_remove (self->refresh_queue, folder_item);
-        }
-
-        g_queue_push_head (self->refresh_queue, folder_item);
-      }
-    }
 
     stamp_account_item_start_next_refresh (self);
   } else {
@@ -696,10 +740,14 @@ stamp_account_item_dispose (GObject *object)
 
   g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
+  g_cancellable_cancel (self->queue_cancellable);
+  g_clear_object (&self->queue_cancellable);
+  g_clear_pointer (&self->busy_folder, g_free);
 
   g_clear_handle_id (&self->refresh_folder_handler, g_source_remove);
 
   g_clear_object (&self->offline_store);
+  g_clear_pointer (&self->selected_folder, g_free);
 
   G_OBJECT_CLASS (stamp_account_item_parent_class)->dispose (object);
 }
@@ -722,7 +770,6 @@ stamp_account_item_class_init (StampAccountItemClass *klass)
 void
 stamp_account_item_init (StampAccountItem *self)
 {
-  self->first_refresh = TRUE;
 }
 
 StampAccountItem *

@@ -60,7 +60,12 @@ typedef struct _StampPhotoCache {
   gchar *cache_dir;
   gint ref_count;
   gboolean closing;
+  GQueue bimi_queue;
+  guint bimi_running;
+  guint pause_count;
 } StampPhotoCache;
+
+#define STAMP_MAX_BIMI_LOOKUPS 3
 
 typedef struct {
   guint generation;
@@ -95,6 +100,8 @@ stamp_photo_cache_unref (StampPhotoCache *cache)
   g_clear_pointer (&cache->cache_dir, g_free);
   g_free (cache);
 }
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (StampPhotoCache, stamp_photo_cache_unref)
 
 static StampPendingLookup *
 stamp_pending_lookup_ref (StampPendingLookup *pending)
@@ -258,6 +265,13 @@ stamp_photo_cache_free (StampPhotoCache *cache)
 
   cache->closing = TRUE;
   cache->account = NULL;
+
+  while (!g_queue_is_empty (&cache->bimi_queue)) {
+    StampPendingLookup *p = g_queue_pop_head (&cache->bimi_queue);
+
+    g_hash_table_remove (cache->pending, p->email);
+    stamp_pending_lookup_unref (p);
+  }
 
   g_hash_table_iter_init (&iter, cache->pending);
   while (g_hash_table_iter_next (&iter, &key, &value)) {
@@ -451,9 +465,9 @@ stamp_on_contacts_received (GObject      *source,
 }
 
 static void
-on_bimi (GObject      *source,
-         GAsyncResult *res,
-         gpointer      user_data)
+on_bimi_result (GObject      *source,
+                GAsyncResult *res,
+                gpointer      user_data)
 {
   GTask *task = G_TASK (res);
   StampPendingLookup *pending = g_task_get_task_data (task);
@@ -500,14 +514,78 @@ load_bimi (GTask        *task,
     g_task_return_pointer (task, NULL, NULL);
 }
 
+static gboolean
+stamp_pending_is_wanted (StampPendingLookup *pending)
+{
+  for (GSList *l = pending->waiters; l; l = l->next) {
+    StampLookupWaiter *waiter = l->data;
+
+    if (!waiter->cancellable || !g_cancellable_is_cancelled (waiter->cancellable))
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+static void
+stamp_bimi_dispatch (StampPhotoCache     *cache,
+                     GAsyncReadyCallback  callback)
+{
+  while (!cache->closing && cache->pause_count == 0 &&
+         cache->bimi_running < STAMP_MAX_BIMI_LOOKUPS &&
+         !g_queue_is_empty (&cache->bimi_queue)) {
+    StampPendingLookup *pending = g_queue_pop_head (&cache->bimi_queue);
+    g_autoptr (GTask) task = NULL;
+
+    if (!stamp_pending_is_wanted (pending)) {
+      g_hash_table_remove (cache->pending, pending->email);
+      stamp_notify_waiters (pending, NULL);
+      stamp_pending_lookup_unref (pending);
+      continue;
+    }
+
+    task = g_task_new (NULL, pending->cancellable, callback, NULL);
+    g_task_set_source_tag (task, stamp_start_bimi_lookup);
+    g_task_set_task_data (task, pending, (GDestroyNotify)stamp_pending_lookup_unref);
+    cache->bimi_running++;
+    g_task_run_in_thread (task, load_bimi);
+  }
+}
+
+static void
+on_bimi (GObject      *source,
+         GAsyncResult *res,
+         gpointer      user_data)
+{
+  StampPendingLookup *pending = g_task_get_task_data (G_TASK (res));
+  g_autoptr (StampPhotoCache) cache = stamp_photo_cache_ref (pending->cache);
+
+  on_bimi_result (source, res, user_data);
+
+  cache->bimi_running--;
+  stamp_bimi_dispatch (cache, on_bimi);
+}
+
 static void
 stamp_start_bimi_lookup (StampPendingLookup *pending)
 {
-  g_autoptr (GTask) task = g_task_new (NULL, pending->cancellable, on_bimi, NULL);
+  g_queue_push_tail (&pending->cache->bimi_queue, stamp_pending_lookup_ref (pending));
+  stamp_bimi_dispatch (pending->cache, on_bimi);
+}
 
-  g_task_set_source_tag (task, stamp_start_bimi_lookup);
-  g_task_set_task_data (task, stamp_pending_lookup_ref (pending), (GDestroyNotify)stamp_pending_lookup_unref);
-  g_task_run_in_thread (task, load_bimi);
+void
+stamp_photo_cache_set_paused (StampPhotoCache *cache,
+                              gboolean         paused)
+{
+  if (paused) {
+    cache->pause_count++;
+    return;
+  }
+
+  if (cache->pause_count > 0)
+    cache->pause_count--;
+
+  stamp_bimi_dispatch (cache, on_bimi);
 }
 
 /**

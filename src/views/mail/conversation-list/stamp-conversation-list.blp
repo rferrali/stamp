@@ -153,6 +153,11 @@ template $StampConversationList: Adw.Bin {
       };
     }
 
+    [top]
+    Adw.Banner loading_banner {
+      revealed: false;
+    }
+
     content: Stack mail_list_stack {
       StackPage {
         name: "list";
