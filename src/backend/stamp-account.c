@@ -1769,6 +1769,14 @@ send_mail (GTask        *task,
     return;
   }
 
+  if (!out_saved && self->mail->transport_source && e_source_has_extension (self->mail->transport_source, E_SOURCE_EXTENSION_MAIL_TRANSPORT)) {
+    ESourceBackend *backend = e_source_get_extension (self->mail->transport_source, E_SOURCE_EXTENSION_MAIL_TRANSPORT);
+    const gchar *name = e_source_backend_get_backend_name (backend);
+
+    if (g_strcmp0 (name, "microsoft365") == 0 || g_strcmp0 (name, "ews") == 0)
+      out_saved = TRUE;
+  }
+
   stamp_account_append_to_sent_folder (self, out_saved, data->message, NULL, NULL);
 
   if (!camel_service_disconnect_sync (CAMEL_SERVICE (self->mail->transport), TRUE, cancellable, &error)) {
