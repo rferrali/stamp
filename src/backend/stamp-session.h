@@ -20,7 +20,7 @@
 #pragma once
 
 #include <camel/camel.h>
-#include <gtk/gtk.h>
+#include <libedataserver/libedataserver.h>
 
 #include "stamp-signature.h"
 
