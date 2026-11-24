@@ -1762,7 +1762,7 @@ send_mail (GTask        *task,
   StampAccount *self = STAMP_ACCOUNT (source_object);
   SendMailData *data = task_data;
   g_autoptr (GError) error = NULL;
-  gboolean out_saved;
+  gboolean out_saved = FALSE;
 
   if (!camel_service_connect_sync (CAMEL_SERVICE (self->mail->transport), cancellable, &error)) {
     g_warning ("%s: Could not connect to transport service '%s': %s", G_STRFUNC, e_source_get_display_name (self->mail->transport_source), error->message);
@@ -1780,7 +1780,9 @@ send_mail (GTask        *task,
     ESourceBackend *backend = e_source_get_extension (self->mail->transport_source, E_SOURCE_EXTENSION_MAIL_TRANSPORT);
     const gchar *name = e_source_backend_get_backend_name (backend);
 
-    if (g_strcmp0 (name, "microsoft365") == 0 || g_strcmp0 (name, "ews") == 0)
+    /* Graph's sendMail always saves a copy, even if the transport does not report it.
+     * EWS only does so if it reports it, otherwise the message is sent without saving. */
+    if (g_strcmp0 (name, "microsoft365") == 0)
       out_saved = TRUE;
   }
 
