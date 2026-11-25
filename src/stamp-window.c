@@ -68,8 +68,7 @@ on_account_changed (GObject      *object,
                     gpointer      user_data)
 {
   StampWindow *self = STAMP_WINDOW (user_data);
-  StampSession *session = STAMP_SESSION (object);
-  GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (session));
+  GList *accounts = stamp_account_manager_get_accounts (STAMP_ACCOUNT_MANAGER (object));
 
   if (!accounts) {
     adw_view_stack_set_visible_child_name (self->app_view_stack, "welcome");
@@ -82,7 +81,7 @@ static void
 on_startup_finished (GObject  *object,
                      gpointer  user_data)
 {
-  on_account_changed (object, NULL, user_data);
+  on_account_changed (G_OBJECT (stamp_session_get_account_manager (STAMP_SESSION (object))), NULL, user_data);
 }
 
 static void
