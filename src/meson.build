@@ -17,6 +17,7 @@ stamp_sources = [
   'stamp-settings.c',
   'stamp-input-helpers.c',
   'stamp-time-helpers.c',
+  'stamp-ui-helpers.c',
   'stamp-webview.c',
   'stamp-window.c',
   'backend/stamp-scheduler.c',

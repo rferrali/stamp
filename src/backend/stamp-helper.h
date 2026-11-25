@@ -32,9 +32,6 @@ stamp_get_data_dir (void);
 gchar *
 stamp_strip_department (const gchar *str);
 
-void
-stamp_launch_goa (void);
-
 gchar **
 g_strv_remove (const gchar * const *strv,
                const gchar         *str);

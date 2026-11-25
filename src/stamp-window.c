@@ -36,6 +36,7 @@
 #include "stamp-mail-view.h"
 #include "stamp-session.h"
 #include "stamp-settings.h"
+#include "stamp-ui-helpers.h"
 
 struct _StampWindow {
   AdwApplicationWindow parent_instance;

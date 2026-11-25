@@ -19,10 +19,6 @@
 
 #include "stamp-helper.h"
 
-#include <gio/gdesktopappinfo.h>
-
-#include "stamp-application.h"
-
 static gchar *cache_dir = NULL;
 static gchar *data_dir = NULL;
 static GMutex dir_mutex;
@@ -73,26 +69,6 @@ stamp_strip_department (const gchar *str)
 
   return ret;
 }
-
-void
-stamp_launch_goa (void)
-{
-  const gchar *flatpak_id = getenv ("FLATPAK_ID");
-
-  if (flatpak_id) {
-    g_spawn_command_line_async ("flatpak-spawn --host gnome-control-center online-accounts", NULL);
-  } else {
-    StampApplication *self = STAMP_APPLICATION (g_application_get_default ());
-    GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (self));
-    g_autoptr (GError) error = NULL;
-    g_autoptr (GDesktopAppInfo) app_info = g_desktop_app_info_new ("gnome-online-accounts-panel.desktop");
-    g_autoptr (GdkAppLaunchContext) context = NULL;
-
-    context = gdk_display_get_app_launch_context (gtk_widget_get_display (GTK_WIDGET (window)));
-    g_app_info_launch (G_APP_INFO (app_info), NULL, G_APP_LAUNCH_CONTEXT (context), &error);
-  }
-}
-
 
 gchar **
 g_strv_remove (const gchar * const *strv,

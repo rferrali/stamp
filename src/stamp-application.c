@@ -29,6 +29,7 @@
 #include "stamp-preferences.h"
 #include "stamp-scheduler.h"
 #include "stamp-session.h"
+#include "stamp-ui-helpers.h"
 #include "stamp-window.h"
 
 struct _StampApplication {
