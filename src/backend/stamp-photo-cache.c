@@ -21,9 +21,8 @@
 
 #include <string.h>
 
-#include <gdk/gdk.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <glib/gstdio.h>
-#include <gtk/gtk.h>
 #include <libebook/libebook.h>
 #include <libedataserver/libedataserver.h>
 
@@ -145,11 +144,32 @@ stamp_disk_cache_is_valid (const gchar *path)
   return age < STAMP_CACHE_TTL_SEC;
 }
 
-static GdkTexture *
+static gboolean
+stamp_bytes_are_image (const guchar  *data,
+                       gsize          length,
+                       GError       **error)
+{
+  g_autoptr (GdkPixbufLoader) loader = gdk_pixbuf_loader_new ();
+  gboolean ok = gdk_pixbuf_loader_write (loader, data, length, error);
+
+  return gdk_pixbuf_loader_close (loader, ok ? error : NULL) && ok;
+}
+
+static GBytes *
+stamp_bytes_new_if_image (const guchar  *data,
+                          gsize          length,
+                          GError       **error)
+{
+  if (!stamp_bytes_are_image (data, length, error))
+    return NULL;
+
+  return g_bytes_new (data, length);
+}
+
+static GBytes *
 stamp_disk_cache_load (StampPhotoCache *cache,
                        const gchar     *email)
 {
-  GdkTexture *texture;
   g_autoptr (GFile) file = NULL;
   g_autofree char *path = stamp_cache_path_for_email (cache, email, NULL);
 
@@ -158,8 +178,7 @@ stamp_disk_cache_load (StampPhotoCache *cache,
   }
 
   file = g_file_new_for_path (path);
-  texture = gdk_texture_new_from_file (file, NULL);
-  return texture;
+  return g_file_load_bytes (file, NULL, NULL, NULL);
 }
 
 static gboolean
@@ -243,7 +262,7 @@ stamp_photo_cache_new (StampAccount *account)
 {
   StampPhotoCache *cache = g_new0 (StampPhotoCache, 1);
 
-  cache->positive_cache = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_object_unref);
+  cache->positive_cache = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify)g_bytes_unref);
   cache->negative_cache = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   cache->pending = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
   cache->account = account;
@@ -282,12 +301,12 @@ stamp_photo_cache_free (StampPhotoCache *cache)
   stamp_photo_cache_unref (cache);
 }
 
-static GdkTexture *
+static GBytes *
 check_bimi (StampPhotoCache *self,
             const gchar     *email,
             GCancellable    *cancellable)
 {
-  GdkTexture *texture = NULL;
+  GBytes *photo = NULL;
 
   if (g_settings_get_boolean (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_LOAD_BIMI_IMAGES)) {
     g_autoptr (GError) error = NULL;
@@ -314,31 +333,31 @@ check_bimi (StampPhotoCache *self,
         goto negative;
       }
 
-      texture = gdk_texture_new_from_bytes (bytes, &error);
+      photo = stamp_bytes_new_if_image (g_bytes_get_data (bytes, NULL), g_bytes_get_size (bytes), &error);
       if (error) {
-        g_debug ("Could not parse texture from %s: %s", url, error->message);
+        g_debug ("Could not parse image from %s: %s", url, error->message);
       }
 
-      if (texture) {
+      if (photo) {
         stamp_disk_cache_store (self, email, g_bytes_get_data (bytes, NULL), g_bytes_get_size (bytes));
       }
     }
   }
 
 negative:
-  return texture;
+  return photo;
 }
 
 static void
 stamp_notify_waiters (StampPendingLookup *pending,
-                      GdkTexture         *texture)
+                      GBytes             *photo)
 {
   for (GSList *l = pending->waiters; l; l = l->next) {
     StampLookupWaiter *waiter = l->data;
     gboolean call = !pending->cache->closing && (!waiter->cancellable || !g_cancellable_is_cancelled (waiter->cancellable));
 
     if (call && waiter->callback)
-      waiter->callback (texture ? g_object_ref (texture) : NULL, waiter->user_data);
+      waiter->callback (photo ? g_bytes_ref (photo) : NULL, waiter->user_data);
 
     if (waiter->cancellable)
       g_object_unref (waiter->cancellable);
@@ -351,12 +370,12 @@ stamp_notify_waiters (StampPendingLookup *pending,
   stamp_pending_lookup_unref (pending);
 }
 
-static GdkTexture *
-stamp_texture_from_contact (StampPhotoCache *cache,
-                            const gchar     *email,
-                            EContact        *contact)
+static GBytes *
+stamp_photo_from_contact (StampPhotoCache *cache,
+                          const gchar     *email,
+                          EContact        *contact)
 {
-  g_autoptr (GdkTexture) texture = NULL;
+  GBytes *photo_bytes = NULL;
   g_autoptr (GError) error = NULL;
   EContactPhoto *photo = e_contact_get (contact, E_CONTACT_PHOTO);
 
@@ -366,12 +385,10 @@ stamp_texture_from_contact (StampPhotoCache *cache,
   }
 
   if (photo->type == E_CONTACT_PHOTO_TYPE_INLINED) {
-    g_autoptr (GBytes) bytes = g_bytes_new (photo->data.inlined.data, photo->data.inlined.length);
-
     g_debug ("%s: Found inline photo for '%s'", G_STRFUNC, email);
 
-    texture = gdk_texture_new_from_bytes (bytes, NULL);
-    if (texture)
+    photo_bytes = stamp_bytes_new_if_image (photo->data.inlined.data, photo->data.inlined.length, NULL);
+    if (photo_bytes)
       stamp_disk_cache_store (cache, email, photo->data.inlined.data, photo->data.inlined.length);
     else
       g_warning ("%s: Could not parse inline photo for '%s'", G_STRFUNC, email);
@@ -381,14 +398,15 @@ stamp_texture_from_contact (StampPhotoCache *cache,
     if (g_str_has_prefix (photo->data.uri, "file://")) {
       g_autoptr (GFile) file = g_file_new_for_uri (photo->data.uri);
 
-      texture = gdk_texture_new_from_file (file, &error);
-      if (texture) {
-        g_autofree char *data = NULL;
-        gsize length = 0;
+      g_autofree char *data = NULL;
+      gsize length = 0;
 
+      if (g_file_load_contents (file, NULL, &data, &length, NULL, &error))
+        photo_bytes = stamp_bytes_new_if_image ((guchar *)data, length, &error);
+
+      if (photo_bytes) {
         g_debug ("%s: Successfully loaded file URI photo for '%s'", G_STRFUNC, email);
-        if (g_file_load_contents (file, NULL, &data, &length, NULL, NULL))
-          stamp_disk_cache_store (cache, email, (guchar *)data, length);
+        stamp_disk_cache_store (cache, email, (guchar *)data, length);
       } else {
         g_warning ("%s: Could not load photo from uri '%s': %s", G_STRFUNC, photo->data.uri, error->message);
       }
@@ -397,7 +415,7 @@ stamp_texture_from_contact (StampPhotoCache *cache,
 
   e_contact_photo_free (photo);
 
-  return g_steal_pointer (&texture);
+  return photo_bytes;
 }
 
 static void stamp_start_bimi_lookup (StampPendingLookup *pending);
@@ -411,7 +429,7 @@ stamp_on_contacts_received (GObject      *source,
   StampPhotoCache *cache = pending->cache;
   g_autoslist (EContact) contacts = NULL;
   g_autoptr (GError) error = NULL;
-  g_autoptr (GdkTexture) texture = NULL;
+  g_autoptr (GBytes) photo = NULL;
 
   if (pending->pending_books == 0) {
     e_book_client_get_contacts_finish (E_BOOK_CLIENT (source), res, &contacts, &error);
@@ -421,17 +439,17 @@ stamp_on_contacts_received (GObject      *source,
 
   if (e_book_client_get_contacts_finish (E_BOOK_CLIENT (source), res, &contacts, &error) && !cache->closing) {
     /* Check all matches, the first one might not carry a photo */
-    for (GSList *l = contacts; l && !texture; l = l->next) {
+    for (GSList *l = contacts; l && !photo; l = l->next) {
       pending->contact_found = TRUE;
-      texture = stamp_texture_from_contact (cache, pending->email, E_CONTACT (l->data));
+      photo = stamp_photo_from_contact (cache, pending->email, E_CONTACT (l->data));
     }
   }
 
-  if (texture) {
+  if (photo) {
     pending->pending_books = 0;
-    g_hash_table_insert (cache->positive_cache, g_strdup (pending->email), g_object_ref (texture));
+    g_hash_table_insert (cache->positive_cache, g_strdup (pending->email), g_bytes_ref (photo));
     g_hash_table_remove (cache->pending, pending->email);
-    stamp_notify_waiters (pending, texture);
+    stamp_notify_waiters (pending, photo);
     stamp_pending_lookup_unref (pending);
     return;
   }
@@ -471,21 +489,21 @@ on_bimi_result (GObject      *source,
 {
   GTask *task = G_TASK (res);
   StampPendingLookup *pending = g_task_get_task_data (task);
-  g_autoptr (GdkTexture) texture = NULL;
+  g_autoptr (GBytes) photo = NULL;
   g_autoptr (GError) error = NULL;
 
-  texture = g_task_propagate_pointer (task, &error);
+  photo = g_task_propagate_pointer (task, &error);
   if (error || pending->cache->closing) {
     g_hash_table_remove (pending->cache->pending, pending->email);
     stamp_notify_waiters (pending, NULL);
     return;
   }
 
-  if (texture) {
+  if (photo) {
     pending->pending_books = 0;
-    g_hash_table_insert (pending->cache->positive_cache, g_strdup (pending->email), g_object_ref (texture));
+    g_hash_table_insert (pending->cache->positive_cache, g_strdup (pending->email), g_bytes_ref (photo));
     g_hash_table_remove (pending->cache->pending, pending->email);
-    stamp_notify_waiters (pending, texture);
+    stamp_notify_waiters (pending, photo);
     return;
   }
 
@@ -504,12 +522,12 @@ load_bimi (GTask        *task,
            GCancellable *cancellable)
 {
   StampPendingLookup *pending = task_data;
-  GdkTexture *texture;
+  GBytes *photo;
 
-  texture = check_bimi (pending->cache, pending->email, pending->cancellable);
+  photo = check_bimi (pending->cache, pending->email, pending->cancellable);
 
-  if (texture)
-    g_task_return_pointer (task, texture, g_object_unref);
+  if (photo)
+    g_task_return_pointer (task, photo, (GDestroyNotify)g_bytes_unref);
   else
     g_task_return_pointer (task, NULL, NULL);
 }
@@ -608,8 +626,8 @@ stamp_photo_cache_lookup_async (StampPhotoCache *self,
                                 GFunc            callback,
                                 gpointer         user_data)
 {
-  GdkTexture *cached;
-  GdkTexture *disk_texture;
+  GBytes *cached;
+  g_autoptr (GBytes) disk_photo = NULL;
   StampLookupWaiter *waiter;
   StampPendingLookup *pending;
   GSList *books = NULL;
@@ -634,7 +652,7 @@ stamp_photo_cache_lookup_async (StampPhotoCache *self,
   cached = g_hash_table_lookup (self->positive_cache, search_string);
   if (cached) {
     if (callback)
-      callback (g_object_ref (cached), user_data);
+      callback (g_bytes_ref (cached), user_data);
     return;
   }
 
@@ -652,12 +670,12 @@ stamp_photo_cache_lookup_async (StampPhotoCache *self,
     return;
   }
 
-  disk_texture = stamp_disk_cache_load (self, search_string);
-  if (disk_texture) {
-    g_hash_table_insert (self->positive_cache, g_strdup (search_string), g_object_ref (disk_texture));
+  disk_photo = stamp_disk_cache_load (self, search_string);
+  if (disk_photo) {
+    g_hash_table_insert (self->positive_cache, g_strdup (search_string), g_bytes_ref (disk_photo));
 
     if (callback)
-      callback (disk_texture, user_data);
+      callback (g_steal_pointer (&disk_photo), user_data);
     return;
   }
 

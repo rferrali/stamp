@@ -32,6 +32,7 @@ stamp_sources = [
   'backend/stamp-photo-cache.c',
   'backend/stamp-out-of-office.c',
   'backend/stamp-signature.c',
+  'views/stamp-avatar-loader.c',
   'views/stamp-header-bar.c',
   'views/stamp-item.c',
   'views/stamp-tag.c',

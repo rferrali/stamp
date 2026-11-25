@@ -23,6 +23,7 @@
 #include <glib/gi18n.h>
 
 #include "stamp-account.h"
+#include "stamp-avatar-loader.h"
 #include "stamp-composer.h"
 #include "stamp-helper.h"
 #include "stamp-session.h"
@@ -118,7 +119,7 @@ on_released (GtkGesture *gesture,
   gtk_label_set_markup (self->popover_name, tmp);
   adw_avatar_set_text (self->popover_avatar, stripped);
 
-  stamp_account_get_photo (self->account, self->mail, self->cancellable, on_get_photo, self);
+  stamp_avatar_loader_lookup (self->account, self->mail, self->cancellable, on_get_photo, self);
 
   gtk_popover_popup (GTK_POPOVER (self->popover));
   gtk_gesture_set_state (gesture, GTK_EVENT_SEQUENCE_CLAIMED);

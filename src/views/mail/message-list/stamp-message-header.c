@@ -23,6 +23,7 @@
 #include <libsoup/soup.h>
 
 #include "stamp-account.h"
+#include "stamp-avatar-loader.h"
 #include "stamp-composer.h"
 #include "stamp-helper.h"
 #include "stamp-session.h"
@@ -391,11 +392,11 @@ on_released (GtkGesture *gesture,
   gtk_label_set_markup (GTK_LABEL (self->popover_name), tmp);
   gtk_label_set_text (GTK_LABEL (self->popover_email), mail);
 
-  stamp_account_get_photo (self->account,
-                           mail,
-                           self->cancellable,
-                           on_get_popover_photo,
-                           self);
+  stamp_avatar_loader_lookup (self->account,
+                              mail,
+                              self->cancellable,
+                              on_get_popover_photo,
+                              self);
 
   gtk_popover_popup (GTK_POPOVER (self->popover));
 
@@ -566,11 +567,11 @@ update_from (StampMessageHeader *self)
   self->cancellable = g_cancellable_new ();
 
   if (self->account)
-    stamp_account_get_photo (self->account,
-                             self->from_mail,
-                             self->cancellable,
-                             on_get_photo,
-                             g_object_ref (self));
+    stamp_avatar_loader_lookup (self->account,
+                                self->from_mail,
+                                self->cancellable,
+                                on_get_photo,
+                                g_object_ref (self));
 
   if (self->from_name && strlen (self->from_name) > 0) {
     g_autofree char *stripped_text = stamp_strip_department (self->from_name);

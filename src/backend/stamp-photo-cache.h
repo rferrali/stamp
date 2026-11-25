@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include <gtk/gtk.h>
+#include <glib.h>
 #include <libebook/libebook.h>
 
 #include "stamp-account.h"

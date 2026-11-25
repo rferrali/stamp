@@ -20,7 +20,6 @@
 #pragma once
 
 #include <camel/camel.h>
-#include <gdk/gdk.h>
 #include <glib-object.h>
 #include <libebook/libebook.h>
 #include <libedataserverui4/libedataserverui4.h>
@@ -167,11 +166,11 @@ stamp_account_set_photo_lookups_paused (StampAccount *self,
                                         gboolean      paused);
 
 void
-stamp_account_get_photo (StampAccount        *self,
-                         const gchar          *sender,
-                         GCancellable        *cancellable,
-                         GFunc  callback,
-                         gpointer             user_data);
+stamp_account_get_photo (StampAccount *self,
+                         const gchar  *sender,
+                         GCancellable *cancellable,
+                         GFunc         callback,
+                         gpointer      user_data);
 
 gpointer
 stamp_account_get_photo_finish (StampAccount  *self,

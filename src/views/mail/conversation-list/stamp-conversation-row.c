@@ -22,6 +22,7 @@
 #include <glib/gi18n.h>
 
 #include "stamp-account.h"
+#include "stamp-avatar-loader.h"
 #include "stamp-category.h"
 #include "stamp-helper.h"
 #include "stamp-session.h"
@@ -613,9 +614,6 @@ on_get_photo (gpointer texture,
   StampConversationRow *self = STAMP_CONVERSATION_ROW (token->self);
 
   if (token->instance_id != self->instance_id || token->generation != token->self->generation) {
-    if (texture)
-      g_object_unref (texture);
-
     g_free (token);
     return;
   }
@@ -869,7 +867,7 @@ stamp_conversation_row_bind_mail (StampConversationRow  *self,
   token->instance_id = self->instance_id;
   token->generation = self->generation;
 
-  stamp_account_get_photo (account, mail, self->cancellable, on_get_photo, token);
+  stamp_avatar_loader_lookup (account, mail, self->cancellable, on_get_photo, token);
 
   store = g_list_store_new (STAMP_TYPE_CATEGORY);
   gtk_flow_box_bind_model (self->labels, G_LIST_MODEL (store), create_label, NULL, NULL);
