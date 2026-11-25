@@ -15,25 +15,11 @@ stamp_sources = [
   'stamp-preferences-out-of-office.c',
   'stamp-preferences-signatures.c',
   'stamp-paned.c',
-  'stamp-settings.c',
   'stamp-input-helpers.c',
   'stamp-time-helpers.c',
   'stamp-ui-helpers.c',
   'stamp-webview.c',
   'stamp-window.c',
-  'backend/stamp-scheduler.c',
-  'backend/stamp-session.c',
-  'backend/stamp-account.c',
-  'backend/stamp-bimi.c',
-  'backend/stamp-category.c',
-  'backend/stamp-crypto-keys.c',
-  'backend/stamp-helper.c',
-  'backend/stamp-mime-parser.c',
-  'backend/stamp-meeting-response.c',
-  'backend/stamp-m365-calendar.c',
-  'backend/stamp-photo-cache.c',
-  'backend/stamp-out-of-office.c',
-  'backend/stamp-signature.c',
   'views/stamp-avatar-loader.c',
   'views/stamp-header-bar.c',
   'views/stamp-item.c',
@@ -113,29 +99,62 @@ blueprints = custom_target('blueprints',
   command: [find_program('blueprint-compiler'), 'batch-compile', '@OUTPUT@', '@CURRENT_SOURCE_DIR@', '@INPUT@'],
 )
 
+backend_sources = files(
+  'backend/stamp-account.c',
+  'backend/stamp-bimi.c',
+  'backend/stamp-category.c',
+  'backend/stamp-crypto-keys.c',
+  'backend/stamp-helper.c',
+  'backend/stamp-m365-calendar.c',
+  'backend/stamp-meeting-response.c',
+  'backend/stamp-mime-parser.c',
+  'backend/stamp-out-of-office.c',
+  'backend/stamp-photo-cache.c',
+  'backend/stamp-scheduler.c',
+  'backend/stamp-session.c',
+  'backend/stamp-settings.c',
+  'backend/stamp-signature.c',
+)
+
+backend_deps = [
+  dependency('gio-unix-2.0'),
+  dependency('camel-1.2', version: '>= 3.28'),
+  dependency('evolution-ews'),
+  dependency('evolution-microsoft365'),
+  dependency('libsoup-3.0'),
+  dependency('libedataserver-1.2'),
+  dependency('libebook-1.2'),
+  dependency('libedata-book-1.2'),
+  dependency('libebook-contacts-1.2'),
+  dependency('libpsl'),
+  dependency('nss'),
+  dependency('gpgme'),
+  dependency('gdk-pixbuf-2.0'),
+  cc.find_library('resolv'),
+  cc.find_library('m'),
+]
+
+libstamp_backend = static_library('stamp-backend',
+  backend_sources,
+  dependencies: [backend_deps, config_h],
+  include_directories: include_directories('.', 'backend'),
+)
+
+stamp_backend_dep = declare_dependency(
+  link_with: libstamp_backend,
+  dependencies: backend_deps,
+  include_directories: include_directories('backend'),
+)
+
 stamp_deps = [
   dependency('gtk4'),
   dependency('gio-unix-2.0'),
   dependency('libadwaita-1', version: '>= 1.4'),
-  dependency('camel-1.2', version: '>= 3.28'),
-  dependency('evolution-ews'),
-  dependency('evolution-microsoft365'),
   dependency('gsettings-desktop-schemas'),
   dependency('gstreamer-1.0'),
-  dependency('libsoup-3.0'),
-  dependency('libedataserver-1.2'),
   dependency('libedataserverui4-1.0'),
-  dependency('libebook-1.2'),
-  dependency('libedata-book-1.2'),
-  dependency('libebook-contacts-1.2'),
   dependency('libportal-gtk4', version: '>= 0.6'),
-  dependency('libpsl'),
-  dependency('nss'),
-  dependency('gpgme'),
   dependency('webkitgtk-6.0'),
-  dependency('gdk-pixbuf-2.0'),
-  cc.find_library('resolv'),
-  cc.find_library('m')
 ]
 
 if get_option('calendar')
@@ -155,15 +174,15 @@ stamp_resources = gnome.compile_resources('stamp-resources',
 stamp_sources += stamp_resources
 
 stamp_includes = include_directories(
- '.',
- 'backend',
+  '.',
+  'backend',
   'views',
   'views/calendar',
   'views/contact',
- 'views/contact/book-list',
- 'views/contact/contact-list',
- 'views/mail',
- 'views/mail/composer',
+  'views/contact/book-list',
+  'views/contact/contact-list',
+  'views/mail',
+  'views/mail/composer',
   'views/mail/folder-list',
   'views/mail/conversation-list',
   'views/mail/message-list',
@@ -178,7 +197,7 @@ if get_option('calendar')
 endif
 
 executable('stamp', stamp_sources,
-  dependencies: [stamp_deps, config_h],
+  dependencies: [stamp_deps, stamp_backend_dep, config_h],
   include_directories: stamp_includes,
        install: true,
 )

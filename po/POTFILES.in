@@ -76,7 +76,7 @@ src/stamp-preferences-account.blp
 src/stamp-preferences-account.c
 src/stamp-preferences-signatures.blp
 src/stamp-preferences-signatures.c
-src/stamp-settings.c
+src/backend/stamp-settings.c
 src/stamp-time-helpers.c
 src/stamp-webview.c
 src/stamp-window.blp
