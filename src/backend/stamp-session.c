@@ -21,7 +21,6 @@
 
 #include <libebook/libebook.h>
 #include <libedata-book/libedata-book.h>
-#include <libedataserverui4/libedataserverui4.h>
 #include <nss.h>
 #include <nssb64.h>
 #include <pk11pub.h>
@@ -42,12 +41,10 @@ struct _StampSession {
   GList *accounts;
   GList *signatures;
   GCancellable *cancellable;
-};
 
-typedef struct _TryCredentialsData {
-  CamelService *service;
-  const gchar *mechanism;
-} TryCredentialsData;
+  StampSessionCredentialsFunc credentials_func;
+  gpointer credentials_data;
+};
 
 G_DEFINE_FINAL_TYPE (StampSession, stamp_session, CAMEL_TYPE_SESSION);
 
@@ -362,64 +359,6 @@ stamp_session_init (StampSession *self)
 }
 
 static gboolean
-try_credentials_sync (ECredentialsPrompter    *prompter,
-                      ESource                 *source,
-                      const ENamedParameters  *credentials,
-                      gboolean                *out_authenticated,
-                      gpointer                 user_data,
-                      GCancellable            *cancellable,
-                      GError                 **error)
-{
-  TryCredentialsData *data = user_data;
-  g_autofree char *credential_name = NULL;
-  CamelAuthenticationResult result;
-  GError *local_error = NULL;
-
-  g_return_val_if_fail (E_IS_SOURCE (source), FALSE);
-  g_return_val_if_fail (credentials != NULL, FALSE);
-  g_return_val_if_fail (out_authenticated != NULL, FALSE);
-  g_return_val_if_fail (data != NULL, FALSE);
-  g_return_val_if_fail (CAMEL_IS_SERVICE (data->service), FALSE);
-
-  if (e_source_has_extension (source, E_SOURCE_EXTENSION_AUTHENTICATION)) {
-    ESourceAuthentication *auth_extension;
-
-    auth_extension = e_source_get_extension (source, E_SOURCE_EXTENSION_AUTHENTICATION);
-    credential_name = e_source_authentication_dup_credential_name (auth_extension);
-
-    if (!credential_name || !*credential_name) {
-      g_clear_pointer (&credential_name, g_free);
-    }
-  }
-
-  camel_service_set_password (data->service, e_named_parameters_get (credentials,
-                                                                     credential_name ? credential_name : E_SOURCE_CREDENTIAL_PASSWORD));
-
-  result = camel_service_authenticate_sync (data->service, data->mechanism, cancellable, &local_error);
-  if (local_error) {
-    g_propagate_error (error, local_error);
-    return FALSE;
-  }
-
-  *out_authenticated = result == CAMEL_AUTHENTICATION_ACCEPTED;
-
-  if (*out_authenticated) {
-    ESourceCredentialsProvider *credentials_provider;
-    ESource *cred_source;
-
-    credentials_provider = e_credentials_prompter_get_provider (prompter);
-    cred_source = e_source_credentials_provider_ref_credentials_source (credentials_provider, source);
-
-    if (cred_source)
-      e_source_invoke_authenticate_sync (cred_source, credentials, cancellable, NULL);
-
-    g_clear_object (&cred_source);
-  }
-
-  return result == CAMEL_AUTHENTICATION_REJECTED;
-}
-
-static gboolean
 authenticate_sync (CamelSession  *session,
                    CamelService  *service,
                    const gchar   *mechanism,
@@ -511,19 +450,12 @@ authenticate_sync (CamelSession  *session,
   }
 
   if (result == CAMEL_AUTHENTICATION_REJECTED) {
-    ECredentialsPrompter *prompter;
-    TryCredentialsData data;
+    if (!self->credentials_func) {
+      g_set_error (error, CAMEL_SERVICE_ERROR, CAMEL_SERVICE_ERROR_CANT_AUTHENTICATE, "No credentials prompt available");
+      return FALSE;
+    }
 
-    data.service = service;
-    data.mechanism = mechanism;
-    prompter = e_credentials_prompter_new (self->registry);
-    authenticated = e_credentials_prompter_loop_prompt_sync (prompter,
-                                                             source,
-                                                             E_CREDENTIALS_PROMPTER_PROMPT_FLAG_ALLOW_SOURCE_SAVE,
-                                                             try_credentials_sync,
-                                                             &data,
-                                                             cancellable,
-                                                             error);
+    authenticated = self->credentials_func (self, source, service, mechanism, cancellable, error, self->credentials_data);
   } else {
     authenticated = (result == CAMEL_AUTHENTICATION_ACCEPTED);
   }
@@ -725,6 +657,17 @@ stamp_session_get_default (void)
   }
 
   return _session;
+}
+
+void
+stamp_session_set_credentials_func (StampSession                *self,
+                                    StampSessionCredentialsFunc  func,
+                                    gpointer                     user_data)
+{
+  g_return_if_fail (STAMP_IS_SESSION (self));
+
+  self->credentials_func = func;
+  self->credentials_data = user_data;
 }
 
 GList *

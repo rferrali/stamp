@@ -9,6 +9,7 @@ enums = gnome.mkenums_simple('stamp-type-builtins',
 stamp_sources = [
   'main.c',
   'stamp-application.c',
+  'stamp-credentials-prompter.c',
   'stamp-preferences.c',
   'stamp-preferences-account.c',
   'stamp-preferences-out-of-office.c',

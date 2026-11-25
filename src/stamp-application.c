@@ -25,6 +25,7 @@
 #include <pk11pub.h>
 
 #include "stamp-composer.h"
+#include "stamp-credentials-prompter.h"
 #include "stamp-helper.h"
 #include "stamp-preferences.h"
 #include "stamp-scheduler.h"
@@ -360,6 +361,7 @@ stamp_application_startup (GApplication *app)
   G_APPLICATION_CLASS (stamp_application_parent_class)->startup (app);
 
   self->session = stamp_session_get_default ();
+  stamp_session_set_credentials_func (self->session, stamp_credentials_prompt_sync, NULL);
   g_signal_connect_object (self->session, "pk11-password", G_CALLBACK (on_pk11_password), self, G_CONNECT_DEFAULT);
   g_signal_connect_object (self->session, "startup-finished", G_CALLBACK (on_startup_finished), self, G_CONNECT_DEFAULT);
 }

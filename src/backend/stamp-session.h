@@ -31,8 +31,21 @@ typedef struct _StampAccount StampAccount;
 #define STAMP_TYPE_SESSION (stamp_session_get_type ())
 G_DECLARE_FINAL_TYPE (StampSession, stamp_session, STAMP, SESSION, CamelSession);
 
+typedef gboolean (*StampSessionCredentialsFunc) (StampSession  *session,
+                                                 ESource       *source,
+                                                 CamelService  *service,
+                                                 const gchar   *mechanism,
+                                                 GCancellable  *cancellable,
+                                                 GError       **error,
+                                                 gpointer       user_data);
+
 StampSession *
 stamp_session_get_default (void);
+
+void
+stamp_session_set_credentials_func (StampSession                *self,
+                                    StampSessionCredentialsFunc  func,
+                                    gpointer                     user_data);
 
 GList *
 stamp_session_get_accounts (StampSession *self);

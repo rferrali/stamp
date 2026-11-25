@@ -22,7 +22,6 @@
 #include <camel/camel.h>
 #include <glib-object.h>
 #include <libebook/libebook.h>
-#include <libedataserverui4/libedataserverui4.h>
 
 #include "stamp-category.h"
 
