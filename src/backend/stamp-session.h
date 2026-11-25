@@ -22,11 +22,10 @@
 #include <camel/camel.h>
 #include <libedataserver/libedataserver.h>
 
-#include "stamp-signature.h"
+#include "stamp-account-manager.h"
+#include "stamp-signature-store.h"
 
 G_BEGIN_DECLS
-
-typedef struct _StampAccount StampAccount;
 
 #define STAMP_TYPE_SESSION (stamp_session_get_type ())
 G_DECLARE_FINAL_TYPE (StampSession, stamp_session, STAMP, SESSION, CamelSession);
@@ -47,28 +46,14 @@ stamp_session_set_credentials_func (StampSession                *self,
                                     StampSessionCredentialsFunc  func,
                                     gpointer                     user_data);
 
-GList *
-stamp_session_get_accounts (StampSession *self);
+StampAccountManager *
+stamp_session_get_account_manager (StampSession *self);
 
-StampAccount *
-stamp_session_find_account_by_mail_uid (StampSession *self,
-                                        const gchar   *mail_uid);
-
-GList *
-stamp_session_get_signatures (StampSession *self);
+StampSignatureStore *
+stamp_session_get_signature_store (StampSession *self);
 
 ESourceRegistry *
 stamp_session_get_registry (StampSession *self);
-
-void
-stamp_session_remove_signature (StampSession   *self,
-                                StampSignature *signature);
-
-StampSignature *
-stamp_session_create_signature (StampSession *self,
-                                const gchar  *name,
-                                const gchar  *content,
-                                const gchar  *mime_type);
 
 G_END_DECLS
 

@@ -178,7 +178,7 @@ on_copy_contact (GtkButton *button,
   StampContactDetails *self = STAMP_CONTACT_DETAILS (user_data);
   g_autoptr (CopySelection) selection = NULL;
   g_autoptr (GtkStringList) names = gtk_string_list_new (NULL);
-  GList *accounts = stamp_session_get_accounts (stamp_session_get_default ());
+  GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (stamp_session_get_default ()));
   AdwDialog *dialog;
   GtkWidget *list;
   const gchar *source_uid;

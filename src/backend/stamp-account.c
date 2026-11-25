@@ -282,7 +282,7 @@ update_color_class (StampAccount *self)
 
   session = stamp_session_get_default ();
   if (session) {
-    GList *accounts = stamp_session_get_accounts (session);
+    GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (session));
     gboolean used[NUMBER_OF_COLORS] = { FALSE };
     guint probes = 0;
     GList *l;
@@ -353,7 +353,7 @@ update_all_accounts_colors (void)
   if (!session)
     return;
 
-  accounts = stamp_session_get_accounts (session);
+  accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (session));
   for (l = accounts; l; l = l->next) {
     StampAccount *acc = STAMP_ACCOUNT (l->data);
     stamp_account_update_color (acc);

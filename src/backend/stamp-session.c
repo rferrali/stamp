@@ -26,10 +26,11 @@
 #include <pk11pub.h>
 #include <secmod.h>
 
+#include "stamp-account-manager.h"
 #include "stamp-account.h"
 #include "stamp-helper.h"
 #include "stamp-m365-calendar.h"
-#include "stamp-signature.h"
+#include "stamp-signature-store.h"
 
 static StampSession *_session = NULL;
 
@@ -38,8 +39,8 @@ struct _StampSession {
 
   ESourceRegistry *registry;
 
-  GList *accounts;
-  GList *signatures;
+  StampAccountManager *account_manager;
+  StampSignatureStore *signature_store;
   GCancellable *cancellable;
 
   StampSessionCredentialsFunc credentials_func;
@@ -49,9 +50,6 @@ struct _StampSession {
 G_DEFINE_FINAL_TYPE (StampSession, stamp_session, CAMEL_TYPE_SESSION);
 
 enum {
-  ACCOUNT_ADDED,
-  ACCOUNT_REMOVED,
-  ACCOUNT_CHANGED,
   PK11_PASSWORD,
   STARTUP_FINISHED,
   LAST_SIGNAL,
@@ -101,31 +99,6 @@ stamp_session_pk11_password (PK11SlotInfo *slot,
   return nsspwd;
 }
 
-static GPtrArray *
-stamp_accounts_load_finish (GAsyncResult  *res,
-                            GError       **error)
-{
-  return g_task_propagate_pointer (G_TASK (res), error);
-}
-
-static void
-on_account_ready (GObject      *src,
-                  GAsyncResult *res,
-                  gpointer      user_data)
-{
-  StampAccount *account = STAMP_ACCOUNT (src);
-  g_autoptr (GError) error = NULL;
-
-  if (!stamp_account_init_finish (res, &error)) {
-    if (!g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
-      g_warning ("%s: Account init failed: %s", G_STRFUNC, error ? error->message : "");
-
-    return;
-  }
-
-  g_debug ("%s: '%s' services ready", G_STRFUNC, stamp_account_get_name (account));
-}
-
 static void
 on_accounts_loaded (GObject      *src,
                     GAsyncResult *res,
@@ -133,156 +106,11 @@ on_accounts_loaded (GObject      *src,
 {
   StampSession *self = STAMP_SESSION (user_data);
   g_autoptr (GError) error = NULL;
-  g_autoptr (GPtrArray) accounts = stamp_accounts_load_finish (res, &error);
 
-  if (error) {
+  if (!stamp_account_manager_load_finish (STAMP_ACCOUNT_MANAGER (src), res, &error))
     g_warning ("%s: Error loading accounts: %s\n", G_STRFUNC, error->message);
-    goto out;
-  }
 
-  g_debug ("%s: %u account(s) found", G_STRFUNC, accounts->len);
-
-  if (accounts->len == 0)
-    goto out;
-
-  for (guint idx = 0; idx < accounts->len; idx++) {
-    StampAccount *account = g_ptr_array_index (accounts, idx);
-
-    g_debug ("%s: Loading account %s", G_STRFUNC, stamp_account_get_name (account));
-    self->accounts = g_list_append (self->accounts, account);
-    g_signal_emit (self, signals[ACCOUNT_ADDED], 0, account, NULL);
-
-    stamp_account_init_async (g_object_ref (account), self->cancellable, on_account_ready, self);
-  }
-
-  for (GList *l = self->accounts; l; l = l->next)
-    stamp_account_update_color (STAMP_ACCOUNT (l->data));
-
-out:
   g_signal_emit (self, signals[STARTUP_FINISHED], 0);
-}
-
-static GPtrArray *
-stamp_session_load_accounts_from_registry (ESourceRegistry *registry)
-{
-  GPtrArray *accounts = g_ptr_array_new_with_free_func (g_object_unref);
-  g_autolist (ESource) collections = e_source_registry_list_sources (registry, E_SOURCE_EXTENSION_COLLECTION);
-
-  for (GList *l = collections; l; l = l->next) {
-    ESource *col = E_SOURCE (l->data);
-    StampAccount *account = stamp_account_new (col, registry);
-    g_autolist (ESource) children = NULL;
-
-    g_debug ("%s: %s", G_STRFUNC, e_source_get_display_name (col));
-
-    children = e_source_registry_list_sources (registry, NULL);
-    for (GList *child = children; child; child = g_list_next (child)) {
-      ESource *src = E_SOURCE (child->data);
-      const gchar *parent = e_source_get_parent (src);
-
-      if (g_strcmp0 (parent, stamp_account_get_uid (account)) != 0)
-        continue;
-
-      g_debug ("%s: |- %s ", G_STRFUNC, e_source_get_display_name (src));
-
-      if (e_source_has_extension (src, E_SOURCE_EXTENSION_MAIL_ACCOUNT)) {
-        stamp_account_add_mail (account, src);
-      } else if (e_source_has_extension (src, E_SOURCE_EXTENSION_CALENDAR)) {
-        /* stamp_account_add_calendar (account, src); */
-      } else if (e_source_has_extension (src, E_SOURCE_EXTENSION_ADDRESS_BOOK)) {
-        stamp_account_add_address_book (account, src);
-      } else if (e_source_has_extension (src, E_SOURCE_EXTENSION_MAIL_IDENTITY)) {
-        stamp_account_add_mail_identity (account, src);
-      } else if (e_source_has_extension (src, E_SOURCE_EXTENSION_MAIL_TRANSPORT)) {
-        stamp_account_add_mail_transport (account, src);
-      } else if (e_source_has_extension (src, E_SOURCE_EXTENSION_TASK_LIST)) {
-        g_debug ("  (Task List)");
-      }
-    }
-
-    g_ptr_array_add (accounts, account);
-  }
-
-  return accounts;
-}
-
-static StampAccount *
-stamp_session_find_account_by_uid (GList       *list,
-                                   const gchar *uid)
-{
-  for (GList *iter = list; iter && iter->data; iter = g_list_next (iter)) {
-    StampAccount *account = STAMP_ACCOUNT (iter->data);
-
-    if (g_strcmp0 (stamp_account_get_uid (account), uid) == 0)
-      return account;
-  }
-
-  return NULL;
-}
-
-static void
-on_source_changed (ESourceRegistry *registry,
-                   ESource         *source,
-                   gpointer         user_data)
-{
-  StampSession *self = STAMP_SESSION (user_data);
-  const gchar *parent_uid = e_source_get_parent (source);
-  StampAccount *account = stamp_session_find_account_by_uid (self->accounts, parent_uid);
-
-  if (!account) {
-    /* No account means that it is a change in the collection */
-    account = stamp_session_find_account_by_uid (self->accounts, e_source_get_uid (source));
-
-    if (account) {
-      stamp_account_set_name (account, e_source_get_display_name (source));
-      g_debug ("%s: Account name updated %s", G_STRFUNC, stamp_account_get_name (account));
-      g_signal_emit (self, signals[ACCOUNT_CHANGED], 0, account, NULL);
-    }
-    return;
-  }
-
-  if (e_source_has_extension (source, E_SOURCE_EXTENSION_MAIL_ACCOUNT)) {
-    stamp_account_mail_changed (account, source);
-  } else if (e_source_has_extension (source, E_SOURCE_EXTENSION_ADDRESS_BOOK)) {
-    stamp_account_contacts_changed (account, source);
-  }
-}
-
-static void
-on_signature_loaded (GObject      *source_object,
-                     GAsyncResult *result,
-                     gpointer      user_data)
-{
-  StampSession *self = STAMP_SESSION (user_data);
-  g_autoptr (GError) error = NULL;
-  g_autofree char *contents = NULL;
-  gsize length = 0;
-  ESourceMailSignature *ext;
-  ESource *source = E_SOURCE (source_object);
-  StampSignature *signature;
-
-  if (!e_source_mail_signature_load_finish (source, result, &contents, &length, &error)) {
-    g_debug ("Error loading signature: %s", error->message);
-    return;
-  }
-
-  ext = e_source_get_extension (source, E_SOURCE_EXTENSION_MAIL_SIGNATURE);
-
-  signature = stamp_signature_new (source, e_source_mail_signature_get_mime_type (ext), contents);
-  self->signatures = g_list_append (self->signatures, signature);
-}
-
-static void
-stamp_session_load_signatures (StampSession *self)
-{
-  g_autolist (ESource) sources = NULL;
-
-  sources = e_source_registry_list_sources (self->registry, E_SOURCE_EXTENSION_MAIL_SIGNATURE);
-  for (GList *iter = sources; iter != NULL; iter = iter->next) {
-    ESource *source = E_SOURCE (iter->data);
-
-    e_source_mail_signature_load (source, G_PRIORITY_DEFAULT, self->cancellable, on_signature_loaded, self);
-  }
 }
 
 static void
@@ -290,23 +118,22 @@ on_registry_ready_for_load (GObject      *src,
                             GAsyncResult *res,
                             gpointer      user_data)
 {
-  g_autoptr (GTask) task = G_TASK (user_data);
-  StampSession *self = STAMP_SESSION (g_task_get_source_object (task));
+  StampSession *self = STAMP_SESSION (user_data);
   g_autoptr (GError) error = NULL;
   g_autoptr (ESourceRegistry) registry = e_source_registry_new_finish (res, &error);
 
   if (error) {
-    g_task_return_error (task, g_steal_pointer (&error));
+    g_warning ("%s: Error loading accounts: %s\n", G_STRFUNC, error->message);
+    g_signal_emit (self, signals[STARTUP_FINISHED], 0);
     return;
   }
 
   self->registry = g_object_ref (registry);
-  g_signal_connect_object (self->registry, "source-changed", G_CALLBACK (on_source_changed), self, G_CONNECT_DEFAULT);
 
-  stamp_session_load_signatures (self);
+  stamp_signature_store_load (self->signature_store, self->registry);
   stamp_m365_calendar_sync_colors_async (self->registry, self->cancellable);
 
-  g_task_return_pointer (task, stamp_session_load_accounts_from_registry (self->registry), (GDestroyNotify)g_ptr_array_unref);
+  stamp_account_manager_load_async (self->account_manager, self->registry, self->cancellable, on_accounts_loaded, self);
 }
 
 static void
@@ -316,7 +143,6 @@ on_camel_ready (GObject      *src,
 {
   StampSession *self = STAMP_SESSION (src);
   GNetworkMonitor *network_monitor = e_network_monitor_get_default ();
-  GTask *task;
 
   PK11_SetPasswordFunc (stamp_session_pk11_password);
 
@@ -324,9 +150,7 @@ on_camel_ready (GObject      *src,
   g_signal_connect_object (network_monitor, "network-changed", G_CALLBACK (on_network_changed), self, G_CONNECT_DEFAULT);
   camel_session_set_online (CAMEL_SESSION (self), TRUE);
 
-  task = g_task_new (self, self->cancellable, on_accounts_loaded, self);
-  g_task_set_source_tag (task, stamp_session_init);
-  e_source_registry_new (self->cancellable, on_registry_ready_for_load, task);
+  e_source_registry_new (self->cancellable, on_registry_ready_for_load, self);
 }
 
 static void
@@ -349,6 +173,8 @@ stamp_session_init (StampSession *self)
 
   g_application_mark_busy (g_application_get_default ());
   self->cancellable = g_cancellable_new ();
+  self->account_manager = stamp_account_manager_new ();
+  self->signature_store = stamp_signature_store_new ();
 
   g_signal_connect_object (G_OBJECT (self), "user-alert", G_CALLBACK (on_user_alert), self, G_CONNECT_DEFAULT);
 
@@ -509,16 +335,7 @@ remove_service (CamelSession *session,
   if (!CAMEL_IS_OFFLINE_STORE (service))
     return;
 
-  for (GList *iter = self->accounts; iter && iter->data; iter = g_list_next (iter)) {
-    StampAccount *account = STAMP_ACCOUNT (iter->data);
-    StampMailService *mail_service = stamp_account_get_mail_service (account);
-
-    if (stamp_mail_service_get_service (mail_service) == service) {
-      g_signal_emit (self, signals[ACCOUNT_REMOVED], 0, account, NULL);
-      self->accounts = g_list_remove (self->accounts, account);
-      return;
-    }
-  }
+  stamp_account_manager_remove_by_service (self->account_manager, service);
 }
 
 static CamelFilterDriver *
@@ -592,8 +409,8 @@ stamp_session_dispose (GObject *object)
   g_clear_object (&self->cancellable);
 
   g_clear_object (&self->registry);
-  g_clear_list (&self->accounts, g_object_unref);
-  g_clear_list (&self->signatures, stamp_signature_clear);
+  g_clear_object (&self->account_manager);
+  g_clear_object (&self->signature_store);
 
   camel_shutdown ();
 
@@ -614,24 +431,6 @@ stamp_session_class_init (StampSessionClass *klass)
   session_class->get_oauth2_access_token_sync = get_oauth2_access_token_sync;
 
   object_class->dispose = stamp_session_dispose;
-
-  signals[ACCOUNT_ADDED] = g_signal_new ("account-added", G_OBJECT_CLASS_TYPE (klass),
-                                         G_SIGNAL_RUN_FIRST | G_SIGNAL_RUN_LAST,
-                                         0, NULL, NULL, NULL,
-                                         G_TYPE_NONE,
-                                         1, STAMP_TYPE_ACCOUNT);
-
-  signals[ACCOUNT_REMOVED] = g_signal_new ("account-removed", G_OBJECT_CLASS_TYPE (klass),
-                                           G_SIGNAL_RUN_FIRST | G_SIGNAL_RUN_LAST,
-                                           0, NULL, NULL, NULL,
-                                           G_TYPE_NONE,
-                                           1, STAMP_TYPE_ACCOUNT);
-
-  signals[ACCOUNT_CHANGED] = g_signal_new ("account-changed", G_OBJECT_CLASS_TYPE (klass),
-                                           G_SIGNAL_RUN_FIRST | G_SIGNAL_RUN_LAST,
-                                           0, NULL, NULL, NULL,
-                                           G_TYPE_NONE,
-                                           1, STAMP_TYPE_ACCOUNT);
 
   signals[PK11_PASSWORD] = g_signal_new ("pk11-password", G_OBJECT_CLASS_TYPE (klass),
                                          G_SIGNAL_RUN_FIRST | G_SIGNAL_RUN_LAST,
@@ -670,104 +469,20 @@ stamp_session_set_credentials_func (StampSession                *self,
   self->credentials_data = user_data;
 }
 
-GList *
-stamp_session_get_accounts (StampSession *self)
+StampAccountManager *
+stamp_session_get_account_manager (StampSession *self)
 {
-  return self->accounts;
+  return self->account_manager;
 }
 
-StampAccount *
-stamp_session_find_account_by_mail_uid (StampSession *self,
-                                        const gchar  *mail_uid)
+StampSignatureStore *
+stamp_session_get_signature_store (StampSession *self)
 {
-  if (!mail_uid)
-    return NULL;
-
-  for (GList *iter = self->accounts; iter; iter = iter->next) {
-    StampAccount *account = STAMP_ACCOUNT (iter->data);
-    StampMailService *mail_service = stamp_account_get_mail_service (account);
-    CamelService *service;
-
-    if (!mail_service)
-      continue;
-
-    service = stamp_mail_service_get_service (mail_service);
-    if (service && g_strcmp0 (camel_service_get_uid (service), mail_uid) == 0)
-      return account;
-  }
-
-  return NULL;
+  return self->signature_store;
 }
 
 ESourceRegistry *
 stamp_session_get_registry (StampSession *self)
 {
   return self->registry;
-}
-
-void
-stamp_session_remove_signature (StampSession   *self,
-                                StampSignature *signature)
-{
-  g_autoptr (GError) error = NULL;
-
-  e_source_remove_sync (stamp_signature_get_source (signature), self->cancellable, &error);
-  if (error) {
-    g_warning ("%s: Could not remove signature: %s", G_STRFUNC, error->message);
-    return;
-  }
-
-  self->signatures = g_list_remove (self->signatures, signature);
-  stamp_signature_clear (signature);
-}
-
-StampSignature *
-stamp_session_create_signature (StampSession *self,
-                                const gchar  *name,
-                                const gchar  *content,
-                                const gchar  *mime_type)
-{
-  g_autoptr (ESource) new_source = NULL;
-  g_autoptr (ESource) source = NULL;
-  g_autoptr (GError) error = NULL;
-  g_autofree gchar *uid = NULL;
-  ESourceMailSignature *ext;
-  StampSignature *signature;
-
-  new_source = e_source_new (NULL, NULL, &error);
-  if (error) {
-    g_warning ("%s: Could not create signature source: %s", G_STRFUNC, error->message);
-    return NULL;
-  }
-
-  e_source_set_display_name (new_source, name);
-
-  ext = e_source_get_extension (new_source, E_SOURCE_EXTENSION_MAIL_SIGNATURE);
-  e_source_mail_signature_replace (new_source, content, strlen (content), G_PRIORITY_DEFAULT, NULL, NULL, NULL);
-  e_source_mail_signature_set_mime_type (ext, mime_type);
-
-  e_source_registry_commit_source_sync (self->registry, new_source, NULL, &error);
-  if (error) {
-    g_warning ("%s: Could not commit signature source: %s", G_STRFUNC, error->message);
-    return NULL;
-  }
-
-  uid = g_strdup (e_source_get_uid (new_source));
-
-  source = e_source_registry_ref_source (self->registry, uid);
-  if (!source) {
-    g_warning ("%s: Could not ref committed signature", G_STRFUNC);
-    return NULL;
-  }
-
-  signature = stamp_signature_new (source, mime_type, content);
-  self->signatures = g_list_append (self->signatures, signature);
-
-  return signature;
-}
-
-GList *
-stamp_session_get_signatures (StampSession *self)
-{
-  return self->signatures;
 }

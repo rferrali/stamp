@@ -82,7 +82,7 @@ init_signatures (StampPreferencesSignatures *self)
 
   adw_preferences_group_remove (self->signatures_group, GTK_WIDGET (self->add_signature));
 
-  signatures = stamp_session_get_signatures (stamp_session_get_default ());
+  signatures = stamp_signature_store_get_signatures (stamp_session_get_signature_store (stamp_session_get_default ()));
   for (GList *iter = signatures; iter && iter->data; iter = g_list_next (iter)) {
     StampSignature *signature = (StampSignature *)iter->data;
     GtkWidget *row = adw_action_row_new ();
@@ -198,7 +198,7 @@ on_editor_get_body_html (GObject      *source,
     if (error)
       g_warning ("%s: Could not commit signature: %s", G_STRFUNC, error->message);
   } else {
-    self->signature = stamp_session_create_signature (session, name, html, "text/html");
+    self->signature = stamp_signature_store_create (stamp_session_get_signature_store (session), name, html, "text/html");
   }
 
   {
@@ -235,7 +235,7 @@ on_editor_remove_clicked (GtkWidget *button,
   if (!self->signature)
     return;
 
-  stamp_session_remove_signature (stamp_session_get_default (), self->signature);
+  stamp_signature_store_remove (stamp_session_get_signature_store (stamp_session_get_default ()), self->signature);
   self->signature = NULL;
 
   parent = gtk_widget_get_parent (GTK_WIDGET (self));

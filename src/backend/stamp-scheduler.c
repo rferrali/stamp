@@ -329,7 +329,7 @@ send_scheduled_entry (ScheduledEntry *entry)
     return;
   }
 
-  accounts = stamp_session_get_accounts (stamp_session_get_default ());
+  accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (stamp_session_get_default ()));
   for (GList *iter = accounts; iter && iter->data; iter = g_list_next (iter)) {
     StampAccount *cur = STAMP_ACCOUNT (iter->data);
 

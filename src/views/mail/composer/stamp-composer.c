@@ -1437,7 +1437,7 @@ on_signature_activated (GSimpleAction *action,
   StampSignature *new_sig = NULL;
 
   if (target && target[0]) {
-    GList *sigs = stamp_session_get_signatures (stamp_session_get_default ());
+    GList *sigs = stamp_signature_store_get_signatures (stamp_session_get_signature_store (stamp_session_get_default ()));
 
     for (GList *iter = sigs; iter && iter->data; iter = g_list_next (iter)) {
       StampSignature *s = (StampSignature *)iter->data;
@@ -1828,7 +1828,7 @@ load_from_combobox (StampComposer *self)
   GListStore *store;
   GList *accounts;
 
-  accounts = stamp_session_get_accounts (stamp_session_get_default ());
+  accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (stamp_session_get_default ()));
 
   store = g_list_store_new (STAMP_TYPE_COMPOSER_FROM);
 
@@ -2079,7 +2079,7 @@ on_load_changed (WebKitWebView   *view,
     g_autofree char *default_uid = g_settings_get_string (account_settings, STAMP_PREFS_MAIL_DEFAULT_SIGNATURE);
 
     if (default_uid && default_uid[0]) {
-      GList *sigs = stamp_session_get_signatures (stamp_session_get_default ());
+      GList *sigs = stamp_signature_store_get_signatures (stamp_session_get_signature_store (stamp_session_get_default ()));
 
       for (GList *iter = sigs; iter && iter->data; iter = g_list_next (iter)) {
         StampSignature *sig = (StampSignature *)iter->data;
@@ -2165,7 +2165,7 @@ build_signature_menu (StampComposer *self)
 
   section = g_menu_new ();
 
-  sigs = stamp_session_get_signatures (stamp_session_get_default ());
+  sigs = stamp_signature_store_get_signatures (stamp_session_get_signature_store (stamp_session_get_default ()));
   for (GList *iter = sigs; iter && iter->data; iter = g_list_next (iter)) {
     StampSignature *sig = (StampSignature *)iter->data;
 

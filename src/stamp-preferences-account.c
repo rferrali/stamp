@@ -178,7 +178,7 @@ on_default_signature_selected (GObject    *combo,
     return;
   }
 
-  for (GList *iter = stamp_session_get_signatures (stamp_session_get_default ()); iter && iter->data; iter = g_list_next (iter), sig_idx++) {
+  for (GList *iter = stamp_signature_store_get_signatures (stamp_session_get_signature_store (stamp_session_get_default ())); iter && iter->data; iter = g_list_next (iter), sig_idx++) {
     if (sig_idx == (gint)selected - 1) {
       StampSignature *sig = (StampSignature *)iter->data;
 
@@ -200,7 +200,7 @@ refresh_default_signature (StampPreferencesAccount *self)
   list = gtk_string_list_new (NULL);
   gtk_string_list_append (list, _("None"));
 
-  sigs = stamp_session_get_signatures (stamp_session_get_default ());
+  sigs = stamp_signature_store_get_signatures (stamp_session_get_signature_store (stamp_session_get_default ()));
 
   for (GList *iter = sigs; iter && iter->data; iter = g_list_next (iter)) {
     StampSignature *sig = iter->data;

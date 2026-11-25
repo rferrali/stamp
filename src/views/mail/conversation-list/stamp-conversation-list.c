@@ -1571,7 +1571,7 @@ stamp_conversation_list_get_selected_account (StampConversationList *self)
 
   session = stamp_session_get_default ();
 
-  return stamp_session_find_account_by_mail_uid (session, service_uid);
+  return stamp_account_manager_find_by_mail_uid (stamp_session_get_account_manager (session), service_uid);
 }
 
 static StampAccount *
@@ -1590,7 +1590,7 @@ get_item_account (StampConversationList *self,
 
   session = stamp_session_get_default ();
 
-  return stamp_session_find_account_by_mail_uid (session, service_uid);
+  return stamp_account_manager_find_by_mail_uid (stamp_session_get_account_manager (session), service_uid);
 }
 
 static void

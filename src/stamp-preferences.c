@@ -201,7 +201,7 @@ on_bimi_images (GtkWidget  *row,
 
   if (enabled) {
     StampSession *session = stamp_session_get_default ();
-    GList *accounts = stamp_session_get_accounts (session);
+    GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (session));
 
     /* Remove negative photo cache */
     for (GList *iter = accounts; iter && iter->data; iter = g_list_next (iter)) {
@@ -226,7 +226,7 @@ on_account_activated (GtkWidget *row,
 static void
 init_accounts (StampPreferences *self)
 {
-  GList *accounts = stamp_session_get_accounts (stamp_session_get_default ());
+  GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (stamp_session_get_default ()));
 
   for (GList *iter = accounts; iter && iter->data; iter = g_list_next (iter)) {
     StampAccount *account = STAMP_ACCOUNT (iter->data);

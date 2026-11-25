@@ -714,7 +714,7 @@ stamp_account_item_constructed (GObject *object)
   g_signal_connect_object (self->offline_store, "folder-deleted", G_CALLBACK (on_offline_store_folder_deleted), self, G_CONNECT_DEFAULT);
   g_signal_connect_object (self->offline_store, "folder-info-stale", G_CALLBACK (on_offline_store_folder_info_stale), self, G_CONNECT_DEFAULT);
   g_signal_connect_object (self->offline_store, "folder-renamed", G_CALLBACK (on_offline_store_folder_renamed), self, G_CONNECT_DEFAULT);
-  g_signal_connect_object (stamp_session_get_default (), "account-changed", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (stamp_session_get_account_manager (stamp_session_get_default ()), "account-changed", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
 
   /* NetworkMonitor */
   g_signal_connect_object (network_monitor, "network-changed", G_CALLBACK (on_network_changed), self, G_CONNECT_DEFAULT);

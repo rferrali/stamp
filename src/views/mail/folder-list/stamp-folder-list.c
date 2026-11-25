@@ -893,8 +893,8 @@ stamp_folder_list_init (StampFolderList *self)
   gtk_custom_sorter_set_sort_func (self->sorter, folders_sorter, self, NULL);
 
   session = stamp_session_get_default ();
-  g_signal_connect_object (session, "account-added", G_CALLBACK (on_stamp_folder_list_account_added), self, G_CONNECT_DEFAULT);
-  g_signal_connect_object (session, "account-removed", G_CALLBACK (on_stamp_folder_list_account_removed), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (stamp_session_get_account_manager (session), "account-added", G_CALLBACK (on_stamp_folder_list_account_added), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (stamp_session_get_account_manager (session), "account-removed", G_CALLBACK (on_stamp_folder_list_account_removed), self, G_CONNECT_DEFAULT);
 
   self->expand_queue = g_ptr_array_new_with_free_func (g_object_unref);
 
@@ -909,7 +909,7 @@ stamp_folder_list_init (StampFolderList *self)
 
   g_list_store_append (self->list_store, self->collection_group);
 
-  for (accounts = stamp_session_get_accounts (session); accounts; accounts = accounts->next) {
+  for (accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (session)); accounts; accounts = accounts->next) {
     StampAccount *account = STAMP_ACCOUNT (accounts->data);
     StampMailService *mail_service = stamp_account_get_mail_service (account);
 

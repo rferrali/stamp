@@ -400,7 +400,7 @@ append_category_colors (StampCalendarView *self,
                         GString           *css)
 {
   g_autoptr (GHashTable) colors = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify)gdk_rgba_free);
-  GList *accounts = stamp_session_get_accounts (stamp_session_get_default ());
+  GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (stamp_session_get_default ()));
 
   for (GList *a = accounts; a; a = a->next) {
     for (GList *c = stamp_account_get_categories (a->data); c; c = c->next) {
@@ -554,9 +554,9 @@ stamp_calendar_view_init (StampCalendarView *self)
   {
     StampSession *session = stamp_session_get_default ();
 
-    for (GList *a = stamp_session_get_accounts (session); a; a = a->next)
+    for (GList *a = stamp_account_manager_get_accounts (stamp_session_get_account_manager (session)); a; a = a->next)
       watch_account_categories (self, a->data);
-    g_signal_connect_object (session, "account-added", G_CALLBACK (on_account_added), self, G_CONNECT_DEFAULT);
+    g_signal_connect_object (stamp_session_get_account_manager (session), "account-added", G_CALLBACK (on_account_added), self, G_CONNECT_DEFAULT);
   }
   recalculate_calendar_colors_css (self);
 

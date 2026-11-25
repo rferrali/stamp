@@ -69,7 +69,7 @@ on_account_changed (GObject      *object,
 {
   StampWindow *self = STAMP_WINDOW (user_data);
   StampSession *session = STAMP_SESSION (object);
-  GList *accounts = stamp_session_get_accounts (session);
+  GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (session));
 
   if (!accounts) {
     adw_view_stack_set_visible_child_name (self->app_view_stack, "welcome");
@@ -223,8 +223,8 @@ stamp_window_init (StampWindow *self)
   adw_view_stack_page_set_icon_name (calendar_page, "x-office-calendar-symbolic");
 #endif
 
-  g_signal_connect_object (session, "account-added", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
-  g_signal_connect_object (session, "account-removed", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (stamp_session_get_account_manager (session), "account-added", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
+  g_signal_connect_object (stamp_session_get_account_manager (session), "account-removed", G_CALLBACK (on_account_changed), self, G_CONNECT_DEFAULT);
   g_signal_connect_object (session, "startup-finished", G_CALLBACK (on_startup_finished), self, G_CONNECT_DEFAULT);
 
   if (stamp_is_running_inside_flatpak () && g_settings_get_boolean (STAMP_SETTINGS, STAMP_PREFS_BACKGROUND_NOTIFICATIONS))

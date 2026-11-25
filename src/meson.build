@@ -101,6 +101,7 @@ blueprints = custom_target('blueprints',
 
 backend_sources = files(
   'backend/stamp-account.c',
+  'backend/stamp-account-manager.c',
   'backend/stamp-bimi.c',
   'backend/stamp-category.c',
   'backend/stamp-crypto-keys.c',
@@ -114,6 +115,7 @@ backend_sources = files(
   'backend/stamp-session.c',
   'backend/stamp-settings.c',
   'backend/stamp-signature.c',
+  'backend/stamp-signature-store.c',
 )
 
 backend_deps = [
