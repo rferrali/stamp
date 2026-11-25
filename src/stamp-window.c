@@ -216,7 +216,7 @@ stamp_window_init (StampWindow *self)
                                    self);
 
 #ifdef HAVE_CALENDAR
-  calendar_view = stamp_calendar_view_new ();
+  calendar_view = stamp_calendar_view_new (stamp_session_get_account_manager (session));
   g_object_set (calendar_view, "stack", self->main_view_stack, NULL);
   calendar_page = adw_view_stack_add_titled (self->main_view_stack, calendar_view, "calendar", _("Calendar"));
   adw_view_stack_page_set_icon_name (calendar_page, "x-office-calendar-symbolic");

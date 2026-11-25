@@ -21,6 +21,7 @@
 
 #include <adwaita.h>
 
+#include "stamp-signature-store.h"
 #include "stamp-signature.h"
 
 G_BEGIN_DECLS
@@ -31,7 +32,8 @@ G_DECLARE_FINAL_TYPE (StampPreferencesSignatures, stamp_preferences_signatures, 
 #define STAMP_TYPE_PREFERENCES_SIGNATURE_EDITOR (stamp_preferences_signature_editor_get_type ())
 G_DECLARE_FINAL_TYPE (StampPreferencesSignatureEditor, stamp_preferences_signature_editor, STAMP, PREFERENCES_SIGNATURE_EDITOR, AdwNavigationPage)
 
-GtkWidget *stamp_preferences_signatures_new (void);
-GtkWidget *stamp_preferences_signature_editor_new (StampSignature *signature);
+GtkWidget *stamp_preferences_signatures_new (StampSignatureStore *store);
+GtkWidget *stamp_preferences_signature_editor_new (StampSignature      *signature,
+                                                   StampSignatureStore *store);
 
 G_END_DECLS

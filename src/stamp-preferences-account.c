@@ -54,6 +54,7 @@ struct _StampPreferencesAccount {
 
   AdwActionRow *out_of_office_row;
   StampAccount *account;
+  StampSignatureStore *signature_store;
   GHashTable *aliases;
   GPtrArray *alias_rows;
 
@@ -170,7 +171,7 @@ on_default_signature_selected (GObject    *combo,
   guint selected = adw_combo_row_get_selected (self->default_signature);
   gint sig_idx = 0;
 
-  if (selected == GTK_INVALID_LIST_POSITION || !self->account_settings)
+  if (selected == GTK_INVALID_LIST_POSITION || !self->account_settings || !self->signature_store)
     return;
 
   if (selected == 0) {
@@ -178,7 +179,7 @@ on_default_signature_selected (GObject    *combo,
     return;
   }
 
-  for (GList *iter = stamp_signature_store_get_signatures (stamp_session_get_signature_store (stamp_session_get_default ())); iter && iter->data; iter = g_list_next (iter), sig_idx++) {
+  for (GList *iter = stamp_signature_store_get_signatures (self->signature_store); iter && iter->data; iter = g_list_next (iter), sig_idx++) {
     if (sig_idx == (gint)selected - 1) {
       StampSignature *sig = (StampSignature *)iter->data;
 
@@ -200,7 +201,7 @@ refresh_default_signature (StampPreferencesAccount *self)
   list = gtk_string_list_new (NULL);
   gtk_string_list_append (list, _("None"));
 
-  sigs = stamp_signature_store_get_signatures (stamp_session_get_signature_store (stamp_session_get_default ()));
+  sigs = self->signature_store ? stamp_signature_store_get_signatures (self->signature_store) : NULL;
 
   for (GList *iter = sigs; iter && iter->data; iter = g_list_next (iter)) {
     StampSignature *sig = iter->data;
@@ -803,6 +804,7 @@ stamp_preferences_account_dispose (GObject *object)
     g_cancellable_cancel (self->cancellable);
   g_clear_object (&self->cancellable);
   g_clear_object (&self->account);
+  g_clear_object (&self->signature_store);
   g_clear_object (&self->account_settings);
 
   if (self->folder_rows)
@@ -883,9 +885,15 @@ stamp_preferences_account_init (StampPreferencesAccount *self)
 }
 
 GtkWidget *
-stamp_preferences_account_new (StampAccount *account)
+stamp_preferences_account_new (StampAccount        *account,
+                               StampSignatureStore *signature_store)
 {
-  return g_object_new (STAMP_TYPE_PREFERENCES_ACCOUNT, "account", account, NULL);
+  StampPreferencesAccount *self = g_object_new (STAMP_TYPE_PREFERENCES_ACCOUNT, "account", account, NULL);
+
+  self->signature_store = g_object_ref (signature_store);
+  refresh_default_signature (self);
+
+  return GTK_WIDGET (self);
 }
 
 struct _StampPreferencesAccountEditor {

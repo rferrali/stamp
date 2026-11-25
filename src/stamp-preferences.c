@@ -47,6 +47,8 @@ struct _StampPreferences {
 
   gboolean autostart_failed;
 
+  StampAccountManager *account_manager;
+  StampSignatureStore *signature_store;
   GCancellable *cancellable;
 };
 
@@ -58,7 +60,7 @@ on_signatures_activated (AdwActionRow *row,
 {
   StampPreferences *self = STAMP_PREFERENCES (user_data);
 
-  adw_preferences_dialog_push_subpage (ADW_PREFERENCES_DIALOG (self), ADW_NAVIGATION_PAGE (stamp_preferences_signatures_new ()));
+  adw_preferences_dialog_push_subpage (ADW_PREFERENCES_DIALOG (self), ADW_NAVIGATION_PAGE (stamp_preferences_signatures_new (self->signature_store)));
 }
 
 static const gchar *swipe_action_names[] = { "none", "toggle-read", "trash" };
@@ -102,6 +104,8 @@ stamp_preferences_dispose (GObject *object)
     g_cancellable_cancel (self->cancellable);
 
   g_clear_object (&self->cancellable);
+  g_clear_object (&self->account_manager);
+  g_clear_object (&self->signature_store);
 
   G_OBJECT_CLASS (stamp_preferences_parent_class)->dispose (object);
 }
@@ -197,11 +201,11 @@ on_bimi_images (GtkWidget  *row,
                 GParamSpec *pspec,
                 gpointer    user_data)
 {
+  StampPreferences *self = STAMP_PREFERENCES (user_data);
   gboolean enabled = adw_switch_row_get_active (ADW_SWITCH_ROW (row));
 
   if (enabled) {
-    StampSession *session = stamp_session_get_default ();
-    GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (session));
+    GList *accounts = stamp_account_manager_get_accounts (self->account_manager);
 
     /* Remove negative photo cache */
     for (GList *iter = accounts; iter && iter->data; iter = g_list_next (iter)) {
@@ -218,7 +222,7 @@ on_account_activated (GtkWidget *row,
 {
   StampPreferences *self = STAMP_PREFERENCES (user_data);
   StampAccount *account = STAMP_ACCOUNT (g_object_get_data (G_OBJECT (row), "account"));
-  AdwNavigationPage *page = ADW_NAVIGATION_PAGE (stamp_preferences_account_new (account));
+  AdwNavigationPage *page = ADW_NAVIGATION_PAGE (stamp_preferences_account_new (account, self->signature_store));
 
   adw_preferences_dialog_push_subpage (ADW_PREFERENCES_DIALOG (self), page);
 }
@@ -226,7 +230,7 @@ on_account_activated (GtkWidget *row,
 static void
 init_accounts (StampPreferences *self)
 {
-  GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (stamp_session_get_default ()));
+  GList *accounts = stamp_account_manager_get_accounts (self->account_manager);
 
   for (GList *iter = accounts; iter && iter->data; iter = g_list_next (iter)) {
     StampAccount *account = STAMP_ACCOUNT (iter->data);
@@ -277,11 +281,17 @@ stamp_preferences_init (StampPreferences *self)
   g_settings_bind (STAMP_SETTINGS_MAIL, STAMP_PREFS_MAIL_REFRESH_INTERVAL, self->refresh_interval, "value", G_SETTINGS_BIND_DEFAULT);
 
   g_signal_connect_object (self->bimi_images, "notify::active", G_CALLBACK (on_bimi_images), self, G_CONNECT_DEFAULT);
-  init_accounts (self);
 }
 
 GtkWidget *
-stamp_preferences_new (void)
+stamp_preferences_new (StampAccountManager *account_manager,
+                       StampSignatureStore *signature_store)
 {
-  return g_object_new (STAMP_TYPE_PREFERENCES, NULL);
+  StampPreferences *self = g_object_new (STAMP_TYPE_PREFERENCES, NULL);
+
+  self->account_manager = g_object_ref (account_manager);
+  self->signature_store = g_object_ref (signature_store);
+  init_accounts (self);
+
+  return GTK_WIDGET (self);
 }

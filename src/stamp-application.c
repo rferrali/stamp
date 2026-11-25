@@ -613,7 +613,8 @@ stamp_application_preferences_action (GSimpleAction *action,
 {
   StampApplication *self = STAMP_APPLICATION (user_data);
   GtkWindow *window = gtk_application_get_active_window (GTK_APPLICATION (self));
-  GtkWidget *preferences = stamp_preferences_new ();
+  GtkWidget *preferences = stamp_preferences_new (stamp_session_get_account_manager (self->session),
+                                                  stamp_session_get_signature_store (self->session));
 
   adw_dialog_present (ADW_DIALOG (preferences), GTK_WIDGET (window));
 }

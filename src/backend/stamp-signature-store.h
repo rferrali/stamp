@@ -48,4 +48,10 @@ void
 stamp_signature_store_remove (StampSignatureStore *self,
                               StampSignature      *signature);
 
+gboolean
+stamp_signature_store_update (StampSignatureStore *self,
+                              StampSignature      *signature,
+                              const gchar         *name,
+                              const gchar         *html);
+
 G_END_DECLS

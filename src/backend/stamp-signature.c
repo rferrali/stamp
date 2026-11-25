@@ -45,7 +45,7 @@ on_signature_replace (GObject      *source_object,
 
 void
 stamp_signature_save (StampSignature *self,
-                      gchar          *html_signature)
+                      const gchar    *html_signature)
 {
   ESourceMailSignature *ext;
 

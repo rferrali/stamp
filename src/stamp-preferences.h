@@ -19,6 +19,9 @@
 
 #include <adwaita.h>
 
+#include "stamp-account-manager.h"
+#include "stamp-signature-store.h"
+
 #pragma once
 
 G_BEGIN_DECLS
@@ -28,7 +31,8 @@ G_BEGIN_DECLS
 G_DECLARE_FINAL_TYPE (StampPreferences, stamp_preferences, STAMP, PREFERENCES, AdwPreferencesDialog);
 
 GtkWidget *
-stamp_preferences_new (void);
+stamp_preferences_new (StampAccountManager *account_manager,
+                       StampSignatureStore *signature_store);
 
 G_END_DECLS
 

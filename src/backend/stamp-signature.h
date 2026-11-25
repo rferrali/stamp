@@ -28,7 +28,7 @@ typedef struct _StampSignature StampSignature;
 
 void
 stamp_signature_save (StampSignature *signature,
-                      gchar           *html_signature);
+                      const gchar    *html_signature);
 
 void
 stamp_signature_set_name (StampSignature *self,

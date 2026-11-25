@@ -36,6 +36,7 @@ struct _StampCalendarView {
   StampCalendarList *calendar_list;
 
   StampAccount *account;
+  StampAccountManager *account_manager;
   GtkCssProvider *colors_provider;
   GDateTime *active_date;
   GcalEventWidget *preview_event;
@@ -46,11 +47,14 @@ struct _StampCalendarView {
 typedef enum {
   PROP_STACK = 1,
   PROP_ACTIVE_DATE,
+  PROP_ACCOUNT_MANAGER,
 } StampCalendarViewProps;
 
-static GParamSpec *properties[PROP_ACTIVE_DATE + 1] = { NULL, };
+static GParamSpec *properties[PROP_ACCOUNT_MANAGER + 1] = { NULL, };
 
 G_DEFINE_FINAL_TYPE (StampCalendarView, stamp_calendar_view, ADW_TYPE_BREAKPOINT_BIN);
+
+static void stamp_calendar_view_constructed (GObject *object);
 
 static void
 stamp_calendar_view_get_property (GObject    *object,
@@ -66,6 +70,9 @@ stamp_calendar_view_get_property (GObject    *object,
       break;
     case PROP_ACTIVE_DATE:
       g_value_set_boxed (value, self->active_date);
+      break;
+    case PROP_ACCOUNT_MANAGER:
+      g_value_set_object (value, self->account_manager);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, id, ps);
@@ -86,6 +93,9 @@ stamp_calendar_view_set_property (GObject      *object,
       break;
     case PROP_ACTIVE_DATE:
       g_set_date_time (&self->active_date, g_value_get_boxed (value));
+      break;
+    case PROP_ACCOUNT_MANAGER:
+      g_set_object (&self->account_manager, g_value_get_object (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, id, ps);
@@ -243,6 +253,7 @@ static void
 stamp_calendar_view_dispose (GObject *object)
 {
   cancel_pending_preview (STAMP_CALENDAR_VIEW (object));
+  g_clear_object (&STAMP_CALENDAR_VIEW (object)->account_manager);
 
   G_OBJECT_CLASS (stamp_calendar_view_parent_class)->dispose (object);
 }
@@ -338,6 +349,7 @@ stamp_calendar_view_class_init (StampCalendarViewClass *klass)
   object_class->set_property = stamp_calendar_view_set_property;
   object_class->get_property = stamp_calendar_view_get_property;
   object_class->dispose = stamp_calendar_view_dispose;
+  object_class->constructed = stamp_calendar_view_constructed;
 
   properties[PROP_STACK] = g_param_spec_object ("stack", NULL, NULL,
                                                 ADW_TYPE_VIEW_STACK,
@@ -348,6 +360,10 @@ stamp_calendar_view_class_init (StampCalendarViewClass *klass)
                                                      NULL,
                                                      G_TYPE_DATE_TIME,
                                                      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_ACCOUNT_MANAGER] = g_param_spec_object ("account-manager", NULL, NULL,
+                                                          STAMP_TYPE_ACCOUNT_MANAGER,
+                                                          G_PARAM_READWRITE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, G_N_ELEMENTS (properties), properties);
 
@@ -400,7 +416,7 @@ append_category_colors (StampCalendarView *self,
                         GString           *css)
 {
   g_autoptr (GHashTable) colors = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, (GDestroyNotify)gdk_rgba_free);
-  GList *accounts = stamp_account_manager_get_accounts (stamp_session_get_account_manager (stamp_session_get_default ()));
+  GList *accounts = self->account_manager ? stamp_account_manager_get_accounts (self->account_manager) : NULL;
 
   for (GList *a = accounts; a; a = a->next) {
     for (GList *c = stamp_account_get_categories (a->data); c; c = c->next) {
@@ -467,9 +483,9 @@ watch_account_categories (StampCalendarView *self,
 }
 
 static void
-on_account_added (StampSession      *session,
-                  StampAccount      *account,
-                  StampCalendarView *self)
+on_account_added (StampAccountManager *manager,
+                  StampAccount        *account,
+                  StampCalendarView   *self)
 {
   watch_account_categories (self, account);
 }
@@ -551,14 +567,6 @@ stamp_calendar_view_init (StampCalendarView *self)
                     "swapped-object-signal::calendar-changed", recalculate_calendar_colors_css, self,
                     "swapped-object-signal::calendar-removed", recalculate_calendar_colors_css, self,
                     NULL);
-  {
-    StampSession *session = stamp_session_get_default ();
-
-    for (GList *a = stamp_account_manager_get_accounts (stamp_session_get_account_manager (session)); a; a = a->next)
-      watch_account_categories (self, a->data);
-    g_signal_connect_object (stamp_session_get_account_manager (session), "account-added", G_CALLBACK (on_account_added), self, G_CONNECT_DEFAULT);
-  }
-  recalculate_calendar_colors_css (self);
 
   /* Initialize the shared date before the template synchronizes its bindings. */
   self->active_date = g_date_time_new_now_local ();
@@ -587,8 +595,23 @@ stamp_calendar_view_init (StampCalendarView *self)
   g_signal_connect_swapped (self->mobile_osv, "notify::show-sidebar", G_CALLBACK (on_sidebar_visibility_changed), self);
 }
 
-GtkWidget *
-stamp_calendar_view_new (void)
+static void
+stamp_calendar_view_constructed (GObject *object)
 {
-  return g_object_new (STAMP_TYPE_CALENDAR_VIEW, NULL);
+  StampCalendarView *self = STAMP_CALENDAR_VIEW (object);
+
+  G_OBJECT_CLASS (stamp_calendar_view_parent_class)->constructed (object);
+
+  if (self->account_manager) {
+    for (GList *a = stamp_account_manager_get_accounts (self->account_manager); a; a = a->next)
+      watch_account_categories (self, a->data);
+    g_signal_connect_object (self->account_manager, "account-added", G_CALLBACK (on_account_added), self, G_CONNECT_DEFAULT);
+  }
+  recalculate_calendar_colors_css (self);
+}
+
+GtkWidget *
+stamp_calendar_view_new (StampAccountManager *account_manager)
+{
+  return g_object_new (STAMP_TYPE_CALENDAR_VIEW, "account-manager", account_manager, NULL);
 }

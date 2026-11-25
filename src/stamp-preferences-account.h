@@ -21,6 +21,7 @@
 #include <gtk/gtk.h>
 
 #include "stamp-account.h"
+#include "stamp-signature-store.h"
 
 #pragma once
 
@@ -35,7 +36,8 @@ G_DECLARE_FINAL_TYPE (StampPreferencesAccount, stamp_preferences_account, STAMP,
 G_DECLARE_FINAL_TYPE (StampPreferencesAccountEditor, stamp_preferences_account_editor, STAMP, PREFERENCES_ACCOUNT_EDITOR, AdwNavigationPage);
 
 GtkWidget *
-stamp_preferences_account_new (StampAccount *account);
+stamp_preferences_account_new (StampAccount        *account,
+                               StampSignatureStore *signature_store);
 
 GtkWidget *
 stamp_preferences_account_editor_new (StampAccount *account, const gchar *email, const gchar *name);

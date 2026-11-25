@@ -170,3 +170,24 @@ stamp_signature_store_remove (StampSignatureStore *self,
   self->signatures = g_list_remove (self->signatures, signature);
   stamp_signature_clear (signature);
 }
+
+gboolean
+stamp_signature_store_update (StampSignatureStore *self,
+                              StampSignature      *signature,
+                              const gchar         *name,
+                              const gchar         *html)
+{
+  g_autoptr (GError) error = NULL;
+
+  stamp_signature_set_name (signature, name);
+  e_source_set_display_name (stamp_signature_get_source (signature), name);
+  stamp_signature_save (signature, html);
+
+  e_source_registry_commit_source_sync (self->registry, stamp_signature_get_source (signature), NULL, &error);
+  if (error) {
+    g_warning ("%s: Could not commit signature: %s", G_STRFUNC, error->message);
+    return FALSE;
+  }
+
+  return TRUE;
+}

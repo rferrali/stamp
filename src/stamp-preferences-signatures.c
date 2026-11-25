@@ -32,6 +32,7 @@ struct _StampPreferencesSignatures {
   AdwButtonRow *add_signature;
 
   GPtrArray *signature_rows;
+  StampSignatureStore *store;
 };
 
 G_DEFINE_FINAL_TYPE (StampPreferencesSignatures, stamp_preferences_signatures, ADW_TYPE_NAVIGATION_PAGE);
@@ -44,7 +45,7 @@ on_signature_activated (AdwActionRow *row,
   StampSignature *signature = g_object_get_data (G_OBJECT (row), "signature");
   GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
 
-  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (signature)));
+  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (signature, self->store)));
 }
 
 static void
@@ -54,7 +55,7 @@ on_add_signature_clicked (GtkWidget *button,
   StampPreferencesSignatures *self = STAMP_PREFERENCES_SIGNATURES (user_data);
   GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
 
-  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (NULL)));
+  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (NULL, self->store)));
 }
 
 static void
@@ -66,7 +67,7 @@ on_signature_edit_clicked (GtkWidget *button,
   StampSignature *signature = g_object_get_data (G_OBJECT (row), "signature");
   GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
 
-  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (signature)));
+  adw_navigation_view_push (ADW_NAVIGATION_VIEW (parent), ADW_NAVIGATION_PAGE (stamp_preferences_signature_editor_new (signature, self->store)));
 }
 
 static void
@@ -82,7 +83,7 @@ init_signatures (StampPreferencesSignatures *self)
 
   adw_preferences_group_remove (self->signatures_group, GTK_WIDGET (self->add_signature));
 
-  signatures = stamp_signature_store_get_signatures (stamp_session_get_signature_store (stamp_session_get_default ()));
+  signatures = stamp_signature_store_get_signatures (self->store);
   for (GList *iter = signatures; iter && iter->data; iter = g_list_next (iter)) {
     StampSignature *signature = (StampSignature *)iter->data;
     GtkWidget *row = adw_action_row_new ();
@@ -111,6 +112,7 @@ stamp_preferences_signatures_dispose (GObject *object)
   StampPreferencesSignatures *self = STAMP_PREFERENCES_SIGNATURES (object);
 
   g_clear_pointer (&self->signature_rows, g_ptr_array_unref);
+  g_clear_object (&self->store);
 
   G_OBJECT_CLASS (stamp_preferences_signatures_parent_class)->dispose (object);
 }
@@ -142,9 +144,13 @@ stamp_preferences_signatures_init (StampPreferencesSignatures *self)
 }
 
 GtkWidget *
-stamp_preferences_signatures_new (void)
+stamp_preferences_signatures_new (StampSignatureStore *store)
 {
-  return g_object_new (STAMP_TYPE_PREFERENCES_SIGNATURES, NULL);
+  StampPreferencesSignatures *self = g_object_new (STAMP_TYPE_PREFERENCES_SIGNATURES, NULL);
+
+  self->store = g_object_ref (store);
+
+  return GTK_WIDGET (self);
 }
 
 struct _StampPreferencesSignatureEditor {
@@ -157,6 +163,7 @@ struct _StampPreferencesSignatureEditor {
   AdwButtonRow *remove;
 
   StampSignature *signature;
+  StampSignatureStore *store;
   GCancellable *cancellable;
 };
 
@@ -171,7 +178,6 @@ on_editor_get_body_html (GObject      *source,
   g_autoptr (GError) error = NULL;
   g_autofree char *html = NULL;
   const gchar *name;
-  StampSession *session;
 
   html = stamp_rich_text_editor_get_html_finish (self->editor, res, NULL, &error);
   if (error) {
@@ -185,21 +191,10 @@ on_editor_get_body_html (GObject      *source,
     return;
   }
 
-  session = stamp_session_get_default ();
-
-  if (self->signature) {
-    ESourceRegistry *registry = stamp_session_get_registry (session);
-
-    stamp_signature_set_name (self->signature, name);
-    e_source_set_display_name (stamp_signature_get_source (self->signature), name);
-    stamp_signature_save (self->signature, html);
-
-    e_source_registry_commit_source_sync (registry, stamp_signature_get_source (self->signature), NULL, &error);
-    if (error)
-      g_warning ("%s: Could not commit signature: %s", G_STRFUNC, error->message);
-  } else {
-    self->signature = stamp_signature_store_create (stamp_session_get_signature_store (session), name, html, "text/html");
-  }
+  if (self->signature)
+    stamp_signature_store_update (self->store, self->signature, name, html);
+  else
+    self->signature = stamp_signature_store_create (self->store, name, html, "text/html");
 
   {
     GtkWidget *parent = gtk_widget_get_parent (GTK_WIDGET (self));
@@ -235,7 +230,7 @@ on_editor_remove_clicked (GtkWidget *button,
   if (!self->signature)
     return;
 
-  stamp_signature_store_remove (stamp_session_get_signature_store (stamp_session_get_default ()), self->signature);
+  stamp_signature_store_remove (self->store, self->signature);
   self->signature = NULL;
 
   parent = gtk_widget_get_parent (GTK_WIDGET (self));
@@ -252,6 +247,7 @@ stamp_preferences_signature_editor_dispose (GObject *object)
     g_cancellable_cancel (self->cancellable);
 
   g_clear_object (&self->cancellable);
+  g_clear_object (&self->store);
 
   G_OBJECT_CLASS (stamp_preferences_signature_editor_parent_class)->dispose (object);
 }
@@ -304,11 +300,13 @@ stamp_preferences_signature_editor_init (StampPreferencesSignatureEditor *self)
 }
 
 GtkWidget *
-stamp_preferences_signature_editor_new (StampSignature *signature)
+stamp_preferences_signature_editor_new (StampSignature      *signature,
+                                        StampSignatureStore *store)
 {
   StampPreferencesSignatureEditor *self = g_object_new (STAMP_TYPE_PREFERENCES_SIGNATURE_EDITOR, NULL);
 
   self->signature = signature;
+  self->store = g_object_ref (store);
 
   stamp_preferences_signature_editor_setup (self);
 
