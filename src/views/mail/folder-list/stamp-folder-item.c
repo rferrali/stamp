@@ -296,6 +296,7 @@ on_folder_item_folder_changed (CamelFolder           *folder,
   g_autofree char *mode = g_settings_get_string (account_settings, "notification-mode");
   gboolean notify = TRUE;
 
+  summary = camel_folder_get_folder_summary (folder);
   self->unread = stamp_account_get_folder_badge_count (account, folder);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_UNREAD]);
 
