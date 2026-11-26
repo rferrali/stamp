@@ -12,6 +12,7 @@
 |---|---|
 | [`feature/contact-completion-mail-history`](https://github.com/rferrali/stamp/compare/fork-base...feature/contact-completion-mail-history) | When recipient completion searches the mail history, it suggests the people you sent mail to (To/Cc), not only people who wrote to you, and it reads every address in a header, not just the first. |
 | [`fix/ews-sent-copy`](https://github.com/rferrali/stamp/compare/fork-base...fix/ews-sent-copy) | Mail sent through an Exchange (EWS) account is saved to Sent Items again when the server does not save a copy itself. |
+| [`fix/mime-alternative`](https://github.com/rferrali/stamp/compare/fork-base...fix/mime-alternative) | A mail with several versions of its text (plain, HTML, Gmail's AMP) shows just the best one instead of turning the extra ones into blank attachments, and a text part added after the body, such as a mail gateway's "external sender" banner, no longer replaces it. |
 | [`local/fork`](https://github.com/rferrali/stamp/compare/fork-base...local/fork) | Fork-only, never meant for upstream: this README and `local-rebuild-mine.sh`. |
 
 ### Working on the fork
