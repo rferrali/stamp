@@ -464,23 +464,23 @@ linkify_emails (const gchar *text)
 }
 
 static void
-convert_links (StampMimeParser *self)
+convert_links (StampMimeBody *body)
 {
   g_autofree char *linked = NULL;
   g_autofree char *with_emails = NULL;
   g_autofree char *wrapped = NULL;
   g_autofree char *escaped = NULL;
 
-  if (!self->plain_body->text)
+  if (!body->text)
     return;
 
-  linked = linkify_urls (self->plain_body->text);
+  linked = linkify_urls (body->text);
   with_emails = linkify_emails (linked);
   escaped = g_markup_escape_text (with_emails, -1);
 
   wrapped = g_strdup_printf ("<pre>%s</pre>", escaped);
-  g_set_str (&self->plain_body->text, wrapped);
-  self->plain_body->length = strlen (self->plain_body->text);
+  g_set_str (&body->text, wrapped);
+  body->length = strlen (body->text);
 }
 
 #define STAMP_PGP_ARMOR_SIGNED     "-----BEGIN PGP SIGNED MESSAGE-----"
@@ -647,6 +647,37 @@ handle_pgp_inline (StampMimeParser         *self,
   return TRUE;
 }
 
+/* Each inline text part of a message adds to the body, in order, so that a
+ * gateway footer appended as its own part does not replace the actual body.
+ * Plain text bodies have already been turned into HTML by convert_links(), so
+ * once any part is HTML the whole body is treated as HTML. */
+static void
+append_body (StampMimeParser *self,
+             StampMimeBody   *bp)
+{
+  StampMimeBody *current = self->html_body ? self->html_body : self->plain_body;
+  g_autofree char *joined = NULL;
+
+  if (!current) {
+    if (bp->is_html)
+      self->html_body = bp;
+    else
+      self->plain_body = bp;
+    return;
+  }
+
+  joined = g_strconcat (current->text, bp->text, NULL);
+  g_set_str (&current->text, joined);
+  current->length = strlen (current->text);
+
+  if (bp->is_html && current == self->plain_body) {
+    current->is_html = TRUE;
+    self->html_body = g_steal_pointer (&self->plain_body);
+  }
+
+  stamp_mime_body_free (bp);
+}
+
 static void
 handle_text_part (StampMimeParser *self,
                   CamelMimePart   *part,
@@ -688,15 +719,10 @@ handle_text_part (StampMimeParser *self,
   bp->length = text_len;
   bp->charset = g_strdup (charset);
 
-  if (is_html) {
-    g_clear_pointer (&self->html_body, stamp_mime_body_free);
-    self->html_body = bp;
-  } else if (!self->plain_body) {
-    g_clear_pointer (&self->plain_body, stamp_mime_body_free);
-    self->plain_body = bp;
+  if (!is_html)
+    convert_links (bp);
 
-    convert_links (self);
-  }
+  append_body (self, bp);
 }
 
 static gchar *
@@ -906,18 +932,58 @@ handle_attachment (StampMimeParser *self,
 }
 
 static gboolean
+is_calendar_part (CamelMimePart *part)
+{
+  CamelContentType *ct = camel_mime_part_get_content_type (part);
+
+  return ct && (camel_content_type_is (ct, "text", "calendar") || camel_content_type_is (ct, "application", "ics"));
+}
+
+/* RFC 2046: the alternatives are ordered by increasing faithfulness, so pick
+ * the last one we can display, preferring HTML (or a multipart wrapping it)
+ * over plain text. Alternatives we cannot render, such as text/x-amp-html or
+ * text/watch-html, are skipped. Returns -1 if no alternative is usable. */
+static gint
+pick_alternative (CamelMultipart *mp)
+{
+  guint num = camel_multipart_get_number (mp);
+  gint plain = -1;
+
+  for (gint idx = (gint) num - 1; idx >= 0; idx--) {
+    CamelMimePart *child = camel_multipart_get_part (mp, idx);
+    CamelContentType *ct = child ? camel_mime_part_get_content_type (child) : NULL;
+
+    if (!ct)
+      continue;
+
+    if (camel_content_type_is (ct, "text", "html") || camel_content_type_is (ct, "multipart", "*"))
+      return idx;
+
+    if (plain < 0 && camel_content_type_is (ct, "text", "plain"))
+      plain = idx;
+  }
+
+  return plain;
+}
+
+static gboolean
 handle_multipart_alternative (StampMimeParser  *self,
                               CamelMultipart   *mp,
                               GCancellable     *cancellable,
                               GError          **error)
 {
   guint num = camel_multipart_get_number (mp);
+  gint chosen = pick_alternative (mp);
 
   for (guint idx = 0; idx < num; idx++) {
     CamelMimePart *child = camel_multipart_get_part (mp, idx);
     g_autoptr (GError) child_err = NULL;
 
     if (!child)
+      continue;
+
+    /* Calendar parts are still handled so that invitations are recognized */
+    if (chosen >= 0 && (gint) idx != chosen && !is_calendar_part (child))
       continue;
 
     if (g_cancellable_set_error_if_cancelled (cancellable, error))
