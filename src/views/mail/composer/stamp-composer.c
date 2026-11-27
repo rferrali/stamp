@@ -2679,6 +2679,28 @@ remove_own_address (StampComposer        *self,
 }
 
 static void
+add_forwarded_attachments (StampComposer    *self,
+                           CamelMimeMessage *message)
+{
+  g_autoptr (StampMimeParser) parser = stamp_mime_parser_new (CAMEL_SESSION (stamp_session_get_default ()));
+  g_autoptr (GList) attachments = NULL;
+
+  stamp_mime_parser_parse (parser, message, self->cancellable, NULL);
+  attachments = stamp_mime_parser_get_attachments (parser);
+  if (!attachments)
+    return;
+
+  for (GList *iter = attachments; iter; iter = iter->next) {
+    StampMimeAttachment *att = iter->data;
+
+    add_attachment (self, stamp_attachment_button_new_from_data (att->filename, att->mime_type, att->size, att->data, TRUE));
+  }
+
+  attach_box_update_max_height (GTK_SCROLLED_WINDOW (self->scrolled_window), ADW_WRAP_BOX (self->attachment_box));
+  gtk_revealer_set_reveal_child (GTK_REVEALER (self->attachment_revealer), TRUE);
+}
+
+static void
 stamp_composer_set_quote_content (StampComposer          *self,
                                   StampComposerType       type,
                                   const gchar            *uid,
@@ -2808,6 +2830,8 @@ stamp_composer_set_quote_content (StampComposer          *self,
         g_string_append_printf (message_content, "<br/><br/>");
         g_string_append_printf (message_content, "%s", content_to_quote);
         g_string_append (message_content, "</div>");
+
+        add_forwarded_attachments (self, message);
       }
     }
 
