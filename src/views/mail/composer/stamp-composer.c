@@ -2106,8 +2106,15 @@ on_accept (GtkDropTarget *self,
            GdkDrop       *drop,
            gpointer       user_data)
 {
-  return gdk_content_formats_contain_gtype (gdk_drop_get_formats (drop),
-                                            GDK_TYPE_FILE_LIST);
+  /* Leave drags from within Stamp, such as addresses or text, to the widget below */
+  if (gdk_drop_get_drag (drop))
+    return FALSE;
+
+  /* Files from other applications are offered as mime types (text/uri-list,
+   * portal file transfer) only, so match against the target's formats, which
+   * include the mime types a GdkFileList can be deserialized from. */
+  return gdk_content_formats_match (gtk_drop_target_get_formats (self),
+                                    gdk_drop_get_formats (drop));
 }
 
 static gboolean
